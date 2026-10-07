@@ -6,6 +6,7 @@ import { MeasureTool } from '../tools/measure.ts';
 import { OpeningTool } from '../tools/opening.ts';
 import { RoomTool } from '../tools/room.ts';
 import { SelectTool } from '../tools/select.ts';
+import { ShapeTool } from '../tools/shape.ts';
 import { WallTool } from '../tools/wall.ts';
 import { CommandInput } from './command-input.ts';
 import { Editor } from './editor.ts';
@@ -41,14 +42,19 @@ export class App {
     const canvas = root.getElementById('canvas') as HTMLCanvasElement;
     this.editor = new Editor(canvas);
 
+    // 並び順がそのままツールバーの並び。グループが変わるところに区切りが入る
     for (const tool of [
       new SelectTool(),
+      new MeasureTool(),
       new WallTool(),
       new OpeningTool('door', 'door', 'ドア', 'D', 800),
       new OpeningTool('window', 'window', '窓', 'S', 1700),
       new FurnitureTool(),
+      new ShapeTool('line', 'line', '線', 'L'),
+      new ShapeTool('arc', 'arc', '円・弧', 'C'),
+      new ShapeTool('point', 'point', '点', 'Q'),
+      new ShapeTool('text', 'text', '文字', 'T'),
       new RoomTool(),
-      new MeasureTool(),
     ]) {
       this.editor.registerTool(tool);
     }

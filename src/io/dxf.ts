@@ -12,6 +12,8 @@ import {
   type Segment,
 } from '../core/shape.ts';
 import { paperToWorld, type LineType } from '../core/standard.ts';
+import { shapePrimitives } from '../core/shapes.ts';
+import { dxfArc, dxfLine, dxfPrimitives, dxfText, fmt, normalizeTextDeg } from './dxfPrimitive.ts';
 import type { Settings } from '../core/store.ts';
 import type { Room, Scene } from '../core/types.ts';
 
@@ -65,28 +67,16 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   // --- エンティティを先に組み立てて、図面範囲を確定させる ---
   const entities: string[][] = [];
   const pushLine = (a: Vec, b: Vec, layer: Layer) => {
-    entities.push(['0', 'LINE', '8', layer.name, '10', fmt(a.x), '20', fmt(a.y), '30', '0.0', '11', fmt(b.x), '21', fmt(b.y), '31', '0.0']);
+    entities.push(dxfLine(a, b, layer.name));
   };
   const pushSegments = (segments: Segment[], layer: Layer) => {
     for (const s of segments) pushLine(s.a, s.b, layer);
   };
   const pushArc = (center: Vec, radius: number, startDeg: number, endDeg: number, layer: Layer) => {
-    entities.push([
-      '0', 'ARC', '8', layer.name,
-      '10', fmt(center.x), '20', fmt(center.y), '30', '0.0',
-      '40', fmt(radius), '50', fmt(startDeg), '51', fmt(endDeg),
-    ]);
+    entities.push(dxfArc(center, radius, startDeg, endDeg, layer.name));
   };
   const pushText = (value: string, at: Vec, height: number, rotationDeg: number, layer: Layer) => {
-    entities.push([
-      '0', 'TEXT', '8', layer.name,
-      '10', fmt(at.x), '20', fmt(at.y), '30', '0.0',
-      '40', fmt(height), '1', text(value), '50', fmt(rotationDeg),
-      '7', 'STANDARD',
-      // 72/73 で中央揃えにするときは、11/21/31 の配置点が必須
-      '72', '1', '73', '2',
-      '11', fmt(at.x), '21', fmt(at.y), '31', '0.0',
-    ]);
+    entities.push(dxfText(text(value), at, height, rotationDeg, layer.name));
   };
 
   // 壁
@@ -130,6 +120,13 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     if (furnitureLabelFits(f.name, f, furnitureSize)) {
       pushText(f.name, vec(f.x, f.y), furnitureSize, normalizeTextDeg(toDeg(f.angle)), layer);
     }
+  }
+
+  // 汎用図形
+  for (const shape of Object.values(scene.shapes)) {
+    const layer = layerOf(shape.layerId, LAYER_IDS.shape);
+    if (!printable(layer)) continue;
+    entities.push(...dxfPrimitives(shapePrimitives(scene, shape, std), layer, std, text));
   }
 
   // 寸法（数値のみ。本物の DIMENSION エンティティは今は作らない）
@@ -256,20 +253,7 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   return out.join('\r\n') + '\r\n';
 }
 
-/** 小数は DXF が読みやすい固定表記にする（指数表記を避ける） */
-function fmt(n: number): string {
-  if (!Number.isFinite(n)) return '0.0';
-  const v = Math.abs(n) < 1e-9 ? 0 : n;
-  return v.toFixed(6).replace(/0+$/, '').replace(/\.$/, '.0');
-}
 
-/** 文字が上下逆にならないよう ±90° に畳む */
-function normalizeTextDeg(deg: number): number {
-  let d = deg;
-  while (d > 90) d -= 180;
-  while (d < -90) d += 180;
-  return d;
-}
 
 /** ASCII 以外を \U+XXXX に変換する。文字コードの取り違えで化けるのを避けたいとき用 */
 function escapeUnicode(s: string): string {

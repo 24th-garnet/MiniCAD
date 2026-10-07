@@ -34,6 +34,7 @@ export class SelectTool implements Tool {
   readonly label = '選択';
   readonly shortcut = 'V';
   readonly cursor = 'default';
+  readonly group = 'modify' as const;
 
   private drag: DragState = { kind: 'none' };
 

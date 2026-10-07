@@ -92,6 +92,7 @@ async function run() {
         walls: Object.keys(s.walls).length,
         openings: Object.keys(s.openings).length,
         furniture: Object.keys(s.furniture).length,
+        shapes: Object.keys(s.shapes).length,
         rooms: ed.rooms.map((r) => ({ name: r.name, area: Number(r.area.toFixed(2)) })),
         selection: ed.store.selection.length,
         status: document.getElementById('status-hint').textContent,
@@ -260,10 +261,88 @@ async function run() {
     },
   );
 
+  // --- 汎用図形 ---
+
+  await step(
+    '線を引ける',
+    async () => {
+      await page.keyboard.press('l');
+      await clickWorld(10000, 4500);
+      await clickWorld(14000, 4500);
+    },
+    (s) => {
+      assert.equal(s.tool, 'line');
+      assert.equal(s.shapes, 1);
+    },
+  );
+
+  await step(
+    '連続モードでポリラインになる',
+    async () => {
+      await page.getByText('連続して引く').click();
+      await clickWorld(10000, 5500);
+      await clickWorld(12000, 5500);
+      await clickWorld(12000, 6500);
+      await page.keyboard.press('Enter');
+    },
+    (s) => assert.equal(s.shapes, 2),
+  );
+
+  await step(
+    '円を描ける',
+    async () => {
+      await page.keyboard.press('c');
+      await clickWorld(13000, 6000);
+      await clickWorld(13600, 6000);
+    },
+    (s) => {
+      assert.equal(s.tool, 'arc');
+      assert.equal(s.shapes, 3);
+    },
+  );
+
+  await step(
+    '円弧を描ける',
+    async () => {
+      await page.selectOption('.options-bar select', 'arc');
+      await clickWorld(9000, 6000);
+      await clickWorld(9600, 6000);
+      await clickWorld(9000, 6600);
+    },
+    (s) => assert.equal(s.shapes, 4),
+  );
+
+  await step(
+    '文字を置ける',
+    async () => {
+      await page.keyboard.press('t');
+      await page.fill('.options-bar input[type=text]', '駐車スペース');
+      await clickWorld(12000, 7000);
+    },
+    (s) => assert.equal(s.shapes, 5),
+  );
+
+  await step(
+    '図形を選んで削除できる',
+    async () => {
+      await page.keyboard.press('v');
+      await clickWorld(12000, 4500);
+      assert.equal((await state()).selection, 1, '線を選択できていない');
+      await page.keyboard.press('Delete');
+    },
+    (s) => assert.equal(s.shapes, 4),
+  );
+
+  await step(
+    'undo で図形が戻る',
+    () => page.keyboard.press('Meta+z'),
+    (s) => assert.equal(s.shapes, 5),
+  );
+
   await step(
     '画層パネルが全画層を出している',
     async () => {},
-    (s) => assert.equal(s.layerRows, 7, '既定の画層は7つ'),
+    (s) => assert.equal(s.layerRows, 8, '既定の画層は8つ'),
   );
 
   await step(

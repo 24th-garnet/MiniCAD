@@ -2,6 +2,7 @@ import { toDeg, toRad } from '../../../core/geometry.ts';
 import { wallLength } from '../../../core/ops.ts';
 import type { EntityRef } from '../../../core/types.ts';
 import { checkboxField, el, numberField, readonlyField, selectField, textField } from '../../dom.ts';
+import { shapeFields } from '../../shapeFields.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
 /** 選択中のエンティティのプロパティ */
@@ -95,6 +96,11 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): HTMLElement[] {
       const label = scene.roomLabels[ref.id];
       if (!label) return [];
       return [textField('部屋名', label.name, (v) => edit(() => void (label.name = v)))];
+    }
+    case 'shape': {
+      const shape = scene.shapes[ref.id];
+      if (!shape) return [];
+      return shapeFields(shape, edit);
     }
   }
 }

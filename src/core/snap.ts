@@ -14,10 +14,11 @@ import {
 } from './geometry.ts';
 import { isSnappable } from './entity.ts';
 import { nodePos, wallEnds } from './ops.ts';
+import { shapeSnapPoints } from './shapes.ts';
 import type { Id, Scene } from './types.ts';
 import type { Settings } from './store.ts';
 
-export type SnapKind = 'node' | 'midpoint' | 'intersection' | 'wall' | 'grid' | 'angle' | 'free';
+export type SnapKind = 'node' | 'midpoint' | 'intersection' | 'center' | 'wall' | 'grid' | 'angle' | 'free';
 
 export interface SnapResult {
   point: Vec;
@@ -44,6 +45,7 @@ const KIND_LABEL: Record<SnapKind, string> = {
   node: '端点',
   midpoint: '中点',
   intersection: '交点',
+  center: '中心',
   wall: '壁上',
   grid: 'グリッド',
   angle: '角度',
@@ -102,6 +104,17 @@ export function snapPoint(scene: Scene, settings: Settings, p: Vec, opts: SnapOp
       const [a, b] = wallEnds(scene, w);
       const c = closestOnSegment(p, a, b);
       consider(c.point, 'wall', 3, { wallId: w.id });
+    }
+  }
+
+  if (settings.snapNode) {
+    for (const shape of Object.values(scene.shapes)) {
+      if (!isSnappable(scene, { type: 'shape', id: shape.id })) continue;
+      for (const candidate of shapeSnapPoints(scene, shape)) {
+        // 端点=0 / 中点=1 / 中心=2 と、壁のスナップと同じ優先度帯に乗せる
+        const priority = candidate.kind === 'node' ? 0 : candidate.kind === 'midpoint' ? 1 : 2;
+        consider(candidate.point, candidate.kind, priority);
+      }
     }
   }
 

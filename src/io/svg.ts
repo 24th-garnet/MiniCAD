@@ -1,4 +1,4 @@
-import { add, angleOf, dist, mid, mul, norm, perp, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { add, angleOf, dist, mid, mul, norm, perp, sub, toDeg, vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import { wallEnds } from '../core/ops.ts';
@@ -15,7 +15,9 @@ import {
 import { paperToWorld } from '../core/standard.ts';
 import type { Settings } from '../core/store.ts';
 import type { Room, Scene } from '../core/types.ts';
-import { FONT_FAMILY, theme } from '../render/theme.ts';
+import { theme } from '../render/theme.ts';
+import { lineTag, pointsAttr, round, svgPrimitives, textTag } from './svgPrimitive.ts';
+import { shapePrimitives } from '../core/shapes.ts';
 
 const MARGIN = 400; // mm
 
@@ -121,6 +123,13 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     }
   }
 
+  // --- 汎用図形 ---
+  for (const shape of Object.values(scene.shapes)) {
+    const layer = layerOf(shape.layerId, LAYER_IDS.shape);
+    if (!visible(layer)) continue;
+    out.push(...svgPrimitives(shapePrimitives(scene, shape, std), layer, std));
+  }
+
   // --- 寸法 ---
   const dimLayer = layerOf(LAYER_IDS.dimension, LAYER_IDS.dimension);
   if (settings.showDimensions && visible(dimLayer)) {
@@ -168,37 +177,7 @@ function emptySvg(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="${theme.paper}"/></svg>`;
 }
 
-const round = (n: number): number => Math.round(n * 100) / 100;
 
-const pointsAttr = (pts: Vec[]): string => pts.map((p) => `${round(p.x)},${round(p.y)}`).join(' ');
 
-const lineTag = (a: Vec, b: Vec, stroke: string, width: number, extra = ''): string =>
-  `<line x1="${round(a.x)}" y1="${round(a.y)}" x2="${round(b.x)}" y2="${round(b.y)}" stroke="${stroke}" stroke-width="${round(width)}"${extra}/>`;
 
-/** y 反転した座標系なので、文字は個別に反転し直す */
-function textTag(text: string, at: Vec, rotateDeg: number, size: number, fill: string, weight = 400): string {
-  let angle = rotateDeg;
-  while (angle > 90) angle -= 180;
-  while (angle < -90) angle += 180;
-  return (
-    `<g transform="translate(${round(at.x)} ${round(at.y)}) scale(1 -1) rotate(${round(-angle)})">` +
-    `<text x="0" y="0" font-family="${escapeXml(FONT_FAMILY)}" font-size="${round(size)}" font-weight="${weight}" fill="${fill}" text-anchor="middle" dominant-baseline="middle">${escapeXml(text)}</text></g>`
-  );
-}
 
-function escapeXml(s: string): string {
-  return s.replace(/[<>&"']/g, (c) => {
-    switch (c) {
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '&':
-        return '&amp;';
-      case '"':
-        return '&quot;';
-      default:
-        return '&apos;';
-    }
-  });
-}

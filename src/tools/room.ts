@@ -18,6 +18,7 @@ export class RoomTool implements Tool {
   readonly label = '部屋名';
   readonly shortcut = 'N';
   readonly cursor = 'text';
+  readonly group = 'annotate' as const;
 
   /** ツールバーの入力欄と同期する部屋名 */
   name = 'リビング';

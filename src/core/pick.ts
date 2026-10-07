@@ -2,7 +2,11 @@ import { closestOnSegment, dist, pointInPolygon, vec, type Vec } from './geometr
 import { isSelectable } from './entity.ts';
 import { wallEnds } from './ops.ts';
 import { furniturePolygon, openingFrame } from './shape.ts';
+import { shapeHitTest, shapePickPriority, shapeVertices } from './shapes.ts';
 import type { EntityRef, Scene } from './types.ts';
+
+/** これ未満の優先度は「小物」。壁や家具より先に拾う */
+const SMALL_SHAPE_PRIORITY = 3;
 
 export interface PickOptions {
   /** 非表示・ロックされた画層のものを除外する。既定は true */
@@ -26,6 +30,10 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
   }
   if (bestNode) return bestNode.ref;
 
+  // 点や文字は小さく掴みにくいので、壁や家具より先に拾う
+  const small = pickShape(scene, p, tolerance, ok, (s) => shapePickPriority(s) < SMALL_SHAPE_PRIORITY);
+  if (small) return small;
+
   for (const op of Object.values(scene.openings)) {
     const ref: EntityRef = { type: 'opening', id: op.id };
     if (!ok(ref)) continue;
@@ -41,6 +49,9 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
     if (!ok(ref)) continue;
     if (pointInPolygon(p, furniturePolygon(f))) return ref;
   }
+
+  const curve = pickShape(scene, p, tolerance, ok, (s) => shapePickPriority(s) >= SMALL_SHAPE_PRIORITY);
+  if (curve) return curve;
 
   let bestWall: { ref: EntityRef; d: number } | null = null;
   for (const w of Object.values(scene.walls)) {
@@ -100,7 +111,36 @@ export function pickInRect(
     if (!ok(ref)) continue;
     if (inside(vec(label.x, label.y))) refs.push(ref);
   }
+  for (const shape of Object.values(scene.shapes)) {
+    const ref: EntityRef = { type: 'shape', id: shape.id };
+    if (!ok(ref)) continue;
+    const pts = shapeVertices(scene, shape);
+    if (pts.length === 0) continue;
+    if (crossing ? pts.some(inside) : pts.every(inside)) refs.push(ref);
+  }
   return refs;
+}
+
+/** 条件に合う図形のうち、最も近いものを返す */
+function pickShape(
+  scene: Scene,
+  p: Vec,
+  tolerance: number,
+  ok: (ref: EntityRef) => boolean,
+  accept: (s: Parameters<typeof shapePickPriority>[0]) => boolean,
+): EntityRef | null {
+  let best: { ref: EntityRef; score: number } | null = null;
+  for (const shape of Object.values(scene.shapes)) {
+    if (!accept(shape)) continue;
+    const ref: EntityRef = { type: 'shape', id: shape.id };
+    if (!ok(ref)) continue;
+    const d = shapeHitTest(scene, shape, p, tolerance, scene.standard);
+    if (d === null) continue;
+    // 優先度を距離より強く効かせる（snap.ts の consider と同じ考え方）
+    const score = shapePickPriority(shape) * 1e6 + d;
+    if (!best || score < best.score) best = { ref, score };
+  }
+  return best?.ref ?? null;
 }
 
 function pickFilter(scene: Scene, opts: PickOptions): (ref: EntityRef) => boolean {

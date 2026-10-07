@@ -3,7 +3,18 @@ import type { SnapResult } from '../core/snap.ts';
 import type { Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
 
-export type ToolId = 'select' | 'wall' | 'door' | 'window' | 'furniture' | 'room' | 'measure';
+export type ToolId =
+  | 'select'
+  | 'measure'
+  | 'wall'
+  | 'door'
+  | 'window'
+  | 'furniture'
+  | 'line'
+  | 'arc'
+  | 'point'
+  | 'text'
+  | 'room';
 
 export interface PointerInfo {
   screen: Vec;

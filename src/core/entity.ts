@@ -2,6 +2,7 @@ import { vec, type Bounds, type Vec } from './geometry.ts';
 import { getLayer, type Layer, type LayerId } from './layer.ts';
 import { nodePos, openingsOnWall, pruneOrphanNodes, wallEnds, wallsAtNode } from './ops.ts';
 import { furniturePolygon, openingFrame } from './shape.ts';
+import { shapeVertices } from './shapes.ts';
 import { DEFAULT_LAYER_FOR, type EntityRef, type EntityType, type Id, type Scene } from './types.ts';
 
 /**
@@ -101,6 +102,27 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     points: (scene, id) => {
       const f = scene.furniture[id];
       return f ? furniturePolygon(f) : [];
+    },
+  },
+
+  shape: {
+    label: '図形',
+    table: (scene) => scene.shapes,
+    layerIdOf: (scene, id) => scene.shapes[id]?.layerId ?? null,
+    setLayerId: (scene, id, layerId) => {
+      const s = scene.shapes[id];
+      if (!s) return false;
+      s.layerId = layerId;
+      return true;
+    },
+    remove: (scene, id) => {
+      if (!scene.shapes[id]) return false;
+      delete scene.shapes[id];
+      return true;
+    },
+    points: (scene, id) => {
+      const s = scene.shapes[id];
+      return s ? shapeVertices(scene, s) : [];
     },
   },
 

@@ -16,6 +16,7 @@ export class WallTool implements Tool {
   readonly label = '壁';
   readonly shortcut = 'W';
   readonly cursor = 'crosshair';
+  readonly group = 'draw' as const;
 
   private anchor: Vec | null = null;
 

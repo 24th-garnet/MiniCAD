@@ -12,10 +12,10 @@ import {
   type Vec,
 } from '../core/geometry.ts';
 import { isSnappable } from '../core/entity.ts';
-import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
+import { LAYER_IDS, type Layer } from '../core/layer.ts';
 import { wallEnds } from '../core/ops.ts';
 import { dimensionSide, toTatami } from '../core/rooms.ts';
-import { PX_PER_MM, paperToScreenPx } from '../core/standard.ts';
+
 import {
   doorSwing,
   furnitureLabelFits,
@@ -25,48 +25,24 @@ import {
   wallOutline,
   wallQuad,
 } from '../core/shape.ts';
-import type { Settings } from '../core/store.ts';
-import type { EntityRef, Furniture, Room, Scene } from '../core/types.ts';
+import type { Furniture } from '../core/types.ts';
+import { shapePrimitives } from '../core/shapes.ts';
 import { fontOf, theme } from './theme.ts';
-import { Viewport } from './viewport.ts';
+import { drawPrimitives } from './primitive.ts';
+import {
+  applyLayer,
+  layerFor,
+  normalizeTextAngle,
+  refKey,
+  strokeSegments,
+  textPx,
+  tracePolygon,
+  type Frame,
+} from './frame.ts';
 
-export interface Frame {
-  ctx: CanvasRenderingContext2D;
-  vp: Viewport;
-  scene: Scene;
-  rooms: Room[];
-  settings: Settings;
-  selected: Set<string>;
-  hover: EntityRef | null;
-}
+export { refKey, type Frame };
 
-export const refKey = (ref: EntityRef): string => `${ref.type}:${ref.id}`;
 
-/** 画層を引く。見つからなければ既定の画層に落とす */
-const layerFor = (frame: Frame, id: string | undefined, fallback: string): Layer =>
-  getLayer(frame.scene.layers, id, fallback);
-
-/**
- * 線の太さは「紙の上の mm」なので、画面ではズームに依らず一定のピクセル数で描く。
- * CAD の線幅表示と同じ考え方。
- */
-const strokePx = (frame: Frame, layer: Layer): number =>
-  paperToScreenPx(layerWeight(layer, frame.scene.standard));
-
-/** 文字も紙の上の mm。画面は「原寸の紙」として扱う */
-const textPx = (paperMm: number): number => Math.max(8, paperMm * PX_PER_MM);
-
-/** 線種のダッシュを画面のピクセルに直す。ワールド基準なのでズームに追従する */
-function dashPx(frame: Frame, layer: Layer): number[] {
-  return layerDashWorld(layer, frame.scene.standard).map((mm) => Math.max(1, frame.vp.toScreenLength(mm)));
-}
-
-function applyLayer(frame: Frame, layer: Layer, overrideColor?: string | null): void {
-  const { ctx } = frame;
-  ctx.strokeStyle = overrideColor ?? layer.color;
-  ctx.lineWidth = strokePx(frame, layer);
-  ctx.setLineDash(dashPx(frame, layer));
-}
 
 export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   const { ctx, vp } = frame;
@@ -79,6 +55,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawWalls(frame);
   drawOpenings(frame);
   drawFurniture(frame);
+  drawShapes(frame);
   if (frame.settings.showDimensions) drawDimensions(frame);
   drawRoomLabels(frame);
   drawNodes(frame);
@@ -133,16 +110,6 @@ function drawGrid(frame: Frame): void {
 
 // --- 部屋 ---
 
-function tracePolygon(frame: Frame, poly: Vec[]): void {
-  const { ctx, vp } = frame;
-  ctx.beginPath();
-  poly.forEach((p, i) => {
-    const s = vp.toScreen(p);
-    if (i === 0) ctx.moveTo(s.x, s.y);
-    else ctx.lineTo(s.x, s.y);
-  });
-  ctx.closePath();
-}
 
 function drawRooms(frame: Frame): void {
   const { ctx, rooms } = frame;
@@ -238,17 +205,6 @@ function drawWalls(frame: Frame): void {
   }
 }
 
-function strokeSegments(frame: Frame, segments: { a: Vec; b: Vec }[]): void {
-  const { ctx, vp } = frame;
-  ctx.beginPath();
-  for (const s of segments) {
-    const a = vp.toScreen(s.a);
-    const b = vp.toScreen(s.b);
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-  }
-  ctx.stroke();
-}
 
 // --- 開口部（ドア・窓）---
 
@@ -382,12 +338,25 @@ function drawFurnitureGlyph(frame: Frame, f: Furniture, corners: Vec[], layer: L
 
 const lerpPt = (a: Vec, b: Vec, t: number): Vec => add(a, mul(sub(b, a), t));
 
-function normalizeTextAngle(angle: number): number {
-  // 文字が上下逆にならないよう ±90° の範囲に畳む
-  let a = angle;
-  while (a > Math.PI / 2) a -= Math.PI;
-  while (a < -Math.PI / 2) a += Math.PI;
-  return a;
+
+// --- 汎用図形 ---
+
+/**
+ * 図形は中間表現（Primitive）に落としてから描く。
+ * 同じ中間表現を SVG と DXF も使うので、種別を足してもここは変わらない。
+ */
+function drawShapes(frame: Frame): void {
+  const { scene, selected, hover } = frame;
+  for (const s of Object.values(scene.shapes)) {
+    const layer = layerFor(frame, s.layerId, LAYER_IDS.shape);
+    if (!layer.visible) continue;
+    const accent = selected.has(`shape:${s.id}`)
+      ? theme.wallSelected
+      : hover?.type === 'shape' && hover.id === s.id
+        ? theme.wallHover
+        : null;
+    drawPrimitives(frame, shapePrimitives(scene, s, scene.standard), layer, accent);
+  }
 }
 
 // --- 寸法 ---

@@ -19,6 +19,7 @@ export class OpeningTool implements Tool {
   readonly label: string;
   readonly shortcut: string;
   readonly cursor = 'crosshair';
+  readonly group = 'draw' as const;
 
   private readonly kind: OpeningKind;
   /** 開口幅 (mm)。ツールバーから変更される */

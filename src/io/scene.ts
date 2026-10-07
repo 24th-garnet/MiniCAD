@@ -7,10 +7,15 @@ import {
   type LineType,
   type WeightRole,
 } from '../core/standard.ts';
+import { readShape } from './shapeRead.ts';
 import { emptyScene, type Scene } from '../core/types.ts';
 
-/** 2 で画層と製図規格が入った。1 のファイルは読み込み時に既定値で補う */
-export const FILE_VERSION = 2;
+/**
+ * 1 → 2 で画層と製図規格、2 → 3 で汎用図形が入った。
+ * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
+ * 古いファイルはバージョン分岐なしでそのまま読める。
+ */
+export const FILE_VERSION = 3;
 
 export interface SceneFile {
   format: 'minicad';
@@ -90,6 +95,10 @@ export function deserialize(raw: unknown): Scene {
       angle: numberOr(f.angle, 0),
       layerId: layerOr(f.layerId, LAYER_IDS.furniture),
     };
+  }
+  for (const [id, raw] of Object.entries(table<Record<string, unknown>>('shapes'))) {
+    const shape = readShape(id, raw, layerOr(raw?.layerId, LAYER_IDS.shape));
+    if (shape) scene.shapes[id] = shape;
   }
   for (const [id, l] of Object.entries(table<Record<string, unknown>>('roomLabels'))) {
     if (typeof l?.x !== 'number' || typeof l?.y !== 'number') continue;

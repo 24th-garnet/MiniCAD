@@ -16,6 +16,7 @@ export class FurnitureTool implements Tool {
   readonly label = '家具';
   readonly shortcut = 'F';
   readonly cursor = 'crosshair';
+  readonly group = 'draw' as const;
 
   preset: FurniturePreset = FURNITURE_PRESETS[0];
   /** 手動の回転角。壁沿わせが効いているときは壁の向きに加算される */

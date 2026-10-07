@@ -10,6 +10,7 @@ export class MeasureTool implements Tool {
   readonly label = '計測';
   readonly shortcut = 'M';
   readonly cursor = 'crosshair';
+  readonly group = 'modify' as const;
 
   private from: Vec | null = null;
   private to: Vec | null = null;

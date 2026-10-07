@@ -5,12 +5,16 @@ import type { Panel, PanelContext } from '../panel.ts';
 /** ToolId を増やすとここが型エラーになるので、アイコンの付け忘れに気づける */
 const TOOL_GLYPH: Record<ToolId, string> = {
   select: '↖',
+  measure: '↔',
   wall: '▬',
   door: '⌒',
   window: '▤',
   furniture: '▦',
+  line: '／',
+  arc: '○',
+  point: '・',
+  text: 'A',
   room: 'あ',
-  measure: '↔',
 };
 
 export class Toolbar implements Panel {

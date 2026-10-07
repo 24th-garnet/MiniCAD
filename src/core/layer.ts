@@ -40,6 +40,8 @@ export const LAYER_IDS = {
   furniture: 'furniture',
   dimension: 'dimension',
   roomName: 'room-name',
+  /** 汎用図形（線・円弧・円・ポリライン・点）の既定 */
+  shape: 'shape',
   axis: 'axis',
   draft: 'draft',
 } as const;
@@ -98,6 +100,18 @@ export function defaultLayers(): Record<LayerId, Layer> {
       id: LAYER_IDS.roomName,
       name: 'A-ANNO-TEXT',
       color: '#27272a',
+      aci: 7,
+      weightRole: 'thin',
+      lineWeightOverride: null,
+      lineType: 'continuous',
+      visible: true,
+      locked: false,
+      printable: true,
+    },
+    {
+      id: LAYER_IDS.shape,
+      name: 'A-ANNO-SYMB',
+      color: '#3f3f46',
       aci: 7,
       weightRole: 'thin',
       lineWeightOverride: null,

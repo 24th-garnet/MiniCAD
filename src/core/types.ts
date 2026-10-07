@@ -1,5 +1,6 @@
 import type { Vec } from './geometry.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
+import type { Shape } from './shapes.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
 
 export type Id = string;
@@ -82,6 +83,8 @@ export interface Scene {
   openings: Record<Id, Opening>;
   furniture: Record<Id, Furniture>;
   roomLabels: Record<Id, RoomLabel>;
+  /** 間取りの意味を持たない汎用図形（線・円弧・円・ポリライン・文字・点） */
+  shapes: Record<Id, Shape>;
   /** 画層。DXF の LAYER テーブルに対応する */
   layers: Record<LayerId, Layer>;
   /** 線群・尺度・文字高さなどの製図規格。図面の属性なのでシーンと一緒に保存する */
@@ -95,6 +98,7 @@ export function emptyScene(): Scene {
     openings: {},
     furniture: {},
     roomLabels: {},
+    shapes: {},
     layers: defaultLayers(),
     standard: jisStandard(),
   };
@@ -106,9 +110,10 @@ export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, 'node'>, LayerId> = {
   opening: LAYER_IDS.opening,
   furniture: LAYER_IDS.furniture,
   roomLabel: LAYER_IDS.roomName,
+  shape: LAYER_IDS.shape,
 };
 
-export type EntityType = 'node' | 'wall' | 'opening' | 'furniture' | 'roomLabel';
+export type EntityType = 'node' | 'wall' | 'opening' | 'furniture' | 'roomLabel' | 'shape';
 
 export interface EntityRef {
   type: EntityType;
