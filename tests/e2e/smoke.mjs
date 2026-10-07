@@ -103,6 +103,7 @@ async function run() {
         },
         layerRows: document.querySelectorAll('.layer-row').length,
         wallLayerVisible: s.layers['wall'].visible,
+        wallLayerLocked: s.layers['wall'].locked,
       };
     });
 
@@ -292,7 +293,7 @@ async function run() {
   await step(
     '画層を非表示にできる',
     async () => {
-      await page.locator('.layer-row').first().locator('input[type=checkbox]').uncheck();
+      await page.locator('.layer-row').first().locator('.layer-visible').uncheck();
     },
     (s) => assert.equal(s.wallLayerVisible, false),
   );
@@ -300,9 +301,37 @@ async function run() {
   await step(
     '画層の表示を戻す',
     async () => {
-      await page.locator('.layer-row').first().locator('input[type=checkbox]').check();
+      await page.locator('.layer-row').first().locator('.layer-visible').check();
     },
     (s) => assert.equal(s.wallLayerVisible, true),
+  );
+
+  await step(
+    '画層をロックすると壁を選択できなくなる',
+    async () => {
+      await page.keyboard.press('v');
+      await clickWorld(500, 0);
+      assert.ok((await state()).selection > 0, '前提: ロック前は壁を選択できる');
+      await page.keyboard.press('Escape');
+      await page.locator('.layer-row').first().locator('.layer-locked').check();
+      await clickWorld(500, 0);
+    },
+    (s) => {
+      assert.equal(s.wallLayerLocked, true);
+      assert.equal(s.selection, 0, 'ロック中の壁が選択できてしまう');
+    },
+  );
+
+  await step(
+    'ロックを解除すると選択できる',
+    async () => {
+      await page.locator('.layer-row').first().locator('.layer-locked').uncheck();
+      await clickWorld(500, 0);
+    },
+    (s) => {
+      assert.equal(s.wallLayerLocked, false);
+      assert.equal(s.selection, 1);
+    },
   );
 
   for (const [label, filename] of [

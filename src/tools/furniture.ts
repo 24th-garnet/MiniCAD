@@ -6,7 +6,7 @@ import { newId, type Furniture } from '../core/types.ts';
 import type { Frame } from '../render/renderer.ts';
 import { theme } from '../render/theme.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { PointerInfo, Tool } from './tool.ts';
+import type { OptionField, PointerInfo, Tool } from './tool.ts';
 
 /** この距離より壁に近ければ、家具を壁に沿わせる (mm) */
 const WALL_ALIGN_RANGE = 900;
@@ -99,6 +99,19 @@ export class FurnitureTool implements Tool {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
+  }
+
+  options(): OptionField[] {
+    return [
+      {
+        kind: 'select',
+        label: '家具',
+        value: String(FURNITURE_PRESETS.indexOf(this.preset)),
+        options: FURNITURE_PRESETS.map((p, i) => ({ value: String(i), label: `${p.name}  ${p.w}×${p.h}` })),
+        onChange: (v) => void (this.preset = FURNITURE_PRESETS[Number(v)] ?? this.preset),
+      },
+      { kind: 'note', text: 'R で90°回転 / Alt で壁沿わせ解除' },
+    ];
   }
 
   status(): string {

@@ -5,7 +5,12 @@ import { newId } from '../core/types.ts';
 import type { Frame } from '../render/renderer.ts';
 import { fontOf, theme } from '../render/theme.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { PointerInfo, Tool } from './tool.ts';
+import type { OptionField, PointerInfo, Tool } from './tool.ts';
+
+/** オプションバーに並べる部屋名の候補 */
+export const ROOM_NAME_SUGGESTIONS = [
+  'LDK', '洋室', '和室', '寝室', '浴室', '洗面', 'トイレ', '玄関', '廊下', 'クローゼット',
+] as const;
 
 /** 検出済みの部屋に名前を付けるツール。部屋そのものは壁から自動で決まる */
 export class RoomTool implements Tool {
@@ -76,6 +81,19 @@ export class RoomTool implements Tool {
     ctx.textBaseline = 'middle';
     ctx.fillText(this.name || '(名前を消す)', c.x, c.y - 9);
     ctx.restore();
+  }
+
+  options(): OptionField[] {
+    return [
+      {
+        kind: 'text',
+        label: '部屋名',
+        value: this.name,
+        placeholder: '部屋名',
+        onChange: (v) => void (this.name = v),
+      },
+      { kind: 'chips', items: [...ROOM_NAME_SUGGESTIONS], onPick: (s) => void (this.name = s) },
+    ];
   }
 
   status(editor: Editor): string {

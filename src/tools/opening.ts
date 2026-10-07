@@ -6,7 +6,7 @@ import { newId, type Id, type Opening, type OpeningKind } from '../core/types.ts
 import { theme } from '../render/theme.ts';
 import type { Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { PointerInfo, Tool, ToolId } from './tool.ts';
+import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
 interface Candidate {
   wallId: Id;
@@ -135,6 +135,20 @@ export class OpeningTool implements Tool {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
+  }
+
+  options(): OptionField[] {
+    return [
+      {
+        kind: 'number',
+        label: '幅 (mm)',
+        value: this.width,
+        step: 50,
+        min: 100,
+        onChange: (v) => void (this.width = Math.max(100, v)),
+      },
+      { kind: 'note', text: 'X で吊元反転 / Y で開き反転' },
+    ];
   }
 
   status(editor: Editor): string {

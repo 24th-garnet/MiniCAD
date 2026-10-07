@@ -4,7 +4,7 @@ import { pointFromPolar } from '../core/snap.ts';
 import type { Id } from '../core/types.ts';
 import { drawPreviewWall, drawSnapMarker, type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { NumericEntry, PointerInfo, Tool } from './tool.ts';
+import type { NumericEntry, OptionField, PointerInfo, Tool } from './tool.ts';
 
 /**
  * 壁を連続して引くツール。
@@ -116,6 +116,20 @@ export class WallTool implements Tool {
       drawPreviewWall(frame, this.anchor, snap.point, editor.store.settings.wallThickness);
     }
     if (snap && snap.kind !== 'free') drawSnapMarker(frame, snap.point, snap.label);
+  }
+
+  options(editor: Editor): OptionField[] {
+    const settings = editor.store.settings;
+    return [
+      {
+        kind: 'number',
+        label: '壁厚 (mm)',
+        value: settings.wallThickness,
+        step: 10,
+        min: 10,
+        onChange: (v) => void (settings.wallThickness = Math.max(10, v)),
+      },
+    ];
   }
 
   status(): string {

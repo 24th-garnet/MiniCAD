@@ -422,9 +422,63 @@ kbd {
   font-size: 11px;
   flex: 1 1 0;
   min-width: 0;
+  width: 0;
   padding: 2px 3px;
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   background: #fff;
   color: var(--ink);
+}
+
+/* --- オプションバーの追加要素 --- */
+
+.option-chips {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.option-chips button {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.option-chips button:hover {
+  background: var(--accent-soft);
+}
+
+.option-note {
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* --- ツールバーのグループ区切り --- */
+
+.tool-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--panel-border);
+}
+
+/* --- 画層のロック --- */
+
+.layer-lock {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.layer-lock input {
+  margin: 0;
 }
