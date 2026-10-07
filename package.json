@@ -1,0 +1,21 @@
+{
+  "name": "minicad",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "間取り作図に特化した小さなCAD風Webアプリ",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/",
+    "test:e2e": "node tests/e2e/smoke.mjs"
+  },
+  "devDependencies": {
+    "dxf-parser": "^1.1.2",
+    "playwright": "^1.63.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

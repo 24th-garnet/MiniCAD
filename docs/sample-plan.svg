@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88mm" height="68mm" viewBox="0 0 8800 6800">
+<!-- MiniCAD 1:100 / 線群 1.0 / 単位 mm -->
+<rect width="8800" height="6800" fill="#f7f6f3"/>
+<g transform="translate(400 6400) scale(1 -1)">
+<polygon points="90,90 4540,90 4540,3200 4540,5910 90,5910" fill="#ffffff"/>
+<polygon points="4660,90 7910,90 7910,3140 4660,3140" fill="#ffffff"/>
+<polygon points="7910,3260 7910,5910 4660,5910 4660,3260" fill="#ffffff"/>
+<polygon points="0,90 4600,90 4600,-90 0,-90" fill="#3f3f46"/>
+<polygon points="4600,90 8000,90 8000,-90 4600,-90" fill="#3f3f46"/>
+<polygon points="7910,0 7910,3200 8090,3200 8090,0" fill="#3f3f46"/>
+<polygon points="7910,3200 7910,6000 8090,6000 8090,3200" fill="#3f3f46"/>
+<polygon points="8000,5910 4600,5910 4600,6090 8000,6090" fill="#3f3f46"/>
+<polygon points="4600,5910 0,5910 0,6090 4600,6090" fill="#3f3f46"/>
+<polygon points="90,6000 90,0 -90,0 -90,6000" fill="#3f3f46"/>
+<polygon points="4540,0 4540,3200 4660,3200 4660,0" fill="#3f3f46"/>
+<polygon points="4540,3200 4540,6000 4660,6000 4660,3200" fill="#3f3f46"/>
+<polygon points="4600,3260 8000,3260 8000,3140 4600,3140" fill="#3f3f46"/>
+<polygon points="91,5250 91,4350 -91,4350 -91,5250" fill="#f7f6f3"/>
+<polygon points="700,91 3300,91 3300,-91 700,-91" fill="#f7f6f3"/>
+<polygon points="3900,5909 2100,5909 2100,6091 3900,6091" fill="#f7f6f3"/>
+<polygon points="4539,4200 4539,5000 4661,5000 4661,4200" fill="#f7f6f3"/>
+<polygon points="7909,3750 7909,5450 8091,5450 8091,3750" fill="#f7f6f3"/>
+<polygon points="4539,1225 4539,1975 4661,1975 4661,1225" fill="#f7f6f3"/>
+<polygon points="7909,1300 7909,1900 8091,1900 8091,1300" fill="#f7f6f3"/>
+<line x1="90" y1="5250" x2="-90" y2="5250" stroke="#2563eb" stroke-width="25"/>
+<line x1="90" y1="4350" x2="-90" y2="4350" stroke="#2563eb" stroke-width="25"/>
+<line x1="0" y1="5250" x2="900" y2="5250" stroke="#2563eb" stroke-width="25"/>
+<path d="M 900 5250 A 900 900 0 0 1 0 4350" fill="none" stroke="#2563eb" stroke-width="25" stroke-dasharray="150 100"/>
+<line x1="700" y1="90" x2="700" y2="-90" stroke="#2563eb" stroke-width="25"/>
+<line x1="3300" y1="90" x2="3300" y2="-90" stroke="#2563eb" stroke-width="25"/>
+<line x1="700" y1="-45" x2="3300" y2="-45" stroke="#2563eb" stroke-width="25"/>
+<line x1="700" y1="45" x2="3300" y2="45" stroke="#2563eb" stroke-width="25"/>
+<line x1="3900" y1="5910" x2="3900" y2="6090" stroke="#2563eb" stroke-width="25"/>
+<line x1="2100" y1="5910" x2="2100" y2="6090" stroke="#2563eb" stroke-width="25"/>
+<line x1="3900" y1="6045" x2="2100" y2="6045" stroke="#2563eb" stroke-width="25"/>
+<line x1="3900" y1="5955" x2="2100" y2="5955" stroke="#2563eb" stroke-width="25"/>
+<line x1="4540" y1="4200" x2="4660" y2="4200" stroke="#2563eb" stroke-width="25"/>
+<line x1="4540" y1="5000" x2="4660" y2="5000" stroke="#2563eb" stroke-width="25"/>
+<line x1="4600" y1="4200" x2="5400" y2="4200" stroke="#2563eb" stroke-width="25"/>
+<path d="M 5400 4200 A 800 800 0 0 0 4600 5000" fill="none" stroke="#2563eb" stroke-width="25" stroke-dasharray="150 100"/>
+<line x1="7910" y1="3750" x2="8090" y2="3750" stroke="#2563eb" stroke-width="25"/>
+<line x1="7910" y1="5450" x2="8090" y2="5450" stroke="#2563eb" stroke-width="25"/>
+<line x1="8045" y1="3750" x2="8045" y2="5450" stroke="#2563eb" stroke-width="25"/>
+<line x1="7955" y1="3750" x2="7955" y2="5450" stroke="#2563eb" stroke-width="25"/>
+<line x1="4540" y1="1225" x2="4660" y2="1225" stroke="#2563eb" stroke-width="25"/>
+<line x1="4540" y1="1975" x2="4660" y2="1975" stroke="#2563eb" stroke-width="25"/>
+<line x1="4600" y1="1225" x2="3850" y2="1225" stroke="#2563eb" stroke-width="25"/>
+<path d="M 3850 1225 A 750 750 0 0 1 4600 1975" fill="none" stroke="#2563eb" stroke-width="25" stroke-dasharray="150 100"/>
+<line x1="7910" y1="1300" x2="8090" y2="1300" stroke="#2563eb" stroke-width="25"/>
+<line x1="7910" y1="1900" x2="8090" y2="1900" stroke="#2563eb" stroke-width="25"/>
+<line x1="8045" y1="1300" x2="8045" y2="1900" stroke="#2563eb" stroke-width="25"/>
+<line x1="7955" y1="1300" x2="7955" y2="1900" stroke="#2563eb" stroke-width="25"/>
+<polygon points="325,5260 2875,5260 2875,5910 325,5910" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(1600 5585) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">キッチン</text></g>
+<polygon points="1050,3600 2550,3600 2550,4400 1050,4400" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(1800 4000) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">ダイニング</text></g>
+<polygon points="1300,975 3100,975 3100,1825 1300,1825" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(2200 1400) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">ソファ</text></g>
+<polygon points="4860,3960 5860,3960 5860,5910 4860,5910" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(5360 4935) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">ベッドS</text></g>
+<polygon points="4700,200 6300,200 6300,1000 4700,1000" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(5500 600) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">浴槽</text></g>
+<polygon points="7875,375 7875,825 7125,825 7125,375" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(7500 600) scale(1 -1) rotate(-90)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">トイレ</text></g>
+<polygon points="6225,2425 6975,2425 6975,2975 6225,2975" fill="rgba(120,113,108,0.14)" stroke="#78716c" stroke-width="25"/>
+<g transform="translate(6600 2700) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#57534e" text-anchor="middle" dominant-baseline="middle">洗面台</text></g>
+<g transform="translate(2300 -340) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">4600</text></g>
+<g transform="translate(6300 -340) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">3400</text></g>
+<g transform="translate(8340 1600) scale(1 -1) rotate(-90)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">3200</text></g>
+<g transform="translate(8340 4600) scale(1 -1) rotate(-90)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">2800</text></g>
+<g transform="translate(6300 6340) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">3400</text></g>
+<g transform="translate(2300 6340) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">4600</text></g>
+<g transform="translate(-340 3000) scale(1 -1) rotate(90)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">6000</text></g>
+<g transform="translate(4290 1600) scale(1 -1) rotate(-90)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">3200</text></g>
+<g transform="translate(4290 4600) scale(1 -1) rotate(-90)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">2800</text></g>
+<g transform="translate(6300 3510) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="250" font-weight="400" fill="#8a7c5a" text-anchor="middle" dominant-baseline="middle">3400</text></g>
+<g transform="translate(2315 3280) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="500" font-weight="600" fill="#27272a" text-anchor="middle" dominant-baseline="middle">LDK</text></g>
+<g transform="translate(2315 2700) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="350" font-weight="400" fill="#71717a" text-anchor="middle" dominant-baseline="middle">27.60 m² (17.0帖)</text></g>
+<g transform="translate(6285 1895) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="500" font-weight="600" fill="#27272a" text-anchor="middle" dominant-baseline="middle">水まわり</text></g>
+<g transform="translate(6285 1315) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="350" font-weight="400" fill="#71717a" text-anchor="middle" dominant-baseline="middle">10.88 m² (6.7帖)</text></g>
+<g transform="translate(6285 4865) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="500" font-weight="600" fill="#27272a" text-anchor="middle" dominant-baseline="middle">洋室</text></g>
+<g transform="translate(6285 4285) scale(1 -1) rotate(0)"><text x="0" y="0" font-family="system-ui, -apple-system, &quot;Hiragino Sans&quot;, &quot;Noto Sans JP&quot;, sans-serif" font-size="350" font-weight="400" fill="#71717a" text-anchor="middle" dominant-baseline="middle">9.52 m² (5.9帖)</text></g>
+</g></svg>

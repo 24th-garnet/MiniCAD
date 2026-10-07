@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MiniCAD — 間取りエディタ</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <strong>MiniCAD</strong>
+          <span>間取りエディタ</span>
+        </div>
+        <div class="file-actions" id="file-actions"></div>
+      </header>
+
+      <div class="workspace">
+        <nav class="toolbar" id="toolbar" aria-label="ツール"></nav>
+
+        <main class="canvas-wrap">
+          <canvas id="canvas" tabindex="0"></canvas>
+          <div class="options-bar" id="options"></div>
+          <form class="numeric" id="numeric" hidden>
+            <label for="numeric-input" id="numeric-label">長さ</label>
+            <input id="numeric-input" type="text" autocomplete="off" spellcheck="false" />
+          </form>
+        </main>
+
+        <aside class="inspector" id="inspector" aria-label="プロパティ"></aside>
+      </div>
+
+      <footer class="statusbar">
+        <span id="status-hint"></span>
+        <span id="status-readout"></span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
