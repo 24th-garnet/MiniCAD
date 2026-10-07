@@ -1,4 +1,5 @@
-import { add, angleOf, boundsOf, dist, mid, mul, norm, perp, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { add, angleOf, dist, mid, mul, norm, perp, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { sceneBounds } from '../core/entity.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import { wallEnds } from '../core/ops.ts';
 import { dimensionSide, toTatami } from '../core/rooms.ts';
@@ -27,9 +28,7 @@ const MARGIN = 400; // mm
  */
 export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): string {
   const std = scene.standard;
-  const pts: Vec[] = Object.values(scene.nodes).map((n) => vec(n.x, n.y));
-  for (const f of Object.values(scene.furniture)) pts.push(...furniturePolygon(f));
-  const b = boundsOf(pts);
+  const b = sceneBounds(scene);
   if (!b) return emptySvg();
 
   const minX = b.min.x - MARGIN;

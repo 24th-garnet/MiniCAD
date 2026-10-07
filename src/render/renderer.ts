@@ -11,6 +11,7 @@ import {
   vec,
   type Vec,
 } from '../core/geometry.ts';
+import { isSnappable } from '../core/entity.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import { wallEnds } from '../core/ops.ts';
 import { dimensionSide, toTatami } from '../core/rooms.ts';
@@ -432,6 +433,7 @@ function drawNodes(frame: Frame): void {
   const r = 3.5;
   ctx.setLineDash([]);
   for (const n of Object.values(scene.nodes)) {
+    if (!isSnappable(scene, { type: 'node', id: n.id })) continue;
     const isSelected = selected.has(`node:${n.id}`);
     const isHover = hover?.type === 'node' && hover.id === n.id;
     if (!isSelected && !isHover && vp.scale < 0.02) continue;

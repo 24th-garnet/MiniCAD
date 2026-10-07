@@ -12,6 +12,7 @@ import {
   vec,
   type Vec,
 } from './geometry.ts';
+import { isSnappable } from './entity.ts';
 import { nodePos, wallEnds } from './ops.ts';
 import type { Id, Scene } from './types.ts';
 import type { Settings } from './store.ts';
@@ -75,11 +76,14 @@ export function snapPoint(scene: Scene, settings: Settings, p: Vec, opts: SnapOp
   if (settings.snapNode) {
     for (const n of Object.values(scene.nodes)) {
       if (excludeNodes.has(n.id)) continue;
+      if (!isSnappable(scene, { type: 'node', id: n.id })) continue;
       consider(vec(n.x, n.y), 'node', 0, { nodeId: n.id });
     }
   }
 
-  const walls = Object.values(scene.walls).filter((w) => !excludeWalls.has(w.id));
+  const walls = Object.values(scene.walls).filter(
+    (w) => !excludeWalls.has(w.id) && isSnappable(scene, { type: 'wall', id: w.id }),
+  );
 
   if (settings.snapWall) {
     for (const w of walls) {

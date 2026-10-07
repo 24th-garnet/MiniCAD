@@ -1,5 +1,6 @@
 import { toDeg, toRad } from '../core/geometry.ts';
-import { deleteEntities, wallLength } from '../core/ops.ts';
+import { isSelectable, removeEntities } from '../core/entity.ts';
+import { wallLength } from '../core/ops.ts';
 import { toTatami } from '../core/rooms.ts';
 import { FURNITURE_PRESETS } from '../core/shape.ts';
 import { emptyScene } from '../core/types.ts';
@@ -255,11 +256,12 @@ export class App {
       }
       if (mod && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        store.setSelection([
+        const all = [
           ...Object.keys(store.scene.walls).map((id) => ({ type: 'wall' as const, id })),
           ...Object.keys(store.scene.furniture).map((id) => ({ type: 'furniture' as const, id })),
           ...Object.keys(store.scene.openings).map((id) => ({ type: 'opening' as const, id })),
-        ]);
+        ];
+        store.setSelection(all.filter((ref) => isSelectable(store.scene, ref)));
         return;
       }
       if (mod) return;
@@ -307,7 +309,7 @@ export class App {
     const store = this.editor.store;
     if (store.selection.length === 0) return;
     const refs = [...store.selection];
-    store.commit(() => deleteEntities(store.scene, refs));
+    store.commit(() => removeEntities(store.scene, refs));
     store.clearSelection();
   }
 

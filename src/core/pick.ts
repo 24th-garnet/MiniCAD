@@ -1,90 +1,117 @@
 import { closestOnSegment, dist, pointInPolygon, vec, type Vec } from './geometry.ts';
+import { isSelectable } from './entity.ts';
 import { wallEnds } from './ops.ts';
 import { furniturePolygon, openingFrame } from './shape.ts';
 import type { EntityRef, Scene } from './types.ts';
+
+export interface PickOptions {
+  /** 非表示・ロックされた画層のものを除外する。既定は true */
+  respectLayers?: boolean;
+}
 
 /**
  * 画面上のクリック位置に対応するエンティティを1つ返す。
  * 小さく掴みにくいものほど先に判定する: 端点 > 開口 > 家具 > 壁 > 部屋名。
  */
-export function pickAt(scene: Scene, p: Vec, tolerance: number): EntityRef | null {
+export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOptions = {}): EntityRef | null {
+  const ok = pickFilter(scene, opts);
+
   let bestNode: { ref: EntityRef; d: number } | null = null;
   for (const n of Object.values(scene.nodes)) {
     const d = dist(p, vec(n.x, n.y));
-    if (d <= tolerance && (!bestNode || d < bestNode.d)) {
-      bestNode = { ref: { type: 'node', id: n.id }, d };
-    }
+    if (d > tolerance) continue;
+    const ref: EntityRef = { type: 'node', id: n.id };
+    if (!ok(ref)) continue;
+    if (!bestNode || d < bestNode.d) bestNode = { ref, d };
   }
   if (bestNode) return bestNode.ref;
 
   for (const op of Object.values(scene.openings)) {
+    const ref: EntityRef = { type: 'opening', id: op.id };
+    if (!ok(ref)) continue;
     const frame = openingFrame(scene, op);
     if (!frame) continue;
     const c = closestOnSegment(p, frame.start, frame.end);
-    if (c.dist <= Math.max(tolerance, frame.thickness / 2)) {
-      return { type: 'opening', id: op.id };
-    }
+    if (c.dist <= Math.max(tolerance, frame.thickness / 2)) return ref;
   }
 
   // 後から置いたものが上に来るので逆順に判定する
-  const furniture = Object.values(scene.furniture).reverse();
-  for (const f of furniture) {
-    if (pointInPolygon(p, furniturePolygon(f))) return { type: 'furniture', id: f.id };
+  for (const f of Object.values(scene.furniture).reverse()) {
+    const ref: EntityRef = { type: 'furniture', id: f.id };
+    if (!ok(ref)) continue;
+    if (pointInPolygon(p, furniturePolygon(f))) return ref;
   }
 
   let bestWall: { ref: EntityRef; d: number } | null = null;
   for (const w of Object.values(scene.walls)) {
+    const ref: EntityRef = { type: 'wall', id: w.id };
+    if (!ok(ref)) continue;
     const [a, b] = wallEnds(scene, w);
     const c = closestOnSegment(p, a, b);
-    const limit = Math.max(tolerance, w.thickness / 2);
-    if (c.dist <= limit && (!bestWall || c.dist < bestWall.d)) {
-      bestWall = { ref: { type: 'wall', id: w.id }, d: c.dist };
-    }
+    if (c.dist > Math.max(tolerance, w.thickness / 2)) continue;
+    if (!bestWall || c.dist < bestWall.d) bestWall = { ref, d: c.dist };
   }
   if (bestWall) return bestWall.ref;
 
   for (const label of Object.values(scene.roomLabels)) {
-    if (dist(p, vec(label.x, label.y)) <= tolerance * 3) {
-      return { type: 'roomLabel', id: label.id };
-    }
+    const ref: EntityRef = { type: 'roomLabel', id: label.id };
+    if (!ok(ref)) continue;
+    if (dist(p, vec(label.x, label.y)) <= tolerance * 3) return ref;
   }
 
   return null;
 }
 
 /** 矩形選択。min/max はワールド座標 */
-export function pickInRect(scene: Scene, min: Vec, max: Vec, crossing: boolean): EntityRef[] {
+export function pickInRect(
+  scene: Scene,
+  min: Vec,
+  max: Vec,
+  crossing: boolean,
+  opts: PickOptions = {},
+): EntityRef[] {
+  const ok = pickFilter(scene, opts);
   const inside = (q: Vec): boolean => q.x >= min.x && q.x <= max.x && q.y >= min.y && q.y <= max.y;
   const refs: EntityRef[] = [];
 
   for (const w of Object.values(scene.walls)) {
+    const ref: EntityRef = { type: 'wall', id: w.id };
+    if (!ok(ref)) continue;
     const [a, b] = wallEnds(scene, w);
     const hit = crossing ? inside(a) || inside(b) || segmentCrossesRect(a, b, min, max) : inside(a) && inside(b);
-    if (hit) refs.push({ type: 'wall', id: w.id });
+    if (hit) refs.push(ref);
   }
   for (const f of Object.values(scene.furniture)) {
+    const ref: EntityRef = { type: 'furniture', id: f.id };
+    if (!ok(ref)) continue;
     const corners = furniturePolygon(f);
-    const hit = crossing ? corners.some(inside) : corners.every(inside);
-    if (hit) refs.push({ type: 'furniture', id: f.id });
+    if (crossing ? corners.some(inside) : corners.every(inside)) refs.push(ref);
   }
   for (const op of Object.values(scene.openings)) {
+    const ref: EntityRef = { type: 'opening', id: op.id };
+    if (!ok(ref)) continue;
     const frame = openingFrame(scene, op);
     if (!frame) continue;
     const hit = crossing ? inside(frame.start) || inside(frame.end) : inside(frame.start) && inside(frame.end);
-    if (hit) refs.push({ type: 'opening', id: op.id });
+    if (hit) refs.push(ref);
   }
   for (const label of Object.values(scene.roomLabels)) {
-    if (inside(vec(label.x, label.y))) refs.push({ type: 'roomLabel', id: label.id });
+    const ref: EntityRef = { type: 'roomLabel', id: label.id };
+    if (!ok(ref)) continue;
+    if (inside(vec(label.x, label.y))) refs.push(ref);
   }
   return refs;
+}
+
+function pickFilter(scene: Scene, opts: PickOptions): (ref: EntityRef) => boolean {
+  if (opts.respectLayers === false) return () => true;
+  return (ref) => isSelectable(scene, ref);
 }
 
 function segmentCrossesRect(a: Vec, b: Vec, min: Vec, max: Vec): boolean {
   const corners = [vec(min.x, min.y), vec(max.x, min.y), vec(max.x, max.y), vec(min.x, max.y)];
   for (let i = 0; i < 4; i++) {
-    const c = corners[i];
-    const d = corners[(i + 1) % 4];
-    if (segmentsIntersect(a, b, c, d)) return true;
+    if (segmentsIntersect(a, b, corners[i], corners[(i + 1) % 4])) return true;
   }
   return false;
 }

@@ -1,4 +1,5 @@
-import { add, angleOf, boundsOf, dist, mid, mul, norm, perp, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { add, angleOf, dist, mid, mul, norm, perp, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { sceneBounds } from '../core/entity.ts';
 import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { wallEnds } from '../core/ops.ts';
 import { dimensionSide, toTatami } from '../core/rooms.ts';
@@ -166,9 +167,7 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     }
   }
 
-  const pts: Vec[] = Object.values(scene.nodes).map((n) => vec(n.x, n.y));
-  for (const f of Object.values(scene.furniture)) pts.push(...furniturePolygon(f));
-  const bounds = boundsOf(pts) ?? { min: vec(0, 0), max: vec(1000, 1000) };
+  const bounds = sceneBounds(scene) ?? { min: vec(0, 0), max: vec(1000, 1000) };
 
   // --- HEADER ---
   g(0, 'SECTION');

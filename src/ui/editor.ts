@@ -1,4 +1,5 @@
-import { boundsOf, dist, sub, vec, type Vec } from '../core/geometry.ts';
+import { dist, sub, vec, type Vec } from '../core/geometry.ts';
+import { sceneBounds } from '../core/entity.ts';
 import { pickAt } from '../core/pick.ts';
 import { detectRooms } from '../core/rooms.ts';
 import { snapPoint, type SnapResult } from '../core/snap.ts';
@@ -183,13 +184,12 @@ export class Editor {
   }
 
   zoomToFit(): void {
-    const pts: Vec[] = Object.values(this.store.scene.nodes).map((n) => vec(n.x, n.y));
-    for (const f of Object.values(this.store.scene.furniture)) pts.push(vec(f.x, f.y));
-    if (pts.length === 0) {
+    const bounds = sceneBounds(this.store.scene);
+    if (!bounds) {
       this.viewport.scale = 0.06;
       this.viewport.origin = vec(this.viewport.width / 2, this.viewport.height / 2);
     } else {
-      this.viewport.fit(boundsOf(pts));
+      this.viewport.fit(bounds);
     }
     this.requestRender();
   }

@@ -1,6 +1,6 @@
 import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
 import { LAYER_IDS } from './layer.ts';
-import { newId, type EntityRef, type Id, type Opening, type Scene, type Wall } from './types.ts';
+import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
 
 /** 同一ノードとみなす距離 (mm) */
 export const NODE_MERGE_TOLERANCE = 1;
@@ -118,59 +118,6 @@ export function clampOpening(scene: Scene, wallId: Id, offset: number, width: nu
   return Math.max(lo, Math.min(hi, offset));
 }
 
-export function deleteEntities(scene: Scene, refs: EntityRef[]): boolean {
-  let changed = false;
-  for (const ref of refs) {
-    switch (ref.type) {
-      case 'wall': {
-        if (scene.walls[ref.id]) {
-          delete scene.walls[ref.id];
-          for (const op of Object.values(scene.openings)) {
-            if (op.wallId === ref.id) delete scene.openings[op.id];
-          }
-          changed = true;
-        }
-        break;
-      }
-      case 'node': {
-        if (scene.nodes[ref.id]) {
-          for (const w of wallsAtNode(scene, ref.id)) {
-            delete scene.walls[w.id];
-            for (const op of Object.values(scene.openings)) {
-              if (op.wallId === w.id) delete scene.openings[op.id];
-            }
-          }
-          delete scene.nodes[ref.id];
-          changed = true;
-        }
-        break;
-      }
-      case 'opening': {
-        if (scene.openings[ref.id]) {
-          delete scene.openings[ref.id];
-          changed = true;
-        }
-        break;
-      }
-      case 'furniture': {
-        if (scene.furniture[ref.id]) {
-          delete scene.furniture[ref.id];
-          changed = true;
-        }
-        break;
-      }
-      case 'roomLabel': {
-        if (scene.roomLabels[ref.id]) {
-          delete scene.roomLabels[ref.id];
-          changed = true;
-        }
-        break;
-      }
-    }
-  }
-  if (changed) pruneOrphanNodes(scene);
-  return changed;
-}
 
 /** ノードをまとめて移動する（壁は端点を共有しているので自動的に追従する） */
 export function moveNodes(scene: Scene, ids: Id[], delta: Vec): void {

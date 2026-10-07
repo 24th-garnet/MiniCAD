@@ -1,22 +1,32 @@
-import { add, dist, dot, norm, sub, vec, type Vec } from '../core/geometry.ts';
+import { dist, sub, vec, type Vec } from '../core/geometry.ts';
 import { pickInRect } from '../core/pick.ts';
-import { clampOpening, mergeNodesAt, nodePos, wallEnds } from '../core/ops.ts';
-import type { EntityRef, Id, Scene } from '../core/types.ts';
+import { mergeNodesAt } from '../core/ops.ts';
+import {
+  captureOrigins,
+  isEmptySelection,
+  placeSelection,
+  resolveSelection,
+  selectionCenter as resolvedCenter,
+  translateSelection,
+  type MoveOrigins,
+  type ResolvedSelection,
+} from '../core/selection.ts';
+import type { EntityRef, Scene } from '../core/types.ts';
 import { drawPreviewRect, drawSnapMarker, type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
 import type { PointerInfo, Tool } from './tool.ts';
 
-interface MoveTarget {
-  nodes: { id: Id; origin: Vec }[];
-  furniture: { id: Id; origin: Vec }[];
-  labels: { id: Id; origin: Vec }[];
-  openings: { id: Id; origin: number }[];
-}
-
 type DragState =
   | { kind: 'none' }
   | { kind: 'pending'; start: Vec; ref: EntityRef }
-  | { kind: 'move'; start: Vec; before: Scene; target: MoveTarget; moved: boolean }
+  | {
+      kind: 'move';
+      start: Vec;
+      before: Scene;
+      sel: ResolvedSelection;
+      origins: MoveOrigins;
+      moved: boolean;
+    }
   | { kind: 'rect'; start: Vec; current: Vec; additive: boolean };
 
 export class SelectTool implements Tool {
@@ -70,18 +80,19 @@ export class SelectTool implements Tool {
     }
     if (drag.kind === 'pending') {
       if (editor.isSameSpot(drag.start, p.world)) return;
-      const target = collectMoveTarget(editor);
-      if (target.nodes.length + target.furniture.length + target.labels.length + target.openings.length === 0) {
+      const sel = resolveSelection(editor.store.scene, editor.store.selection);
+      if (isEmptySelection(sel)) {
         this.drag = { kind: 'none' };
         return;
       }
       // 自分自身にスナップしないよう除外しておく
-      editor.snapContext = { excludeNodes: target.nodes.map((n) => n.id) };
+      editor.snapContext = { excludeNodes: sel.nodeIds };
       this.drag = {
         kind: 'move',
         start: drag.start,
         before: structuredClone(editor.store.scene),
-        target,
+        sel,
+        origins: captureOrigins(editor.store.scene, sel),
         moved: false,
       };
       this.applyMove(editor, p);
@@ -111,8 +122,7 @@ export class SelectTool implements Tool {
     }
 
     if (drag.kind === 'move' && drag.moved) {
-      const movedIds = drag.target.nodes.map((n) => n.id);
-      if (movedIds.length > 0) mergeNodesAt(editor.store.scene, movedIds);
+      if (drag.sel.nodeIds.length > 0) mergeNodesAt(editor.store.scene, drag.sel.nodeIds);
       editor.store.commitFrom(drag.before);
     }
   }
@@ -120,49 +130,21 @@ export class SelectTool implements Tool {
   private applyMove(editor: Editor, p: PointerInfo): void {
     const drag = this.drag;
     if (drag.kind !== 'move') return;
-    const scene = editor.store.scene;
     const settings = editor.store.settings;
-    const single = drag.target.nodes.length === 1 && drag.target.furniture.length === 0 && drag.target.labels.length === 0;
+    const single =
+      drag.sel.nodeIds.length === 1 && drag.sel.furnitureIds.length === 0 && drag.sel.roomLabelIds.length === 0;
 
     let delta = sub(p.raw, drag.start);
     if (single) {
       // 単独のノードはスナップ点へ直接寄せる
-      delta = sub(p.world, drag.target.nodes[0].origin);
+      const origin = drag.origins.nodes.get(drag.sel.nodeIds[0]);
+      if (origin) delta = sub(p.world, origin);
     } else if (settings.snapGrid && settings.gridSize > 0) {
       const g = settings.gridSize;
       delta = vec(Math.round(delta.x / g) * g, Math.round(delta.y / g) * g);
     }
 
-    for (const n of drag.target.nodes) {
-      const node = scene.nodes[n.id];
-      if (!node) continue;
-      node.x = n.origin.x + delta.x;
-      node.y = n.origin.y + delta.y;
-    }
-    for (const f of drag.target.furniture) {
-      const item = scene.furniture[f.id];
-      if (!item) continue;
-      item.x = f.origin.x + delta.x;
-      item.y = f.origin.y + delta.y;
-    }
-    for (const l of drag.target.labels) {
-      const label = scene.roomLabels[l.id];
-      if (!label) continue;
-      label.x = l.origin.x + delta.x;
-      label.y = l.origin.y + delta.y;
-    }
-    for (const o of drag.target.openings) {
-      const opening = scene.openings[o.id];
-      const wall = opening && scene.walls[opening.wallId];
-      if (!opening || !wall) continue;
-      const [a, b] = wallEnds(scene, wall);
-      const dir = norm(sub(b, a));
-      // 開口は壁に沿ってしか動かない
-      const along = dot(delta, dir);
-      const next = clampOpening(scene, opening.wallId, o.origin + along, opening.width, opening.id);
-      if (next !== null) opening.offset = next;
-    }
-
+    placeSelection(editor.store.scene, drag.origins, delta);
     drag.moved = true;
     editor.notifyChanged();
   }
@@ -179,28 +161,9 @@ export class SelectTool implements Tool {
     if (e.key in nudge && store.selection.length > 0) {
       const delta = nudge[e.key];
       store.commit(() => {
-        const target = collectMoveTarget(editor);
-        for (const n of target.nodes) {
-          const node = store.scene.nodes[n.id];
-          if (node) {
-            node.x += delta.x;
-            node.y += delta.y;
-          }
-        }
-        for (const f of target.furniture) {
-          const item = store.scene.furniture[f.id];
-          if (item) {
-            item.x += delta.x;
-            item.y += delta.y;
-          }
-        }
-        for (const l of target.labels) {
-          const label = store.scene.roomLabels[l.id];
-          if (label) {
-            label.x += delta.x;
-            label.y += delta.y;
-          }
-        }
+        const sel = resolveSelection(store.scene, store.selection);
+        if (isEmptySelection(sel)) return false;
+        translateSelection(store.scene, sel, delta);
       });
       return true;
     }
@@ -241,45 +204,6 @@ export class SelectTool implements Tool {
   }
 }
 
-/** 選択から「実際に動かす対象」を展開する。壁を選んだら両端のノードが動く */
-function collectMoveTarget(editor: Editor): MoveTarget {
-  const scene = editor.store.scene;
-  const nodeIds = new Set<Id>();
-  const target: MoveTarget = { nodes: [], furniture: [], labels: [], openings: [] };
-
-  for (const ref of editor.store.selection) {
-    switch (ref.type) {
-      case 'node':
-        if (scene.nodes[ref.id]) nodeIds.add(ref.id);
-        break;
-      case 'wall': {
-        const w = scene.walls[ref.id];
-        if (w) {
-          nodeIds.add(w.a);
-          nodeIds.add(w.b);
-        }
-        break;
-      }
-      case 'furniture': {
-        const f = scene.furniture[ref.id];
-        if (f) target.furniture.push({ id: f.id, origin: vec(f.x, f.y) });
-        break;
-      }
-      case 'roomLabel': {
-        const l = scene.roomLabels[ref.id];
-        if (l) target.labels.push({ id: l.id, origin: vec(l.x, l.y) });
-        break;
-      }
-      case 'opening': {
-        const o = scene.openings[ref.id];
-        if (o) target.openings.push({ id: o.id, origin: o.offset });
-        break;
-      }
-    }
-  }
-  for (const id of nodeIds) target.nodes.push({ id, origin: nodePos(scene, id) });
-  return target;
-}
 
 function dedupe(refs: EntityRef[]): EntityRef[] {
   const seen = new Set<string>();
@@ -293,11 +217,7 @@ function dedupe(refs: EntityRef[]): EntityRef[] {
   return out;
 }
 
-/** 選択範囲の中心 */
+/** 選択範囲の中心。回転・鏡像の既定の基点に使う */
 export function selectionCenter(editor: Editor): Vec | null {
-  const t = collectMoveTarget(editor);
-  const pts = [...t.nodes.map((n) => n.origin), ...t.furniture.map((f) => f.origin), ...t.labels.map((l) => l.origin)];
-  if (pts.length === 0) return null;
-  const sum = pts.reduce((acc, p) => add(acc, p), vec(0, 0));
-  return vec(sum.x / pts.length, sum.y / pts.length);
+  return resolvedCenter(editor.store.scene, resolveSelection(editor.store.scene, editor.store.selection));
 }

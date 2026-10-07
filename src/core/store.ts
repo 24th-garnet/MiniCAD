@@ -1,4 +1,5 @@
-import { emptyScene, sameRef, type EntityRef, type Id, type Scene } from './types.ts';
+import { ENTITY_KINDS } from './entity.ts';
+import { emptyScene, sameRef, type EntityRef, type Scene } from './types.ts';
 
 export interface Settings {
   /** グリッド間隔 (mm) */
@@ -171,25 +172,9 @@ export class Store {
 
   /** 削除済みエンティティへの参照を選択から落とす */
   private pruneSelection(): void {
-    const exists = (ref: EntityRef): boolean => {
-      const table = this.tableFor(ref.type);
-      return table[ref.id] !== undefined;
-    };
-    this.selection = this.selection.filter(exists);
+    this.selection = this.selection.filter(
+      (ref) => ENTITY_KINDS[ref.type].table(this.scene)[ref.id] !== undefined,
+    );
   }
 
-  private tableFor(type: EntityRef['type']): Record<Id, unknown> {
-    switch (type) {
-      case 'node':
-        return this.scene.nodes;
-      case 'wall':
-        return this.scene.walls;
-      case 'opening':
-        return this.scene.openings;
-      case 'furniture':
-        return this.scene.furniture;
-      case 'roomLabel':
-        return this.scene.roomLabels;
-    }
-  }
 }
