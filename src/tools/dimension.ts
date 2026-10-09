@@ -1,3 +1,4 @@
+import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import { dist, dot, mid, norm, perp, sub, type Vec } from '../core/geometry.ts';
 import { dimensionPrimitives } from '../core/dimension.ts';
 import { getLayer, LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
@@ -6,7 +7,8 @@ import { newId } from '../core/types.ts';
 import { drawPrimitives } from '../render/primitive.ts';
 import { drawSnapMarker, type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { OptionField, PointerInfo, Tool } from './tool.ts';
+import { pointerAngleFrom } from './wall.ts';
+import type { NumericEntry, OptionField, PointerInfo, Tool } from './tool.ts';
 
 /**
  * 2点間の寸法を置くツール。
@@ -94,6 +96,27 @@ export class DimensionTool implements Tool {
       offset: dot(sub(through, mid(pa, pb)), normal),
       override: null,
     };
+  }
+
+  numericEntry(_editor: Editor): NumericEntry | null {
+    if (this.ends.length !== 1) return null;
+    const from = { x: this.ends[0].x, y: this.ends[0].y };
+    return {
+      mode: 'point',
+      base: from,
+      fallbackAngleDeg: (ed) => pointerAngleFrom(ed, from),
+      submit: (ed, input) => this.submitSecondEnd(ed, input),
+    };
+  }
+
+  private submitSecondEnd(editor: Editor, input: CoordInput): void {
+    const first = this.ends[0];
+    if (!first) return;
+    const point = resolvePoint(input, { x: first.x, y: first.y }, pointerAngleFrom(editor, first));
+    if (!point) return;
+    this.ends.push({ x: point.x, y: point.y, nodeId: null });
+    editor.snapContext = { from: point };
+    editor.requestRender();
   }
 
   options(): OptionField[] {

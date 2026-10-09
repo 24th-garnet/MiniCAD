@@ -192,12 +192,56 @@ async function run() {
     },
     (s) => {
       assert.equal(s.walls, 14);
-      assert.ok(!s.numericVisible, 'Esc で数値入力欄は閉じるはず');
+      // 壁ツールは作図前でも入力欄を出す（絶対座標で始点を打てるようにするため）
+      assert.ok(s.numericVisible);
       const room = s.rooms.find((r) => r.name === null);
       assert.ok(room, '無名の部屋が増えているはず');
       // 4000 x 3000 の壁芯面積
       assert.equal(room.area, 12);
     },
+  );
+
+  await step(
+    '絶対座標で壁の始点を打てる',
+    async () => {
+      await page.keyboard.press('w');
+      assert.ok((await state()).numericVisible, '作図前でも入力欄が出るはず');
+      await page.fill('#numeric-input', '1000,-3000');
+      await page.keyboard.press('Enter');
+      // 相対直交で終点を打つ
+      await page.fill('#numeric-input', '@3000,0');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Escape');
+    },
+    (s) => assert.equal(s.walls, 15, '絶対座標と相対直交で壁が引けていない'),
+  );
+
+  await step(
+    '解釈できない入力は弾かれる',
+    async () => {
+      await page.keyboard.press('w');
+      await page.fill('#numeric-input', '<45');
+      await page.keyboard.press('Enter');
+    },
+    async (s) => {
+      assert.equal(s.walls, 15, '不正な入力で何か作られている');
+      const invalid = await page.locator('#numeric-input').getAttribute('aria-invalid');
+      assert.equal(invalid, 'true', '入力欄が不正と表示されていない');
+    },
+  );
+
+  await step(
+    '選択したものを数値で動かせる',
+    async () => {
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('v');
+      await clickWorld(2500, -3000);
+      assert.equal((await state()).selection, 1, '引いた壁を選択できていない');
+      assert.ok((await state()).numericVisible, '選択中も入力欄が出るはず');
+      await page.fill('#numeric-input', '@0,-500');
+      await page.keyboard.press('Enter');
+    },
+    (s) => assert.equal(s.selection, 1),
   );
 
   await step(
@@ -404,9 +448,11 @@ async function run() {
 
   // --- 複写・回転・鏡像 ---
 
+  let wallsBeforeCopy = 0;
   await step(
     '範囲選択した壁を複写できる',
     async () => {
+      wallsBeforeCopy = (await state()).walls;
       await page.keyboard.press('v');
       // 書斎を窓選択（左→右なので完全に含むものだけ）
       const from = await at(9400, -600);
@@ -422,7 +468,7 @@ async function run() {
       await clickWorld(10000, 3500);
     },
     (s) => {
-      assert.equal(s.walls, 18, '壁が4本増えるはず');
+      assert.equal(s.walls, wallsBeforeCopy + 4, '壁が4本増えるはず');
       assert.equal(s.furniture, 9, '範囲内の家具も複製されるはず');
       assert.equal(s.rooms.length, 5, '閉じた部屋が1つ増えるはず');
       // 壁4 + 家具1 + 室名1。建具は壁に乗って複製されるので選択には入らない
@@ -435,7 +481,7 @@ async function run() {
     '複写を undo で戻せる',
     () => page.keyboard.press('Meta+z'),
     (s) => {
-      assert.equal(s.walls, 14);
+      assert.equal(s.walls, wallsBeforeCopy);
       assert.equal(s.rooms.length, 4);
     },
   );
@@ -444,7 +490,7 @@ async function run() {
     '角度を打ち込んで回転できる',
     async () => {
       await page.keyboard.press('Meta+Shift+z'); // 複写をやり直す
-      assert.equal((await state()).walls, 18, '前提: 複写が戻っている');
+      assert.equal((await state()).walls, wallsBeforeCopy + 4, '前提: 複写が戻っている');
       await page.keyboard.press('v');
       const from = await at(9400, 3400);
       const to = await at(14600, 6900);
@@ -462,7 +508,7 @@ async function run() {
     },
     (s) => {
       assert.equal(s.tool, 'rotate');
-      assert.equal(s.walls, 18, '回転では本数が変わらないはず');
+      assert.equal(s.walls, wallsBeforeCopy + 4, '回転では本数が変わらないはず');
       assert.equal(s.rooms.length, 5, '回転しても部屋は保たれるはず');
     },
   );
@@ -477,7 +523,7 @@ async function run() {
     },
     (s) => {
       assert.equal(s.tool, 'mirror');
-      assert.equal(s.walls, 22, '鏡像で4本増えるはず');
+      assert.equal(s.walls, wallsBeforeCopy + 8, '鏡像で4本増えるはず');
     },
   );
 

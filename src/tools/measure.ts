@@ -1,8 +1,10 @@
+import { resolvePoint } from '../core/coord-input.ts';
 import { angleOf, dist, mid, toDeg, type Vec } from '../core/geometry.ts';
 import { drawSnapMarker, type Frame } from '../render/renderer.ts';
 import { fontOf, theme } from '../render/theme.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { PointerInfo, Tool } from './tool.ts';
+import { pointerAngleFrom } from './wall.ts';
+import type { NumericEntry, PointerInfo, Tool } from './tool.ts';
 
 /** 2点間の距離を測るだけのツール。シーンは一切変更しない */
 export class MeasureTool implements Tool {
@@ -58,6 +60,22 @@ export class MeasureTool implements Tool {
       return true;
     }
     return false;
+  }
+
+  numericEntry(_editor: Editor): NumericEntry | null {
+    if (!this.from || this.to) return null;
+    return {
+      mode: 'point',
+      base: this.from,
+      fallbackAngleDeg: (ed) => pointerAngleFrom(ed, this.from),
+      submit: (ed, input) => {
+        const point = resolvePoint(input, this.from, pointerAngleFrom(ed, this.from));
+        if (!point) return;
+        this.to = point;
+        ed.snapContext = {};
+        ed.requestRender();
+      },
+    };
   }
 
   drawOverlay(editor: Editor, frame: Frame): void {

@@ -9,7 +9,8 @@ import { drawSnapMarker, type Frame } from '../render/renderer.ts';
 import { strokeSegments } from '../render/frame.ts';
 import { theme } from '../render/theme.ts';
 import type { Editor } from '../ui/editor.ts';
-import { parsePolar } from './wall.ts';
+import { resolveDelta, resolveLength, type CoordInput } from '../core/coord-input.ts';
+import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
 export type TransformMode = 'copy' | 'rotate' | 'mirror';
@@ -127,40 +128,35 @@ export class TransformTool implements Tool {
   numericEntry(editor: Editor): NumericEntry | null {
     if (editor.store.selection.length === 0) return null;
     if (this.mode === 'copy' && this.points.length === 1) {
+      const from = this.points[0];
       return {
-        placeholder: '距離  例: 3000 / 3000<90',
-        hint: '距離[mm] と 角度[°] を `<` で区切って入力し Enter',
-        submit: (ed, value) => this.submitCopy(ed, value),
+        mode: 'delta',
+        base: from,
+        fallbackAngleDeg: (ed) => pointerAngleFrom(ed, from),
+        submit: (ed, input) => this.submitCopy(ed, input),
       };
     }
     if (this.mode === 'rotate' && this.points.length === 2) {
       return {
-        placeholder: '角度  例: 90 / -45',
-        hint: '回転角[°] を入力し Enter（反時計回りが正）',
-        submit: (ed, value) => this.submitRotate(ed, value),
+        mode: 'angle',
+        base: this.points[0],
+        submit: (ed, input) => this.submitRotate(ed, input),
       };
     }
     return null;
   }
 
-  private submitCopy(editor: Editor, value: string): void {
+  private submitCopy(editor: Editor, input: CoordInput): void {
     const from = this.points[0];
-    const parsed = parsePolar(value);
-    if (!from || !parsed) return;
-    let angleDeg = parsed.angleDeg;
-    if (angleDeg === null) {
-      const pointer = editor.snapAt(editor.pointerWorld()).point;
-      if (dist(from, pointer) < 1e-6) return;
-      angleDeg = toDeg(angleOf(sub(pointer, from)));
-    }
-    const rad = toRad(angleDeg);
-    this.apply(editor, translation({ x: Math.cos(rad) * parsed.length, y: Math.sin(rad) * parsed.length }));
+    const delta = resolveDelta(input, from, pointerAngleFrom(editor, from));
+    if (!delta) return;
+    this.apply(editor, translation(delta));
     editor.requestRender();
   }
 
-  private submitRotate(editor: Editor, value: string): void {
-    const degrees = Number(value.trim());
-    if (!Number.isFinite(degrees)) return;
+  private submitRotate(editor: Editor, input: CoordInput): void {
+    const degrees = resolveLength(input);
+    if (degrees === null) return;
     this.apply(editor, rotation(this.points[0], toRad(degrees)));
     editor.requestRender();
   }

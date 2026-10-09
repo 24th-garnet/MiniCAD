@@ -1,3 +1,4 @@
+import type { CoordInput, CoordMode } from '../core/coord-input.ts';
 import type { Vec } from '../core/geometry.ts';
 import type { SnapResult } from '../core/snap.ts';
 import type { Frame } from '../render/renderer.ts';
@@ -54,11 +55,22 @@ export type OptionField =
 /** ツールバーの並びを区切るためのグループ */
 export type ToolGroup = 'draw' | 'modify' | 'annotate';
 
-/** 作図中に長さ・角度を打ち込むための入力欄の仕様 */
+/**
+ * 作図中に座標・長さ・角度を打ち込むための入力欄の仕様。
+ *
+ * 文字列の解釈は UI 側（command-input.ts）で済ませて `CoordInput` で渡す。
+ * こうするとツールの単体テストが文字列ではなく構造で書ける。
+ */
 export interface NumericEntry {
-  placeholder: string;
-  hint: string;
-  submit(editor: Editor, text: string): void;
+  mode: CoordMode;
+  /** 相対入力の起点。作図中のアンカーや選択の中心 */
+  base: Vec | null;
+  /** 角度が省略されたときに使う向き。既定はマウスの方向 */
+  fallbackAngleDeg?(editor: Editor): number | null;
+  /** 案内文を差し替えたいとき。省略すると mode から作る */
+  placeholder?: string;
+  hint?: string;
+  submit(editor: Editor, input: CoordInput): void;
 }
 
 export interface Tool {

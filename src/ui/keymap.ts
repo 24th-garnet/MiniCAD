@@ -102,8 +102,9 @@ export function installKeymap(ctx: PanelContext, bindings: Binding[], commandInp
     if (isTextInput(e.target)) return;
     const mod = e.metaKey || e.ctrlKey;
 
-    // 作図中に数字を打ったら、そのまま入力欄へ流し込む
-    if (!mod && /^[0-9.]$/.test(e.key) && commandInput.visible) {
+    // 作図中に数字や座標の記号を打ったら、そのまま入力欄へ流し込む
+    // （`@` や `<` を忘れると相対・極座標が打てなくなる）
+    if (!mod && /^[0-9.,<@-]$/.test(e.key) && commandInput.visible) {
       commandInput.beginWith(e.key);
       e.preventDefault();
       return;

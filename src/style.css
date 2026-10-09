@@ -214,10 +214,15 @@ body {
 .numeric input {
   font: inherit;
   font-size: 13px;
-  width: 190px;
+  width: 250px;
   padding: 4px 7px;
   border: 1px solid var(--panel-border);
   border-radius: 4px;
+}
+
+.numeric input[aria-invalid='true'] {
+  border-color: #b91c1c;
+  background: #fdeaea;
 }
 
 /* --- インスペクタ --- */

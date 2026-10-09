@@ -1,3 +1,4 @@
+import { hintFor, parseCoordInput, placeholderFor } from '../core/coord-input.ts';
 import type { Panel, PanelContext } from './panel.ts';
 
 /**
@@ -16,11 +17,21 @@ export class CommandInput implements Panel {
       e.preventDefault();
       const entry = ctx.editor.tool.numericEntry?.(ctx.editor);
       if (!entry) return;
-      entry.submit(ctx.editor, this.input.value);
+
+      const parsed = parseCoordInput(this.input.value);
+      if (!parsed) {
+        // 解釈できない入力は消さずに知らせる。打ち直しやすい
+        this.input.setAttribute('aria-invalid', 'true');
+        this.input.select();
+        return;
+      }
+      this.input.removeAttribute('aria-invalid');
+      entry.submit(ctx.editor, parsed);
       this.input.value = '';
       ctx.editor.canvas.focus();
       ctx.refresh();
     });
+    this.input.addEventListener('input', () => this.input.removeAttribute('aria-invalid'));
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         this.input.value = '';
@@ -48,7 +59,7 @@ export class CommandInput implements Panel {
       return;
     }
     this.form.hidden = false;
-    this.input.placeholder = entry.placeholder;
-    this.label.textContent = entry.hint;
+    this.input.placeholder = entry.placeholder ?? placeholderFor(entry.mode);
+    this.label.textContent = entry.hint ?? hintFor(entry.mode);
   }
 }

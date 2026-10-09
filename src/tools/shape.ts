@@ -1,7 +1,7 @@
-import { angleOf, dist, norm, sub, toDeg, type Vec } from '../core/geometry.ts';
+import { dist, type Vec } from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
-import { pointFromPolar } from '../core/snap.ts';
+import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import type { TextAlign } from '../core/primitive.ts';
 import { JIS_TEXT_HEIGHTS } from '../core/standard.ts';
 import { newId } from '../core/types.ts';
@@ -9,7 +9,7 @@ import { drawPrimitives } from '../render/primitive.ts';
 import { drawSnapMarker, type Frame } from '../render/renderer.ts';
 import { getLayer } from '../core/layer.ts';
 import type { Editor } from '../ui/editor.ts';
-import { parsePolar } from './wall.ts';
+import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
 export type ShapeToolMode = 'line' | 'arc' | 'text' | 'point';
@@ -161,28 +161,22 @@ export class ShapeTool implements Tool {
   }
 
   numericEntry(_editor: Editor): NumericEntry | null {
-    if (this.mode !== 'line' || this.points.length === 0) return null;
+    if (this.mode !== 'line') return null;
+    const from = this.points[this.points.length - 1] ?? null;
     return {
-      placeholder: '長さ  例: 3000 / 3000<90',
-      hint: '長さ[mm] と 角度[°] を `<` で区切って入力し Enter',
-      submit: (ed, value) => this.submitNumeric(ed, value),
+      mode: 'point',
+      base: from,
+      fallbackAngleDeg: (ed) => pointerAngleFrom(ed, from),
+      submit: (ed, input) => this.submitNumeric(ed, input),
     };
   }
 
-  private submitNumeric(editor: Editor, value: string): void {
-    const from = this.points[this.points.length - 1];
-    if (!from) return;
-    const parsed = parsePolar(value);
-    if (!parsed) return;
-
-    let angleDeg = parsed.angleDeg;
-    if (angleDeg === null) {
-      const pointer = editor.snapAt(editor.pointerWorld()).point;
-      if (dist(from, pointer) < 1e-6) return;
-      angleDeg = toDeg(angleOf(norm(sub(pointer, from))));
-    }
-    this.points.push(pointFromPolar(from, parsed.length, angleDeg));
-    editor.snapContext = { from: this.points[this.points.length - 1] };
+  private submitNumeric(editor: Editor, input: CoordInput): void {
+    const from = this.points[this.points.length - 1] ?? null;
+    const point = resolvePoint(input, from, pointerAngleFrom(editor, from));
+    if (!point) return;
+    this.points.push(point);
+    editor.snapContext = { from: point };
     if (this.points.length >= this.requiredPoints) this.commit(editor);
     editor.requestRender();
   }

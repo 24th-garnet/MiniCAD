@@ -1,7 +1,7 @@
 import { angleOf, dist, norm, sub, toDeg, type Vec } from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { addWall, findOrCreateNode, splitWall } from '../core/ops.ts';
-import { pointFromPolar } from '../core/snap.ts';
+import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import type { Id } from '../core/types.ts';
 import { drawPreviewWall, drawSnapMarker, type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
@@ -86,29 +86,25 @@ export class WallTool implements Tool {
   }
 
   numericEntry(_editor: Editor): NumericEntry | null {
-    if (!this.anchor) return null;
     return {
-      placeholder: '長さ  例: 3000 / 3000<90',
-      hint: '長さ[mm] と 角度[°] を `<` か `,` で区切って入力し Enter',
-      submit: (ed, text) => this.submitNumeric(ed, text),
+      mode: 'point',
+      base: this.anchor,
+      // 角度を省いたら、いまマウスが指している向き（角度スナップ後）を使う
+      fallbackAngleDeg: (ed) => pointerAngleFrom(ed, this.anchor),
+      submit: (ed, input) => this.submitNumeric(ed, input),
     };
   }
 
-  private submitNumeric(editor: Editor, text: string): void {
-    const anchor = this.anchor;
-    if (!anchor) return;
-    const parsed = parsePolar(text);
-    if (!parsed) return;
-
-    let angleDeg = parsed.angleDeg;
-    if (angleDeg === null) {
-      // 角度の指定がなければ、いまマウスが指している向き（角度スナップ後）を使う
-      const pointer = editor.snapAt(editor.pointerWorld()).point;
-      const d = sub(pointer, anchor);
-      if (dist(anchor, pointer) < 1e-6) return;
-      angleDeg = toDeg(angleOf(norm(d)));
+  private submitNumeric(editor: Editor, input: CoordInput): void {
+    const point = resolvePoint(input, this.anchor, pointerAngleFrom(editor, this.anchor));
+    if (!point) return;
+    if (!this.anchor) {
+      // 作図前でも絶対座標で始点を置ける
+      this.anchor = point;
+      editor.snapContext = { from: this.anchor };
+    } else {
+      this.placeSegment(editor, point);
     }
-    this.placeSegment(editor, pointFromPolar(anchor, parsed.length, angleDeg));
     editor.requestRender();
   }
 
@@ -155,15 +151,10 @@ function resolveNode(editor: Editor, p: Vec, tolerance: number): Id {
   return findOrCreateNode(scene, p, tolerance);
 }
 
-/** `3000` / `3000<45` / `3000,45` を長さと角度に分解する */
-export function parsePolar(text: string): { length: number; angleDeg: number | null } | null {
-  const cleaned = text.trim().replace(/\s+/g, '');
-  if (!cleaned) return null;
-  const m = cleaned.match(/^(-?[\d.]+)(?:[<,](-?[\d.]+))?$/);
-  if (!m) return null;
-  const length = Number(m[1]);
-  if (!Number.isFinite(length) || length === 0) return null;
-  const angle = m[2] === undefined ? null : Number(m[2]);
-  if (angle !== null && !Number.isFinite(angle)) return null;
-  return { length: Math.abs(length), angleDeg: angle };
+/** いまマウスが指している向き（角度スナップ後）。角度を省いた入力で使う */
+export function pointerAngleFrom(editor: Editor, from: Vec | null): number | null {
+  if (!from) return null;
+  const pointer = editor.snapAt(editor.pointerWorld()).point;
+  if (dist(from, pointer) < 1e-6) return null;
+  return toDeg(angleOf(norm(sub(pointer, from))));
 }

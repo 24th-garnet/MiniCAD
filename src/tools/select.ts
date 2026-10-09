@@ -1,3 +1,4 @@
+import { resolveDelta, type CoordInput } from '../core/coord-input.ts';
 import { dist, sub, vec, type Vec } from '../core/geometry.ts';
 import { pickInRect } from '../core/pick.ts';
 import { mergeNodesAt } from '../core/ops.ts';
@@ -16,7 +17,7 @@ import {
 import type { EntityRef, Scene } from '../core/types.ts';
 import { drawPreviewRect, drawSnapMarker, type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { PointerInfo, Tool } from './tool.ts';
+import type { NumericEntry, PointerInfo, Tool } from './tool.ts';
 
 type DragState =
   | { kind: 'none' }
@@ -204,6 +205,31 @@ export class SelectTool implements Tool {
       return true;
     }
     return false;
+  }
+
+  /** 作図していなくても、選択があれば数値で動かせる */
+  numericEntry(editor: Editor): NumericEntry | null {
+    const sel = resolveSelection(editor.store.scene, editor.store.selection);
+    if (isEmptySelection(sel)) return null;
+    return {
+      mode: 'delta',
+      base: resolvedCenter(editor.store.scene, sel),
+      hint: '選択を動かす変位',
+      submit: (ed, input) => this.submitMove(ed, input),
+    };
+  }
+
+  private submitMove(editor: Editor, input: CoordInput): void {
+    const store = editor.store;
+    const sel = resolveSelection(store.scene, store.selection);
+    if (isEmptySelection(sel)) return;
+    const delta = resolveDelta(input, resolvedCenter(store.scene, sel), null);
+    if (!delta || (delta.x === 0 && delta.y === 0)) return;
+    store.commit(() => {
+      translateSelection(store.scene, sel, delta);
+      if (sel.nodeIds.length > 0) mergeNodesAt(store.scene, sel.nodeIds);
+    });
+    editor.requestRender();
   }
 
   drawOverlay(editor: Editor, frame: Frame): void {
