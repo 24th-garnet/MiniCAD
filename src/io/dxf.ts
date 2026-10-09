@@ -1,8 +1,7 @@
-import { add, angleOf, dist, mid, mul, norm, perp, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { add, angleOf, mul, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
-import { wallEnds } from '../core/ops.ts';
-import { dimensionSide, toTatami } from '../core/rooms.ts';
+import { toTatami } from '../core/rooms.ts';
 import {
   doorSwing,
   furnitureLabelFits,
@@ -127,23 +126,6 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
     if (!printable(layer)) continue;
     entities.push(...dxfPrimitives(shapePrimitives(scene, shape, std), layer, std, text));
-  }
-
-  // 寸法（数値のみ。本物の DIMENSION エンティティは今は作らない）
-  const dimLayer = layerOf(LAYER_IDS.dimension, LAYER_IDS.dimension);
-  if (settings.showDimensions && printable(dimLayer)) {
-    const size = paperToWorld(std.textHeight.dimension, std);
-    for (const wall of Object.values(scene.walls)) {
-      const [a, b] = wallEnds(scene, wall);
-      const length = dist(a, b);
-      if (length < size * 3) continue;
-      const d = norm(sub(b, a));
-      const n = perp(d);
-      const center = mid(a, b);
-      const side = dimensionSide(rooms, center, n, wall.thickness / 2 + 150);
-      const at = add(center, mul(n, side * (wall.thickness / 2 + size)));
-      pushText(`${Math.round(length)}`, at, size, normalizeTextDeg(toDeg(angleOf(d))), dimLayer);
-    }
   }
 
   // 室名・面積

@@ -78,7 +78,7 @@ function moveEntities(
   }
   for (const id of sel.shapeIds) {
     const s = scene.shapes[id];
-    if (s) scene.shapes[id] = transformShape(s, t);
+    if (s) scene.shapes[id] = transformShape(scene, s, t, null);
   }
   if (mirrored) {
     const movedWallIds = new Set(movedWalls.map((w) => w.id));
@@ -168,7 +168,7 @@ function copyEntities(
     const s = scene.shapes[id];
     if (!s) continue;
     const newShapeId = newId('s');
-    scene.shapes[newShapeId] = { ...transformShape(s, t), id: newShapeId };
+    scene.shapes[newShapeId] = { ...transformShape(scene, s, t, nodeMap), id: newShapeId };
     refs.push({ type: 'shape', id: newShapeId });
   }
 

@@ -11,7 +11,6 @@ export interface Settings {
   ortho: boolean;
   /** 新規に引く壁の厚さ (mm) */
   wallThickness: number;
-  showDimensions: boolean;
   showGrid: boolean;
   /** 面積を内法で表示する（false なら壁芯） */
   innerArea: boolean;
@@ -29,7 +28,6 @@ export function defaultSettings(): Settings {
     snapWall: true,
     ortho: true,
     wallThickness: 120,
-    showDimensions: true,
     showGrid: true,
     innerArea: false,
     dxfEscapeUnicode: false,

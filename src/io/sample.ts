@@ -1,3 +1,4 @@
+import { createWallDimensions } from '../core/dimension.ts';
 import { vec } from '../core/geometry.ts';
 import { LAYER_IDS } from '../core/layer.ts';
 import { addWall, findOrCreateNode } from '../core/ops.ts';
@@ -92,6 +93,9 @@ export function sampleScene(): Scene {
   label(2300, 3000, 'LDK');
   label(6300, 4600, '洋室');
   label(6300, 1600, '水まわり');
+
+  // 寸法は実体のエンティティ。壁の角に紐づくので、角を動かすと値が追従する
+  for (const dim of createWallDimensions(scene)) scene.shapes[dim.id] = dim;
 
   return scene;
 }

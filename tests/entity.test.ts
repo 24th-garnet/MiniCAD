@@ -4,7 +4,14 @@ import { sampleScene } from '../src/io/sample.ts';
 import { pickAt, pickInRect } from '../src/core/pick.ts';
 import { snapPoint } from '../src/core/snap.ts';
 import { defaultSettings } from '../src/core/store.ts';
-import { isSelectable, isSnappable, removeEntities, sceneBounds, ENTITY_KINDS } from '../src/core/entity.ts';
+import {
+  isSelectable,
+  isSnappable,
+  removeEntities,
+  sceneBounds,
+  ENTITY_KINDS,
+  ENTITY_TYPES,
+} from '../src/core/entity.ts';
 import { resolveSelection, captureOrigins, placeSelection, selectionCenter } from '../src/core/selection.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 import { vec } from '../src/core/geometry.ts';
@@ -29,10 +36,20 @@ test('画層をロックすると選択できなくなるが、スナップは�
 test('画層を非表示にすると選択もスナップもできなくなる', () => {
   const scene = sampleScene();
   scene.layers[LAYER_IDS.wall].visible = false;
+  // 寸法は壁の角を端点として持つので、寸法が見えていればそこにはスナップできる。
+  // 「壁が見えないのにスナップできる」状態を確かめたいので、寸法も隠す
+  scene.layers[LAYER_IDS.dimension].visible = false;
 
   assert.equal(pickAt(scene, ON_WALL, 80), null);
   const snap = snapPoint(scene, defaultSettings(), vec(60, 60), { radius: 300 });
   assert.notEqual(snap.kind, 'node', '非表示の壁の端点にスナップしている');
+});
+
+test('寸法が見えていれば、その端点にはスナップできる', () => {
+  const scene = sampleScene();
+  scene.layers[LAYER_IDS.wall].visible = false;
+  const snap = snapPoint(scene, defaultSettings(), vec(60, 60), { radius: 300 });
+  assert.equal(snap.kind, 'node', '寸法の端点にスナップできるべき');
 });
 
 test('respectLayers: false なら画層を無視して拾える', () => {
@@ -105,16 +122,16 @@ test('図面範囲が全エンティティを含む', () => {
   const scene = sampleScene();
   const b = sceneBounds(scene)!;
   assert.ok(b);
-  // サンプルは外周 0..8000 x 0..6000。家具が外に出ていないこと
-  assert.ok(b.min.x >= -1 && b.min.y >= -1, `min=${JSON.stringify(b.min)}`);
-  assert.ok(b.max.x <= 8001 && b.max.y <= 6001, `max=${JSON.stringify(b.max)}`);
-  // 家具の隅が含まれている（ノードだけでは出ない精度）
-  assert.ok(b.max.x > 7000);
+  // サンプルの外周は 0..8000 x 0..6000。寸法は建物の外側に出るので範囲はそれより広い
+  assert.ok(b.min.x < 0 && b.min.y < 0, `寸法が範囲に入っていない: ${JSON.stringify(b.min)}`);
+  assert.ok(b.max.x > 8000 && b.max.y > 6000, `max=${JSON.stringify(b.max)}`);
+  // 外にはみ出しすぎてもいない
+  assert.ok(b.min.x > -2000 && b.max.x < 10000, `範囲が広すぎる: ${JSON.stringify(b)}`);
 });
 
 test('空のシーンの図面範囲は null', () => {
   const scene = sampleScene();
-  for (const type of ['wall', 'opening', 'furniture', 'roomLabel', 'node'] as const) {
+  for (const type of ENTITY_TYPES) {
     for (const id of Object.keys(ENTITY_KINDS[type].table(scene))) {
       ENTITY_KINDS[type].remove(scene, id);
     }

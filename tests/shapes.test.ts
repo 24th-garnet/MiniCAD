@@ -50,6 +50,15 @@ const SAMPLES: { [K in ShapeKind]: Extract<Shape, { shape: K }> } = {
     align: 'center',
   },
   point: { id: 'sh-point', shape: 'point', layerId: LAYER_IDS.shape, at: vec(5000, 3000) },
+  dimension: {
+    id: 'sh-dim',
+    shape: 'dimension',
+    layerId: LAYER_IDS.dimension,
+    a: { x: 0, y: -2000, nodeId: null },
+    b: { x: 3000, y: -2000, nodeId: null },
+    offset: -500,
+    override: null,
+  },
 };
 
 function sceneWithAllShapes(): Scene {
@@ -136,6 +145,8 @@ test('全種別がクリックで拾える', () => {
     circle: vec(8600, 0),
     text: vec(0, 3000),
     point: vec(5000, 3000),
+    // 寸法線の上（端点から offset だけ離れた位置）
+    dimension: vec(1500, -2500),
   };
   for (const kind of SHAPE_KINDS) {
     const hit = pickAt(scene, probes[kind], 60);

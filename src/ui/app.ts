@@ -6,6 +6,7 @@ import { MeasureTool } from '../tools/measure.ts';
 import { OpeningTool } from '../tools/opening.ts';
 import { RoomTool } from '../tools/room.ts';
 import { SelectTool } from '../tools/select.ts';
+import { DimensionTool } from '../tools/dimension.ts';
 import { ShapeTool } from '../tools/shape.ts';
 import { TransformTool } from '../tools/transform.ts';
 import { WallTool } from '../tools/wall.ts';
@@ -58,6 +59,7 @@ export class App {
       new ShapeTool('arc', 'arc', '円・弧', 'C'),
       new ShapeTool('point', 'point', '点', 'Q'),
       new ShapeTool('text', 'text', '文字', 'T'),
+      new DimensionTool(),
       new RoomTool(),
     ]) {
       this.editor.registerTool(tool);

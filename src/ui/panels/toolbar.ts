@@ -17,6 +17,7 @@ const TOOL_GLYPH: Record<ToolId, string> = {
   arc: '○',
   point: '・',
   text: 'A',
+  dimension: '↦',
   room: 'あ',
 };
 

@@ -81,7 +81,29 @@ export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
     const at = point(raw.at);
     return at ? { id, shape: 'point', layerId, at } : null;
   },
+
+  dimension: (id, raw, layerId) => {
+    const a = dimEnd(raw.a);
+    const b = dimEnd(raw.b);
+    if (!a || !b) return null;
+    return {
+      id,
+      shape: 'dimension',
+      layerId,
+      a,
+      b,
+      offset: num(raw.offset, 0),
+      override: typeof raw.override === 'string' ? raw.override : null,
+    };
+  },
 };
+
+function dimEnd(v: unknown): { x: number; y: number; nodeId: Id | null } | null {
+  const p = point(v);
+  if (!p) return null;
+  const nodeId = (v as Raw).nodeId;
+  return { x: p.x, y: p.y, nodeId: typeof nodeId === 'string' ? nodeId : null };
+}
 
 /** 知らない種別は黙って捨てる（外から来た JSON を信用しない、という既存の方針） */
 export function readShape(id: Id, raw: unknown, layerId: LayerId): Shape | null {

@@ -76,6 +76,13 @@ export const SHAPE_FIELDS: { [K in ShapeKind]: Fields<Extract<Shape, { shape: K 
     numberField('Y', s.at.y, (v) => edit(() => void (s.at = { ...s.at, y: v })), MM),
   ],
 
+  dimension: (s, edit) => [
+    readonlyField('種類', '寸法'),
+    readonlyField('端点', s.a.nodeId || s.b.nodeId ? '壁の角に連動' : '自由点'),
+    numberField('出す位置', s.offset, (v) => edit(() => void (s.offset = v)), { step: 50, suffix: 'mm' }),
+    textField('値の上書き', s.override ?? '', (v) => edit(() => void (s.override = v.trim() || null))),
+  ],
+
   point: (s, edit) => [
     readonlyField('種類', '点'),
     numberField('X', s.at.x, (v) => edit(() => void (s.at = { ...s.at, x: v })), MM),

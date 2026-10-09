@@ -25,7 +25,6 @@ export class SettingsSection implements Section {
       checkboxField('壁上にスナップ', settings.snapWall, (v) => set(() => void (settings.snapWall = v))),
       checkboxField('直交・角度スナップ (O)', settings.ortho, (v) => set(() => void (settings.ortho = v))),
       checkboxField('グリッドを表示', settings.showGrid, (v) => set(() => void (settings.showGrid = v))),
-      checkboxField('寸法を表示', settings.showDimensions, (v) => set(() => void (settings.showDimensions = v))),
       checkboxField('面積を内法で表示', settings.innerArea, (v) => set(() => void (settings.innerArea = v))),
       checkboxField('DXFの日本語を \\U+ でエスケープ', settings.dxfEscapeUnicode, (v) =>
         set(() => void (settings.dxfEscapeUnicode = v)),

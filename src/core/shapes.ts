@@ -10,6 +10,7 @@ import {
   vec,
   type Vec,
 } from './geometry.ts';
+import { dimEndPoint, dimensionGeometry, dimensionPrimitives } from './dimension.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import type { Primitive, TextAlign } from './primitive.ts';
 import type { Segment } from './shape.ts';
@@ -70,7 +71,35 @@ export interface PointShape extends ShapeBase {
   at: Vec;
 }
 
-export type Shape = LineShape | PolylineShape | ArcShape | CircleShape | TextShape | PointShape;
+/**
+ * 寸法の端点。
+ * `nodeId` があれば壁の角に紐づき、その角を動かすと寸法の値が追従する。
+ * 無ければ自由点。
+ */
+export interface DimEnd {
+  x: number;
+  y: number;
+  nodeId: Id | null;
+}
+
+export interface DimensionShape extends ShapeBase {
+  shape: 'dimension';
+  a: DimEnd;
+  b: DimEnd;
+  /** 計測線に対する垂直オフセット (mm)。符号がどちら側に出すかを決める */
+  offset: number;
+  /** null なら実測値。文字列を入れると表示だけ差し替える（「約2730」など） */
+  override: string | null;
+}
+
+export type Shape =
+  | LineShape
+  | PolylineShape
+  | ArcShape
+  | CircleShape
+  | TextShape
+  | PointShape
+  | DimensionShape;
 export type ShapeKind = Shape['shape'];
 
 /**
@@ -90,8 +119,11 @@ export interface ShapeGeometry<S extends Shape = Shape> {
   pickPriority: number;
   snapPoints(scene: Scene, s: S): { point: Vec; kind: SnapKind }[];
   primitives(scene: Scene, s: S, std: DrawingStandard): Primitive[];
-  /** アフィン変換を適用した新しい図形を返す（元は変更しない） */
-  transform(s: S, t: Transform): S;
+  /**
+   * アフィン変換を適用した新しい図形を返す（元は変更しない）。
+   * nodeMap は複写のときだけ渡る。壁の角に紐づいた寸法の付け替えに使う
+   */
+  transform(scene: Scene, s: S, t: Transform, nodeMap: Map<Id, Id> | null): S;
 }
 
 /** 円弧を折れ線に分割するときの最大の刻み（ラジアン）。約11.25度 */
@@ -143,7 +175,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       { point: mid(s.a, s.b), kind: 'midpoint' },
     ],
     primitives: (_scene, s) => [{ kind: 'segments', segments: [{ a: s.a, b: s.b }] }],
-    transform: (s, t) => ({ ...s, a: applyPoint(t, s.a), b: applyPoint(t, s.b) }),
+    transform: (_scene, s, t) => ({ ...s, a: applyPoint(t, s.a), b: applyPoint(t, s.b) }),
   },
 
   polyline: {
@@ -157,7 +189,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       ...segmentMidpoints(s.points, s.closed),
     ],
     primitives: (_scene, s) => [{ kind: 'segments', segments: chain(s.points, s.closed) }],
-    transform: (s, t) => ({ ...s, points: s.points.map((p) => applyPoint(t, p)) }),
+    transform: (_scene, s, t) => ({ ...s, points: s.points.map((p) => applyPoint(t, p)) }),
   },
 
   arc: {
@@ -178,7 +210,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
     primitives: (_scene, s) => [
       { kind: 'arc', center: s.center, radius: s.radius, startAngle: s.startAngle, endAngle: s.endAngle },
     ],
-    transform: (s, t) => {
+    transform: (_scene, s, t) => {
       const start = directionAngleAfter(t, s.startAngle);
       const end = directionAngleAfter(t, s.endAngle);
       // 鏡像では掃く向きが逆になる。「常に反時計回り」を保つため始点と終点を入れ替える
@@ -208,7 +240,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       })),
     ],
     primitives: (_scene, s) => [{ kind: 'circle', center: s.center, radius: s.radius }],
-    transform: (s, t) => ({ ...s, center: applyPoint(t, s.center) }),
+    transform: (_scene, s, t) => ({ ...s, center: applyPoint(t, s.center) }),
   },
 
   text: {
@@ -222,7 +254,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       { kind: 'text', text: s.text, at: s.at, paperMm: s.height, angle: s.angle, align: s.align },
     ],
     // 文字は鏡像にしない。CAD の慣例で、鏡像コマンドでも文字は読める向きに保つ
-    transform: (s, t) => ({ ...s, at: applyPoint(t, s.at), angle: directionAngleAfter(t, s.angle) }),
+    transform: (_scene, s, t) => ({ ...s, at: applyPoint(t, s.at), angle: directionAngleAfter(t, s.angle) }),
   },
 
   point: {
@@ -245,9 +277,53 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
         },
       ];
     },
-    transform: (s, t) => ({ ...s, at: applyPoint(t, s.at) }),
+    transform: (_scene, s, t) => ({ ...s, at: applyPoint(t, s.at) }),
+  },
+
+  dimension: {
+    label: '寸法',
+    defaultLayer: LAYER_IDS.dimension,
+    pickPriority: 2,
+    vertices: (scene, s) => {
+      const g = dimensionGeometry(scene, s, scene.standard);
+      return g ? [g.a, g.b, g.line.a, g.line.b] : [];
+    },
+    outline: (scene, s) => {
+      const g = dimensionGeometry(scene, s, scene.standard);
+      return g ? [g.line, ...g.extensions] : [];
+    },
+    snapPoints: (scene, s) => {
+      const g = dimensionGeometry(scene, s, scene.standard);
+      if (!g) return [];
+      return [
+        { point: g.a, kind: 'node' },
+        { point: g.b, kind: 'node' },
+        { point: mid(g.line.a, g.line.b), kind: 'midpoint' },
+      ];
+    },
+    primitives: (scene, s, std) => dimensionPrimitives(scene, s, std),
+    transform: (scene, s, t, nodeMap) => ({
+      ...s,
+      a: transformDimEnd(scene, s.a, t, nodeMap),
+      b: transformDimEnd(scene, s.b, t, nodeMap),
+      // 鏡像では法線の向きが反転するので、出す側を入れ替える
+      offset: isMirror(t) ? -s.offset : s.offset,
+    }),
   },
 };
+
+/**
+ * 寸法の端点を変換する。
+ * 複写のときは紐づくノードを複製側へ付け替え、対応が無ければ自由点に落とす
+ * （さもないとコピーが元の壁を測り続けてしまう）。
+ */
+function transformDimEnd(scene: Scene, end: DimEnd, t: Transform, nodeMap: Map<Id, Id> | null): DimEnd {
+  const p = applyPoint(t, dimEndPoint(scene, end));
+  if (!end.nodeId) return { x: p.x, y: p.y, nodeId: null };
+  if (!nodeMap) return { ...end, x: p.x, y: p.y };
+  const mapped = nodeMap.get(end.nodeId);
+  return mapped ? { x: p.x, y: p.y, nodeId: mapped } : { x: p.x, y: p.y, nodeId: null };
+}
 
 export const SHAPE_KINDS = Object.keys(SHAPE_GEOMETRY) as ShapeKind[];
 
@@ -267,8 +343,13 @@ export function shapePrimitives(scene: Scene, s: Shape, std: DrawingStandard): P
 export function shapePickPriority(s: Shape): number {
   return SHAPE_GEOMETRY[s.shape].pickPriority;
 }
-export function transformShape(s: Shape, t: Transform): Shape {
-  return SHAPE_GEOMETRY[s.shape].transform(s as never, t);
+export function transformShape(
+  scene: Scene,
+  s: Shape,
+  t: Transform,
+  nodeMap: Map<Id, Id> | null = null,
+): Shape {
+  return SHAPE_GEOMETRY[s.shape].transform(scene, s as never, t, nodeMap);
 }
 
 /**

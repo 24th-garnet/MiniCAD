@@ -2,6 +2,7 @@ import { add, dot, norm, sub, vec, type Vec } from './geometry.ts';
 import { clampOpening, nodePos, wallEnds } from './ops.ts';
 import type { Shape } from './shapes.ts';
 import { shapeVertices, transformShape } from './shapes.ts';
+import { moveDimension } from './dimension.ts';
 import { translation } from './transform.ts';
 import type { EntityRef, Id, Scene } from './types.ts';
 
@@ -155,7 +156,12 @@ export function placeSelection(scene: Scene, origins: MoveOrigins, delta: Vec): 
     label.y = origin.y + delta.y;
   }
   for (const [id, origin] of origins.shapes) {
-    if (scene.shapes[id]) scene.shapes[id] = transformShape(origin, translation(delta));
+    if (!scene.shapes[id]) continue;
+    // 寸法は「どちら側にどれだけ出すか」が本体なので、素直に平行移動しない
+    scene.shapes[id] =
+      origin.shape === 'dimension'
+        ? moveDimension(scene, origin, delta)
+        : transformShape(scene, origin, translation(delta));
   }
   for (const [id, origin] of origins.openings) {
     const opening = scene.openings[id];

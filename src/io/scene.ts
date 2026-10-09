@@ -7,15 +7,21 @@ import {
   type LineType,
   type WeightRole,
 } from '../core/standard.ts';
+import { createWallDimensions } from '../core/dimension.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, type Scene } from '../core/types.ts';
 
 /**
- * 1 → 2 で画層と製図規格、2 → 3 で汎用図形が入った。
+ * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法が入った。
+ *
  * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
- * 古いファイルはバージョン分岐なしでそのまま読める。
+ * テーブルが増えるだけなら分岐は要らない。
+ * 4 だけは「壁に自動表示していた寸法」を実体に変える必要があるので移行する。
  */
-export const FILE_VERSION = 3;
+export const FILE_VERSION = 4;
+
+/** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
+const DIMENSIONS_BECAME_ENTITIES = 4;
 
 export interface SceneFile {
   format: 'minicad';
@@ -100,6 +106,8 @@ export function deserialize(raw: unknown): Scene {
     const shape = readShape(id, raw, layerOr(raw?.layerId, LAYER_IDS.shape));
     if (shape) scene.shapes[id] = shape;
   }
+  migrateDimensions(scene, obj);
+
   for (const [id, l] of Object.entries(table<Record<string, unknown>>('roomLabels'))) {
     if (typeof l?.x !== 'number' || typeof l?.y !== 'number') continue;
     scene.roomLabels[id] = {
@@ -111,6 +119,19 @@ export function deserialize(raw: unknown): Scene {
     };
   }
   return scene;
+}
+
+/**
+ * 寸法が「全壁への自動表示」だった頃のファイルを、寸法エンティティへ変える。
+ *
+ * MiniCAD が書いたファイル（format: 'minicad'）でバージョンが古いときだけ走る。
+ * 手書きの JSON やテストのリテラルは現行版として扱い、勝手に寸法を生やさない。
+ */
+function migrateDimensions(scene: Scene, raw: Record<string, unknown>): void {
+  if (raw.format !== 'minicad') return;
+  const version = typeof raw.version === 'number' ? raw.version : 1;
+  if (version >= DIMENSIONS_BECAME_ENTITIES) return;
+  for (const dim of createWallDimensions(scene)) scene.shapes[dim.id] = dim;
 }
 
 /** 既定の画層を土台に、ファイル側の値で上書きする。知らない画層は追加で受け入れる */

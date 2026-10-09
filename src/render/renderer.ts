@@ -13,8 +13,7 @@ import {
 } from '../core/geometry.ts';
 import { isSnappable } from '../core/entity.ts';
 import { LAYER_IDS, type Layer } from '../core/layer.ts';
-import { wallEnds } from '../core/ops.ts';
-import { dimensionSide, toTatami } from '../core/rooms.ts';
+import { toTatami } from '../core/rooms.ts';
 
 import {
   doorSwing,
@@ -56,7 +55,6 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawOpenings(frame);
   drawFurniture(frame);
   drawShapes(frame);
-  if (frame.settings.showDimensions) drawDimensions(frame);
   drawRoomLabels(frame);
   drawNodes(frame);
   ctx.setLineDash([]);
@@ -359,41 +357,6 @@ function drawShapes(frame: Frame): void {
   }
 }
 
-// --- 寸法 ---
-
-function drawDimensions(frame: Frame): void {
-  const { ctx, vp, scene, rooms } = frame;
-  const layer = layerFor(frame, LAYER_IDS.dimension, LAYER_IDS.dimension);
-  if (!layer.visible) return;
-  const size = textPx(scene.standard.textHeight.dimension);
-  ctx.setLineDash([]);
-
-  for (const wall of Object.values(scene.walls)) {
-    const [a, b] = wallEnds(scene, wall);
-    const lengthMm = dist(a, b);
-    if (vp.toScreenLength(lengthMm) < size * 4) continue;
-    const d = norm(sub(b, a));
-    const n = perp(d);
-    const center0 = mid(a, b);
-    const side = dimensionSide(rooms, center0, n, wall.thickness / 2 + 150);
-    const offset = mul(n, side * (wall.thickness / 2 + vp.toWorldLength(size * 1.1)));
-    const s = vp.toScreen(add(center0, offset));
-
-    ctx.save();
-    ctx.translate(s.x, s.y);
-    ctx.rotate(-normalizeTextAngle(angleOf(d)));
-    ctx.font = fontOf(size);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const text = `${Math.round(lengthMm)}`;
-    const w = ctx.measureText(text).width;
-    ctx.fillStyle = theme.paper;
-    ctx.fillRect(-w / 2 - 3, -size * 0.65, w + 6, size * 1.3);
-    ctx.fillStyle = layer.color;
-    ctx.fillText(text, 0, 0);
-    ctx.restore();
-  }
-}
 
 // --- ノード ---
 

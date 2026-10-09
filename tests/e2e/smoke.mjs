@@ -93,6 +93,8 @@ async function run() {
         openings: Object.keys(s.openings).length,
         furniture: Object.keys(s.furniture).length,
         shapes: Object.keys(s.shapes).length,
+        // 寸法を除いた作図図形。サンプルが寸法を持つので、数を見るときはこちら
+        drawings: Object.values(s.shapes).filter((sh) => sh.shape !== 'dimension').length,
         rooms: ed.rooms.map((r) => ({ name: r.name, area: Number(r.area.toFixed(2)) })),
         selection: ed.store.selection.length,
         status: document.getElementById('status-hint').textContent,
@@ -108,6 +110,15 @@ async function run() {
         layerNames: Object.values(s.layers).map((l) => l.name),
         currentLayerId: ed.store.settings.currentLayerId,
         shapeLayers: Object.values(s.shapes).map((sh) => s.layers[sh.layerId]?.name),
+        dimensions: Object.values(s.shapes).filter((sh) => sh.shape === 'dimension').length,
+        dimensionValues: Object.values(s.shapes)
+          .filter((sh) => sh.shape === 'dimension')
+          .map((sh) => {
+            const end = (e) => (e.nodeId && s.nodes[e.nodeId] ? s.nodes[e.nodeId] : e);
+            const a = end(sh.a);
+            const b = end(sh.b);
+            return String(Math.round(Math.hypot(b.x - a.x, b.y - a.y)));
+          }),
       };
     });
 
@@ -132,6 +143,7 @@ async function run() {
       s.rooms.map((r) => r.name).sort(),
       ['LDK', '水まわり', '洋室'].sort(),
     );
+    assert.equal(s.dimensions, 10, '壁ぶんの寸法が入っているはず');
   });
 
   await step(
@@ -275,7 +287,7 @@ async function run() {
     },
     (s) => {
       assert.equal(s.tool, 'line');
-      assert.equal(s.shapes, 1);
+      assert.equal(s.drawings, 1);
     },
   );
 
@@ -288,7 +300,7 @@ async function run() {
       await clickWorld(12000, 6500);
       await page.keyboard.press('Enter');
     },
-    (s) => assert.equal(s.shapes, 2),
+    (s) => assert.equal(s.drawings, 2),
   );
 
   await step(
@@ -300,7 +312,7 @@ async function run() {
     },
     (s) => {
       assert.equal(s.tool, 'arc');
-      assert.equal(s.shapes, 3);
+      assert.equal(s.drawings, 3);
     },
   );
 
@@ -312,7 +324,7 @@ async function run() {
       await clickWorld(9600, 6000);
       await clickWorld(9000, 6600);
     },
-    (s) => assert.equal(s.shapes, 4),
+    (s) => assert.equal(s.drawings, 4),
   );
 
   await step(
@@ -322,7 +334,7 @@ async function run() {
       await page.fill('.options-bar input[type=text]', '駐車スペース');
       await clickWorld(12000, 7000);
     },
-    (s) => assert.equal(s.shapes, 5),
+    (s) => assert.equal(s.drawings, 5),
   );
 
   await step(
@@ -333,13 +345,59 @@ async function run() {
       assert.equal((await state()).selection, 1, '線を選択できていない');
       await page.keyboard.press('Delete');
     },
-    (s) => assert.equal(s.shapes, 4),
+    (s) => assert.equal(s.drawings, 4),
   );
 
   await step(
     'undo で図形が戻る',
     () => page.keyboard.press('Meta+z'),
-    (s) => assert.equal(s.shapes, 5),
+    (s) => assert.equal(s.drawings, 5),
+  );
+
+  // --- 寸法 ---
+
+  await step(
+    '2点を指定して寸法を置ける',
+    async () => {
+      await page.keyboard.press('h');
+      // 書斎の下辺。端点にスナップさせて壁の角に紐づける
+      await clickWorld(10000, 0);
+      await clickWorld(14000, 0);
+      await clickWorld(12000, -800);
+    },
+    (s) => {
+      assert.equal(s.tool, 'dimension');
+      assert.equal(s.dimensions, 11, '寸法が増えていない');
+    },
+  );
+
+  await step(
+    '壁の角を動かすと寸法の値が追従する',
+    async () => {
+      await page.keyboard.press('v');
+      const corner = await at(14000, 0);
+      const target = await at(15000, 0);
+      await page.mouse.move(corner.x, corner.y);
+      await page.mouse.down();
+      await page.mouse.move(target.x, target.y, { steps: 10 });
+      await page.mouse.up();
+    },
+    (s) => {
+      // ドラッグ先はスナップで丸められるので、厳密な値ではなく追従したことを見る
+      // （サンプルの壁に 4600 が2本あるので、それとは重ならない範囲で判定する）
+      const grown = s.dimensionValues.map(Number).filter((v) => v > 4700 && v < 5300);
+      assert.equal(grown.length, 1, `寸法が追従していない: ${s.dimensionValues}`);
+      assert.ok(!s.dimensionValues.includes('4000'), '元の値が残っている');
+    },
+  );
+
+  await step(
+    '寸法を undo で戻す',
+    async () => {
+      await page.keyboard.press('Meta+z');
+      await page.keyboard.press('Meta+z');
+    },
+    (s) => assert.equal(s.dimensions, 10),
   );
 
   // --- 複写・回転・鏡像 ---
@@ -539,7 +597,7 @@ async function run() {
   await step(
     '指定した画層に新しい線が乗る',
     async () => {
-      shapesBefore = (await state()).shapes;
+      shapesBefore = (await state()).drawings;
       await page.keyboard.press('l');
       await clickWorld(2000, -2000);
       await clickWorld(6000, -2000);
@@ -547,7 +605,7 @@ async function run() {
       await page.keyboard.press('Enter');
     },
     (s) => {
-      assert.equal(s.shapes, shapesBefore + 1);
+      assert.equal(s.drawings, shapesBefore + 1);
       assert.ok(s.shapeLayers.includes('A-SITE'), `指定した画層に乗っていない: ${s.shapeLayers}`);
     },
   );
@@ -573,7 +631,7 @@ async function run() {
     (s) => {
       assert.equal(s.layerRows, 8);
       assert.ok(!s.layerNames.includes('A-SITE'));
-      assert.equal(s.shapes, shapesBefore + 1, '画層を消したのに図形まで消えている');
+      assert.equal(s.drawings, shapesBefore + 1, '画層を消したのに図形まで消えている');
       assert.ok(!s.shapeLayers.includes('A-SITE'), '消した画層が残っている');
     },
   );

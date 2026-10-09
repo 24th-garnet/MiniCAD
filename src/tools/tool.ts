@@ -17,6 +17,7 @@ export type ToolId =
   | 'arc'
   | 'point'
   | 'text'
+  | 'dimension'
   | 'room';
 
 export interface PointerInfo {

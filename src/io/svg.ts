@@ -1,8 +1,7 @@
-import { add, angleOf, dist, mid, mul, norm, perp, sub, toDeg, vec } from '../core/geometry.ts';
+import { add, mul, sub, toDeg, vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
-import { wallEnds } from '../core/ops.ts';
-import { dimensionSide, toTatami } from '../core/rooms.ts';
+import { toTatami } from '../core/rooms.ts';
 import {
   doorSwing,
   furnitureLabelFits,
@@ -128,23 +127,6 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
     if (!visible(layer)) continue;
     out.push(...svgPrimitives(shapePrimitives(scene, shape, std), layer, std));
-  }
-
-  // --- 寸法 ---
-  const dimLayer = layerOf(LAYER_IDS.dimension, LAYER_IDS.dimension);
-  if (settings.showDimensions && visible(dimLayer)) {
-    const size = paperToWorld(std.textHeight.dimension, std);
-    for (const wall of Object.values(scene.walls)) {
-      const [a, c] = wallEnds(scene, wall);
-      const length = dist(a, c);
-      if (length < size * 3) continue;
-      const d = norm(sub(c, a));
-      const n = perp(d);
-      const center = mid(a, c);
-      const side = dimensionSide(rooms, center, n, wall.thickness / 2 + 150);
-      const at = add(center, mul(n, side * (wall.thickness / 2 + size)));
-      out.push(textTag(`${Math.round(length)}`, at, toDeg(angleOf(d)), size, dimLayer.color));
-    }
   }
 
   // --- 室名・面積 ---
