@@ -9,17 +9,22 @@ import {
 } from '../core/standard.ts';
 import { createWallDimensions } from '../core/dimension.ts';
 import { defaultSheet, type Sheet } from '../core/sheet.ts';
+import type { BlockDef } from '../core/block.ts';
+import { BLOCK_PRESETS } from '../core/blockPresets.ts';
+import type { Shape } from '../core/shapes.ts';
+import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, type Scene } from '../core/types.ts';
 
 /**
- * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠が入った。
+ * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠、
+ * 5 → 6 で家具がブロックになった。
  *
  * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
  * テーブルが増えるだけなら分岐は要らない。
  * 4 だけは「壁に自動表示していた寸法」を実体に変える必要があるので移行する。
  */
-export const FILE_VERSION = 5;
+export const FILE_VERSION = 6;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -90,20 +95,26 @@ export function deserialize(raw: unknown): Scene {
       layerId: layerOr(o.layerId, LAYER_IDS.opening),
     };
   }
-  for (const [id, f] of Object.entries(table<Record<string, unknown>>('furniture'))) {
-    if (typeof f?.x !== 'number' || typeof f?.y !== 'number') continue;
-    scene.furniture[id] = {
+  for (const [id, b] of Object.entries(table<Record<string, unknown>>('blocks'))) {
+    const def = readBlockDef(id, b, scene);
+    if (def) scene.blocks[id] = def;
+  }
+  for (const [id, i] of Object.entries(table<Record<string, unknown>>('instances'))) {
+    if (typeof i?.blockId !== 'string' || !scene.blocks[i.blockId]) continue;
+    if (typeof i.x !== 'number' || typeof i.y !== 'number') continue;
+    scene.instances[id] = {
       id,
-      kind: (typeof f.kind === 'string' ? f.kind : 'generic') as Scene['furniture'][string]['kind'],
-      name: typeof f.name === 'string' ? f.name : '家具',
-      x: f.x,
-      y: f.y,
-      w: numberOr(f.w, 600),
-      h: numberOr(f.h, 600),
-      angle: numberOr(f.angle, 0),
-      layerId: layerOr(f.layerId, LAYER_IDS.furniture),
+      blockId: i.blockId,
+      layerId: layerOr(i.layerId, LAYER_IDS.furniture),
+      x: i.x,
+      y: i.y,
+      scaleX: numberOr(i.scaleX, 1) || 1,
+      scaleY: numberOr(i.scaleY, 1) || 1,
+      angle: numberOr(i.angle, 0),
+      label: typeof i.label === 'string' ? i.label : null,
     };
   }
+  migrateFurniture(scene, table<Record<string, unknown>>('furniture'), layerOr);
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('shapes'))) {
     const shape = readShape(id, raw, layerOr(raw?.layerId, LAYER_IDS.shape));
     if (shape) scene.shapes[id] = shape;
@@ -121,6 +132,64 @@ export function deserialize(raw: unknown): Scene {
     };
   }
   return scene;
+}
+
+/** ブロック定義の読み取り。中身の図形は既定の画層に乗せる */
+function readBlockDef(id: Id, raw: unknown, scene: Scene): BlockDef | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const b = raw as Record<string, unknown>;
+  if (typeof b.name !== 'string' || typeof b.label !== 'string') return null;
+  const size = (typeof b.size === 'object' && b.size !== null ? b.size : {}) as Record<string, unknown>;
+  const shapes: Record<Id, Shape> = {};
+  const rawShapes = typeof b.shapes === 'object' && b.shapes !== null ? (b.shapes as Record<string, unknown>) : {};
+  for (const [shapeId, rawShape] of Object.entries(rawShapes)) {
+    const shape = readShape(shapeId, rawShape, LAYER_IDS.furniture);
+    if (shape) shapes[shapeId] = shape;
+  }
+  if (Object.keys(shapes).length === 0) return null;
+  void scene;
+  return {
+    id,
+    name: b.name,
+    label: b.label,
+    size: { w: numberOr(size.w, 1), h: numberOr(size.h, 1) },
+    shapes,
+    source: b.source === 'builtin' ? 'builtin' : 'user',
+  };
+}
+
+/**
+ * 家具が専用のエンティティだった頃のファイルを、ブロックの挿入に変える。
+ *
+ * 旧 `kind` は標準ブロックに1対1で対応する。
+ * 幅と奥行は定義の自然な大きさとの比を尺度にして、見た目を保つ。
+ */
+function migrateFurniture(
+  scene: Scene,
+  furniture: Record<string, Record<string, unknown>>,
+  layerOr: (v: unknown, fallback: LayerId) => LayerId,
+): void {
+  for (const [id, f] of Object.entries(furniture)) {
+    if (typeof f?.x !== 'number' || typeof f?.y !== 'number') continue;
+    const name = typeof f.name === 'string' ? f.name : '';
+    const preset =
+      BLOCK_PRESETS.find((p) => p.label === name) ??
+      BLOCK_PRESETS.find((p) => p.id.startsWith(String(f.kind ?? ''))) ??
+      BLOCK_PRESETS.find((p) => p.id === 'box')!;
+    const def = scene.blocks[preset.id];
+    if (!def) continue;
+    scene.instances[id] = {
+      id,
+      blockId: preset.id,
+      layerId: layerOr(f.layerId, LAYER_IDS.furniture),
+      x: f.x,
+      y: f.y,
+      scaleX: numberOr(f.w, def.size.w) / def.size.w,
+      scaleY: numberOr(f.h, def.size.h) / def.size.h,
+      angle: numberOr(f.angle, 0),
+      label: name && name !== preset.label ? name : null,
+    };
+  }
 }
 
 /**

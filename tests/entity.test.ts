@@ -76,7 +76,7 @@ test('矩形選択も画層のロックに従う', () => {
   scene.layers[LAYER_IDS.wall].locked = true;
   const locked = pickInRect(scene, vec(-500, -500), vec(9000, 7000), false);
   assert.ok(!locked.some((r) => r.type === 'wall'), 'ロック中の壁が矩形選択で拾えてしまう');
-  assert.ok(locked.some((r) => r.type === 'furniture'), '他の画層は拾えるべき');
+  assert.ok(locked.some((r) => r.type === 'blockInstance'), '他の画層は拾えるべき');
 });
 
 test('isSelectable と isSnappable の違い', () => {
@@ -173,9 +173,9 @@ test('同じ変位を何度適用しても累積しない', () => {
   assert.equal(scene.nodes[wall.a].y, start.y + 200);
 });
 
-test('選択の中心が家具の位置と一致する', () => {
+test('選択の中心がブロックの位置と一致する', () => {
   const scene = sampleScene();
-  const f = Object.values(scene.furniture)[0];
-  const center = selectionCenter(scene, resolveSelection(scene, [{ type: 'furniture', id: f.id }]))!;
-  assert.ok(Math.abs(center.x - f.x) < 1e-9 && Math.abs(center.y - f.y) < 1e-9);
+  const inst = Object.values(scene.instances)[0];
+  const center = selectionCenter(scene, resolveSelection(scene, [{ type: 'blockInstance', id: inst.id }]))!;
+  assert.ok(Math.abs(center.x - inst.x) < 1e-9 && Math.abs(center.y - inst.y) < 1e-9);
 });

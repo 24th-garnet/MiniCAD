@@ -22,6 +22,48 @@ if (!input || !output) {
 
 const parsed = new (DxfParser.default ?? DxfParser)().parseSync(readFileSync(input, 'utf8'));
 const layers = parsed.tables.layer.layers;
+const blocks = parsed.blocks ?? {};
+
+/**
+ * INSERT を実体に展開する。
+ * 受け取った CAD は定義を挿入点・尺度・回転で描くので、同じことをする。
+ */
+function expand(entities) {
+  const out = [];
+  for (const e of entities) {
+    if (e.type !== 'INSERT') {
+      out.push(e);
+      continue;
+    }
+    const def = blocks[e.name];
+    if (!def?.entities) continue;
+    const sx = e.xScale ?? 1;
+    const sy = e.yScale ?? 1;
+    const rot = ((e.rotation ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const at = (p) => {
+      const x = p.x * sx;
+      const y = p.y * sy;
+      return { x: e.position.x + x * cos - y * sin, y: e.position.y + x * sin + y * cos };
+    };
+    // 定義は画層 0 に置かれるので、INSERT 側の画層を継承させる
+    const layer = e.layer;
+    for (const inner of expand(def.entities)) {
+      if (inner.type === 'LINE') {
+        out.push({ ...inner, layer, vertices: inner.vertices.map(at) });
+      } else if (inner.type === 'CIRCLE' || inner.type === 'ARC') {
+        // 非一様尺度では楕円になるが、ここでは平均半径で近似する
+        out.push({ ...inner, layer, center: at(inner.center), radius: inner.radius * (Math.abs(sx) + Math.abs(sy)) / 2 });
+      } else if (inner.type === 'TEXT') {
+        out.push({ ...inner, layer, startPoint: at(inner.startPoint), rotation: (inner.rotation ?? 0) + (e.rotation ?? 0) });
+      }
+    }
+  }
+  return out;
+}
+
+parsed.entities = expand(parsed.entities);
 
 /** DXF の色番号 (ACI) をおおよその色に */
 const ACI = {

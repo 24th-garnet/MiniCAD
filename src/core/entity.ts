@@ -1,7 +1,8 @@
 import { vec, type Bounds, type Vec } from './geometry.ts';
 import { getLayer, isBuiltinLayer, type Layer, type LayerId } from './layer.ts';
 import { nodePos, openingsOnWall, pruneOrphanNodes, wallEnds, wallsAtNode } from './ops.ts';
-import { furniturePolygon, openingFrame } from './shape.ts';
+import { instanceVertices } from './block.ts';
+import { openingFrame } from './shape.ts';
 import { shapeVertices } from './shapes.ts';
 import { DEFAULT_LAYER_FOR, type EntityRef, type EntityType, type Id, type Scene } from './types.ts';
 
@@ -84,24 +85,24 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     },
   },
 
-  furniture: {
-    label: '家具',
-    table: (scene) => scene.furniture,
-    layerIdOf: (scene, id) => scene.furniture[id]?.layerId ?? null,
+  blockInstance: {
+    label: 'ブロック',
+    table: (scene) => scene.instances,
+    layerIdOf: (scene, id) => scene.instances[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
-      const f = scene.furniture[id];
-      if (!f) return false;
-      f.layerId = layerId;
+      const inst = scene.instances[id];
+      if (!inst) return false;
+      inst.layerId = layerId;
       return true;
     },
     remove: (scene, id) => {
-      if (!scene.furniture[id]) return false;
-      delete scene.furniture[id];
+      if (!scene.instances[id]) return false;
+      delete scene.instances[id];
       return true;
     },
     points: (scene, id) => {
-      const f = scene.furniture[id];
-      return f ? furniturePolygon(f) : [];
+      const inst = scene.instances[id];
+      return inst ? instanceVertices(scene, inst) : [];
     },
   },
 

@@ -1,7 +1,7 @@
 import { removeEntities } from '../core/entity.ts';
 import { saveLocal } from '../io/scene.ts';
 import type { Scene } from '../core/types.ts';
-import { FurnitureTool } from '../tools/furniture.ts';
+import { BlockInsertTool } from '../tools/block-insert.ts';
 import { MeasureTool } from '../tools/measure.ts';
 import { OpeningTool } from '../tools/opening.ts';
 import { RoomTool } from '../tools/room.ts';
@@ -19,6 +19,7 @@ import { FileActions } from './panels/file-actions.ts';
 import { Inspector } from './panels/inspector.ts';
 import { OptionsBar } from './panels/options-bar.ts';
 import { Toolbar } from './panels/toolbar.ts';
+import { BlocksSection } from './panels/sections/blocks.ts';
 import { LayersSection } from './panels/sections/layers.ts';
 import { RoomsSection } from './panels/sections/rooms.ts';
 import { SelectionSection } from './panels/sections/selection.ts';
@@ -59,7 +60,7 @@ export class App {
       new WallTool(),
       new OpeningTool('door', 'door', 'ドア', 'D', 800),
       new OpeningTool('window', 'window', '窓', 'S', 1700),
-      new FurnitureTool(),
+      new BlockInsertTool(),
       new ShapeTool('line', 'line', '線', 'L'),
       new ShapeTool('arc', 'arc', '円・弧', 'C'),
       new ShapeTool('point', 'point', '点', 'Q'),
@@ -99,6 +100,7 @@ export class App {
         new StandardSection(),
         new SheetSection(),
         new LayersSection(),
+        new BlocksSection(),
         new SettingsSection(),
         new StatsSection(),
         new ShortcutsSection(bindings),

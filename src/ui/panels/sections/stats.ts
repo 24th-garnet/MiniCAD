@@ -8,7 +8,8 @@ export class StatsSection implements Section {
       el('h2', {}, ['図面']),
       readonlyField('壁', `${Object.keys(scene.walls).length} 本`),
       readonlyField('開口部', `${Object.keys(scene.openings).length} 箇所`),
-      readonlyField('家具', `${Object.keys(scene.furniture).length} 点`),
+      readonlyField('ブロック', `${Object.keys(scene.instances).length} 個`),
+      readonlyField('図形', `${Object.keys(scene.shapes).length} 個`),
     ];
   }
 }

@@ -116,7 +116,7 @@ test('画層を持たない旧ファイルも既定値で読み込める', () =>
   const scene = deserialize(legacy);
   assert.equal(Object.keys(scene.walls).length, 1);
   assert.equal(scene.walls['w1'].layerId, LAYER_IDS.wall, '壁に既定の画層が割り当たるべき');
-  assert.equal(scene.furniture['f1'].layerId, LAYER_IDS.furniture);
+  assert.equal(scene.instances['f1'].layerId, LAYER_IDS.furniture, '家具がブロックに変換されていない');
   assert.equal(scene.standard.scale, jisStandard().scale);
   assert.equal(Object.keys(scene.layers).length, Object.keys(defaultLayers()).length);
 });

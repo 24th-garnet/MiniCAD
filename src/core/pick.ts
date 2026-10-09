@@ -1,7 +1,8 @@
 import { closestOnSegment, dist, pointInPolygon, vec, type Vec } from './geometry.ts';
 import { isSelectable } from './entity.ts';
 import { wallEnds } from './ops.ts';
-import { furniturePolygon, openingFrame } from './shape.ts';
+import { instanceOutline, instanceVertices } from './block.ts';
+import { openingFrame } from './shape.ts';
 import { shapeHitTest, shapePickPriority, shapeVertices } from './shapes.ts';
 import type { EntityRef, Scene } from './types.ts';
 
@@ -44,10 +45,12 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
   }
 
   // 後から置いたものが上に来るので逆順に判定する
-  for (const f of Object.values(scene.furniture).reverse()) {
-    const ref: EntityRef = { type: 'furniture', id: f.id };
+  for (const inst of Object.values(scene.instances).reverse()) {
+    const ref: EntityRef = { type: 'blockInstance', id: inst.id };
     if (!ok(ref)) continue;
-    if (pointInPolygon(p, furniturePolygon(f))) return ref;
+    if (pointInPolygon(p, instanceVertices(scene, inst))) return ref;
+    // 輪郭のすぐ近くでも掴めるようにする（中が空いている記号もあるため）
+    if (instanceOutline(scene, inst).some((s) => closestOnSegment(p, s.a, s.b).dist <= tolerance)) return ref;
   }
 
   const curve = pickShape(scene, p, tolerance, ok, (s) => shapePickPriority(s) >= SMALL_SHAPE_PRIORITY);
@@ -92,10 +95,10 @@ export function pickInRect(
     const hit = crossing ? inside(a) || inside(b) || segmentCrossesRect(a, b, min, max) : inside(a) && inside(b);
     if (hit) refs.push(ref);
   }
-  for (const f of Object.values(scene.furniture)) {
-    const ref: EntityRef = { type: 'furniture', id: f.id };
+  for (const inst of Object.values(scene.instances)) {
+    const ref: EntityRef = { type: 'blockInstance', id: inst.id };
     if (!ok(ref)) continue;
-    const corners = furniturePolygon(f);
+    const corners = instanceVertices(scene, inst);
     if (crossing ? corners.some(inside) : corners.every(inside)) refs.push(ref);
   }
   for (const op of Object.values(scene.openings)) {

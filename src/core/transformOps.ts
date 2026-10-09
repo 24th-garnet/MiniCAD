@@ -61,13 +61,15 @@ function moveEntities(
     node.x = p.x;
     node.y = p.y;
   }
-  for (const id of sel.furnitureIds) {
-    const f = scene.furniture[id];
-    if (!f) continue;
-    const p = applyPoint(t, f);
-    f.x = p.x;
-    f.y = p.y;
-    f.angle = directionAngleAfter(t, f.angle);
+  for (const id of sel.instanceIds) {
+    const inst = scene.instances[id];
+    if (!inst) continue;
+    const p = applyPoint(t, inst);
+    inst.x = p.x;
+    inst.y = p.y;
+    inst.angle = directionAngleAfter(t, inst.angle);
+    // 鏡像では左右が入れ替わる。尺度の符号で表す
+    if (mirrored) inst.scaleX = -inst.scaleX;
   }
   for (const id of sel.roomLabelIds) {
     const l = scene.roomLabels[id];
@@ -89,7 +91,7 @@ function moveEntities(
 
   const refs: EntityRef[] = [
     ...sel.nodeIds.map((id) => ({ type: 'node' as const, id })),
-    ...sel.furnitureIds.map((id) => ({ type: 'furniture' as const, id })),
+    ...sel.instanceIds.map((id) => ({ type: 'blockInstance' as const, id })),
     ...sel.roomLabelIds.map((id) => ({ type: 'roomLabel' as const, id })),
     ...sel.shapeIds.map((id) => ({ type: 'shape' as const, id })),
   ];
@@ -140,19 +142,20 @@ function copyEntities(
     };
   }
 
-  for (const id of sel.furnitureIds) {
-    const f = scene.furniture[id];
-    if (!f) continue;
-    const p = applyPoint(t, f);
-    const newFurnitureId = newId('f');
-    scene.furniture[newFurnitureId] = {
-      ...f,
-      id: newFurnitureId,
+  for (const id of sel.instanceIds) {
+    const inst = scene.instances[id];
+    if (!inst) continue;
+    const p = applyPoint(t, inst);
+    const newInstanceId = newId('i');
+    scene.instances[newInstanceId] = {
+      ...inst,
+      id: newInstanceId,
       x: p.x,
       y: p.y,
-      angle: directionAngleAfter(t, f.angle),
+      angle: directionAngleAfter(t, inst.angle),
+      scaleX: mirrored ? -inst.scaleX : inst.scaleX,
     };
-    refs.push({ type: 'furniture', id: newFurnitureId });
+    refs.push({ type: 'blockInstance', id: newInstanceId });
   }
 
   for (const id of sel.roomLabelIds) {

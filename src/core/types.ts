@@ -2,6 +2,8 @@ import type { Vec } from './geometry.ts';
 import { newId, type Id } from './id.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
+import type { BlockDef, BlockInstance } from './block.ts';
+import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
 
@@ -43,33 +45,6 @@ export interface Opening {
   layerId: LayerId;
 }
 
-export type FurnitureKind =
-  | 'generic'
-  | 'bed'
-  | 'table'
-  | 'sofa'
-  | 'chair'
-  | 'toilet'
-  | 'bath'
-  | 'sink'
-  | 'kitchen'
-  | 'stairs';
-
-export interface Furniture {
-  id: Id;
-  kind: FurnitureKind;
-  name: string;
-  /** 中心座標 (mm) */
-  x: number;
-  y: number;
-  /** 幅・奥行 (mm) */
-  w: number;
-  h: number;
-  /** 回転角 (rad) */
-  angle: number;
-  layerId: LayerId;
-}
-
 /** 部屋名の手動ラベル。部屋ポリゴン自体は壁から自動検出する */
 export interface RoomLabel {
   id: Id;
@@ -84,7 +59,6 @@ export interface Scene {
   nodes: Record<Id, Node>;
   walls: Record<Id, Wall>;
   openings: Record<Id, Opening>;
-  furniture: Record<Id, Furniture>;
   roomLabels: Record<Id, RoomLabel>;
   /** 間取りの意味を持たない汎用図形（線・円弧・円・ポリライン・文字・点） */
   shapes: Record<Id, Shape>;
@@ -94,6 +68,10 @@ export interface Scene {
   standard: DrawingStandard;
   /** 用紙枠と表題欄。これも図面の属性 */
   sheet: Sheet;
+  /** ブロック定義。標準のものは起動時に入る */
+  blocks: Record<Id, BlockDef>;
+  /** ブロックの挿入 */
+  instances: Record<Id, BlockInstance>;
 }
 
 export function emptyScene(): Scene {
@@ -101,12 +79,13 @@ export function emptyScene(): Scene {
     nodes: {},
     walls: {},
     openings: {},
-    furniture: {},
     roomLabels: {},
     shapes: {},
     layers: defaultLayers(),
     standard: jisStandard(),
     sheet: defaultSheet(),
+    blocks: builtinBlocks(),
+    instances: {},
   };
 }
 
@@ -114,12 +93,12 @@ export function emptyScene(): Scene {
 export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, 'node'>, LayerId> = {
   wall: LAYER_IDS.wall,
   opening: LAYER_IDS.opening,
-  furniture: LAYER_IDS.furniture,
+  blockInstance: LAYER_IDS.furniture,
   roomLabel: LAYER_IDS.roomName,
   shape: LAYER_IDS.shape,
 };
 
-export type EntityType = 'node' | 'wall' | 'opening' | 'furniture' | 'roomLabel' | 'shape';
+export type EntityType = 'node' | 'wall' | 'opening' | 'blockInstance' | 'roomLabel' | 'shape';
 
 export interface EntityRef {
   type: EntityType;

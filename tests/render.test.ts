@@ -119,15 +119,15 @@ test('SVG のタグが XML として壊れていない', () => {
   assert.equal(open - selfClosing, close, '開きタグと閉じタグの数が合わない');
 });
 
-test('クリック位置から壁と家具を拾える', () => {
+test('クリック位置から壁とブロックを拾える', () => {
   const scene = sampleScene();
   // 南側の外壁 (y=0) のうち、窓が開いていない部分
   const onWall = pickAt(scene, vec(500, 0), 80);
   assert.equal(onWall?.type, 'wall');
   // ソファの中心
-  const sofa = Object.values(scene.furniture).find((f) => f.name === 'ソファ')!;
+  const sofa = Object.values(scene.instances).find((i) => i.blockId === 'sofa')!;
   const onSofa = pickAt(scene, vec(sofa.x, sofa.y), 80);
-  assert.equal(onSofa?.type, 'furniture');
+  assert.equal(onSofa?.type, 'blockInstance');
   assert.equal(onSofa?.id, sofa.id);
   // 何もない場所
   assert.equal(pickAt(scene, vec(3000, 2500), 20), null);

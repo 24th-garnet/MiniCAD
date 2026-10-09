@@ -3,7 +3,7 @@ import { vec } from '../core/geometry.ts';
 import { LAYER_IDS } from '../core/layer.ts';
 import { addWall, findOrCreateNode } from '../core/ops.ts';
 import { emptyScene, newId, type Opening, type OpeningKind, type Scene } from '../core/types.ts';
-import { FURNITURE_PRESETS } from '../core/shape.ts';
+import { BLOCK_PRESETS } from '../core/blockPresets.ts';
 
 /** 初回起動時に表示する 1LDK のサンプル間取り */
 export function sampleScene(): Scene {
@@ -71,11 +71,20 @@ export function sampleScene(): Scene {
   addOpening(southMid, centerMid, 1600, 750, 'door');
   addOpening(se, eastMid, 1600, 600, 'window');
 
-  const preset = (name: string) => FURNITURE_PRESETS.find((p) => p.name === name)!;
-  const place = (name: string, x: number, y: number, angle: number) => {
-    const p = preset(name);
-    const id = newId('f');
-    scene.furniture[id] = { id, kind: p.kind, name: p.name, x, y, w: p.w, h: p.h, angle, layerId: LAYER_IDS.furniture };
+  const place = (label: string, x: number, y: number, angle: number) => {
+    const preset = BLOCK_PRESETS.find((p) => p.label === label)!;
+    const id = newId('i');
+    scene.instances[id] = {
+      id,
+      blockId: preset.id,
+      layerId: LAYER_IDS.furniture,
+      x,
+      y,
+      scaleX: 1,
+      scaleY: 1,
+      angle,
+      label: null,
+    };
   };
 
   place('キッチン', 1600, 5585, 0);

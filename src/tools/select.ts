@@ -153,7 +153,7 @@ export class SelectTool implements Tool {
     if (drag.kind !== 'move') return;
     const settings = editor.store.settings;
     const single =
-      drag.sel.nodeIds.length === 1 && drag.sel.furnitureIds.length === 0 && drag.sel.roomLabelIds.length === 0;
+      drag.sel.nodeIds.length === 1 && drag.sel.instanceIds.length === 0 && drag.sel.roomLabelIds.length === 0;
 
     let delta = sub(p.raw, drag.start);
     if (single) {
@@ -190,16 +190,16 @@ export class SelectTool implements Tool {
       return true;
     }
 
-    // 家具の回転
+    // ブロックの回転
     if (e.key === '[' || e.key === ']') {
-      const items = store.selection.filter((s) => s.type === 'furniture');
+      const items = store.selection.filter((s) => s.type === 'blockInstance');
       if (items.length === 0) return false;
       const sign = e.key === ']' ? 1 : -1;
       const amount = (sign * Math.PI) / (e.shiftKey ? 36 : 4);
       store.commit(() => {
         for (const ref of items) {
-          const f = store.scene.furniture[ref.id];
-          if (f) f.angle += amount;
+          const inst = store.scene.instances[ref.id];
+          if (inst) inst.angle += amount;
         }
       });
       return true;

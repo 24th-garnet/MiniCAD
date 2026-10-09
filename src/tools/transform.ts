@@ -1,5 +1,6 @@
 import { angleOf, dist, sub, toDeg, toRad, type Vec } from '../core/geometry.ts';
-import { furniturePolygon, wallOutline, type Segment } from '../core/shape.ts';
+import { wallOutline, type Segment } from '../core/shape.ts';
+import { instanceVertices } from '../core/block.ts';
 import { resolveSelection, isEmptySelection } from '../core/selection.ts';
 import { shapeOutline } from '../core/shapes.ts';
 import { mirror, rotation, translation, type Transform } from '../core/transform.ts';
@@ -252,10 +253,10 @@ function previewSegments(scene: Scene, refs: EntityRef[], t: Transform, copy: bo
         if (wall) segments.push(...wallOutline(draft, wall));
         break;
       }
-      case 'furniture': {
-        const f = draft.furniture[ref.id];
-        if (!f) break;
-        const corners = furniturePolygon(f);
+      case 'blockInstance': {
+        const inst = draft.instances[ref.id];
+        if (!inst) break;
+        const corners = instanceVertices(draft, inst);
         for (let i = 0; i < corners.length; i++) {
           segments.push({ a: corners[i], b: corners[(i + 1) % corners.length] });
         }

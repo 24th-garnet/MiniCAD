@@ -1,6 +1,6 @@
-import { add, dist, mul, norm, perp, rectCorners, sub, vec, type Vec } from './geometry.ts';
+import { add, dist, mul, norm, perp, sub, type Vec } from './geometry.ts';
 import { nodePos, openingsOnWall, wallEnds, wallsAtNode } from './ops.ts';
-import type { Furniture, Opening, Scene, Wall } from './types.ts';
+import type { Opening, Scene, Wall } from './types.ts';
 
 /** 壁を厚みのある矩形として表したときの4隅 */
 export function wallQuad(scene: Scene, wall: Wall): Vec[] {
@@ -130,37 +130,5 @@ export function doorSwing(frame: OpeningFrame, flipX: boolean, flipY: boolean): 
   };
 }
 
-export function furniturePolygon(f: Furniture): Vec[] {
-  return rectCorners(vec(f.x, f.y), f.w, f.h, f.angle);
-}
 
-/** 家具プリセット。寸法は mm */
-export interface FurniturePreset {
-  kind: Furniture['kind'];
-  name: string;
-  w: number;
-  h: number;
-}
 
-export const FURNITURE_PRESETS: FurniturePreset[] = [
-  { kind: 'bed', name: 'ベッドS', w: 1000, h: 1950 },
-  { kind: 'bed', name: 'ベッドD', w: 1400, h: 1950 },
-  { kind: 'sofa', name: 'ソファ', w: 1800, h: 850 },
-  { kind: 'table', name: 'ダイニング', w: 1500, h: 800 },
-  { kind: 'chair', name: '椅子', w: 450, h: 450 },
-  { kind: 'kitchen', name: 'キッチン', w: 2550, h: 650 },
-  { kind: 'sink', name: '洗面台', w: 750, h: 550 },
-  { kind: 'toilet', name: 'トイレ', w: 450, h: 750 },
-  { kind: 'bath', name: '浴槽', w: 1600, h: 800 },
-  { kind: 'stairs', name: '階段', w: 900, h: 2700 },
-  { kind: 'generic', name: 'ボックス', w: 900, h: 600 },
-];
-
-/**
- * 家具名をその家具の中に書けるか。
- * 和文は字幅がほぼ正方形なので、文字数 × 文字高で幅を見積もれば足りる。
- */
-export function furnitureLabelFits(name: string, f: { w: number; h: number }, textSize: number): boolean {
-  if (!name) return false;
-  return [...name].length * textSize * 0.95 <= Math.max(f.w, f.h);
-}

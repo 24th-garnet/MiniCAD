@@ -110,3 +110,34 @@ export function dxfPrimitives(
   }
   return out;
 }
+
+/**
+ * ブロック定義。中身は画層 `0` に置く。
+ * DXF の約束で、画層 0 のエンティティは INSERT 側の画層を継承する。
+ */
+export function dxfBlock(name: string, base: Vec, body: DxfEntity[]): string[] {
+  const out: string[] = [
+    '0', 'BLOCK', '8', '0', '2', name, '70', '0',
+    '10', fmt(base.x), '20', fmt(base.y), '30', '0.0',
+    '3', name, '1', '',
+  ];
+  for (const e of body) out.push(...e);
+  out.push('0', 'ENDBLK', '8', '0');
+  return out;
+}
+
+export function dxfInsert(
+  name: string,
+  at: Vec,
+  scaleX: number,
+  scaleY: number,
+  rotationDeg: number,
+  layerName: string,
+): DxfEntity {
+  return [
+    '0', 'INSERT', '8', layerName, '2', name,
+    '10', fmt(at.x), '20', fmt(at.y), '30', '0.0',
+    '41', fmt(scaleX), '42', fmt(scaleY), '43', '1.0',
+    '50', fmt(rotationDeg),
+  ];
+}

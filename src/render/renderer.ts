@@ -12,19 +12,18 @@ import {
   type Vec,
 } from '../core/geometry.ts';
 import { isSnappable } from '../core/entity.ts';
-import { LAYER_IDS, type Layer } from '../core/layer.ts';
+import { LAYER_IDS } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 
+import { doorSwing, openingFrame, openingQuad, wallOutline, wallQuad } from '../core/shape.ts';
 import {
-  doorSwing,
-  furnitureLabelFits,
-  furniturePolygon,
-  openingFrame,
-  openingQuad,
-  wallOutline,
-  wallQuad,
-} from '../core/shape.ts';
-import type { Furniture } from '../core/types.ts';
+  blockOf,
+  instanceLabel,
+  instancePrimitives,
+  instanceSize,
+  instanceVertices,
+  labelFits,
+} from '../core/block.ts';
 import { shapePrimitives } from '../core/shapes.ts';
 import { sheetPrimitives } from '../core/sheet.ts';
 import { fontOf, theme } from './theme.ts';
@@ -55,7 +54,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawRooms(frame);
   drawWalls(frame);
   drawOpenings(frame);
-  drawFurniture(frame);
+  drawInstances(frame);
   drawShapes(frame);
   drawRoomLabels(frame);
   drawNodes(frame);
@@ -268,86 +267,57 @@ function drawOpenings(frame: Frame): void {
   }
 }
 
-// --- 家具 ---
 
-function drawFurniture(frame: Frame): void {
+
+// --- ブロックの挿入 ---
+
+/**
+ * ブロックは中身を図形として持つので、記号ごとの分岐は要らない。
+ * 以前は家具の種類による switch を renderer が持っていた。
+ */
+function drawInstances(frame: Frame): void {
   const { ctx, vp, scene, selected, hover } = frame;
   const std = scene.standard;
-  for (const f of Object.values(scene.furniture)) {
-    const layer = layerFor(frame, f.layerId, LAYER_IDS.furniture);
-    if (!layer.visible) continue;
-    const corners = furniturePolygon(f);
-    const isSelected = selected.has(`furniture:${f.id}`);
-    const isHover = hover?.type === 'furniture' && hover.id === f.id;
 
-    tracePolygon(frame, corners);
+  for (const inst of Object.values(scene.instances)) {
+    const layer = layerFor(frame, inst.layerId, LAYER_IDS.furniture);
+    if (!layer.visible) continue;
+    const def = blockOf(scene, inst);
+    if (!def) continue;
+
+    const isSelected = selected.has(`blockInstance:${inst.id}`);
+    const accent = isSelected
+      ? theme.furnitureSelected
+      : hover?.type === 'blockInstance' && hover.id === inst.id
+        ? theme.wallHover
+        : null;
+
+    // 外形の内側を薄く塗って、面として掴める見た目にする
+    tracePolygon(frame, instanceVertices(scene, inst));
     ctx.setLineDash([]);
     ctx.fillStyle = theme.furniture;
     ctx.fill();
-    applyLayer(frame, layer, isSelected ? theme.furnitureSelected : isHover ? theme.wallHover : null);
-    if (isSelected) ctx.lineWidth = Math.max(2, ctx.lineWidth);
-    ctx.stroke();
 
-    drawFurnitureGlyph(frame, f, corners, layer);
+    drawPrimitives(frame, instancePrimitives(scene, inst, std), layer, accent);
 
-    const size = textPx(std.textHeight.furniture);
-    const worldSize = vp.toWorldLength(size);
-    if (furnitureLabelFits(f.name, f, worldSize) && vp.toScreenLength(Math.min(f.w, f.h)) > size) {
-      const c = vp.toScreen(vec(f.x, f.y));
+    const size = instanceSize(def, inst);
+    const label = instanceLabel(scene, inst);
+    const textSize = textPx(std.textHeight.furniture);
+    if (labelFits(label, size, vp.toWorldLength(textSize)) && vp.toScreenLength(Math.min(size.w, size.h)) > textSize) {
+      const c = vp.toScreen(vec(inst.x, inst.y));
       ctx.save();
+      ctx.setLineDash([]);
       ctx.translate(c.x, c.y);
-      ctx.rotate(-normalizeTextAngle(f.angle));
-      ctx.font = fontOf(size);
+      ctx.rotate(-normalizeTextAngle(inst.angle));
+      ctx.font = fontOf(textSize);
       ctx.fillStyle = theme.furnitureText;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(f.name, 0, 0);
+      ctx.fillText(label, 0, 0);
       ctx.restore();
     }
   }
 }
-
-/** 家具ごとの簡単な記号。細部より「それらしさ」を優先している */
-function drawFurnitureGlyph(frame: Frame, f: Furniture, corners: Vec[], layer: Layer): void {
-  const { ctx, vp } = frame;
-  ctx.save();
-  applyLayer(frame, layer);
-  const strokeLine = (a: Vec, b: Vec) => strokeSegments(frame, [{ a, b }]);
-  switch (f.kind) {
-    case 'bed': {
-      // 枕側に1本線を入れて頭の向きを示す
-      const t = 0.26;
-      strokeLine(lerpPt(corners[0], corners[3], t), lerpPt(corners[1], corners[2], t));
-      break;
-    }
-    case 'stairs': {
-      const steps = Math.max(2, Math.round(f.h / 250));
-      for (let i = 1; i < steps; i++) {
-        const t = i / steps;
-        strokeLine(lerpPt(corners[0], corners[3], t), lerpPt(corners[1], corners[2], t));
-      }
-      break;
-    }
-    case 'bath':
-    case 'sink':
-    case 'toilet':
-    case 'kitchen': {
-      const c = vp.toScreen(vec(f.x, f.y));
-      const ratio = f.kind === 'kitchen' ? 0.22 : 0.32;
-      const r = vp.toScreenLength(Math.min(f.w, f.h) * ratio);
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y, r, r, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      break;
-    }
-    default:
-      break;
-  }
-  ctx.restore();
-}
-
-const lerpPt = (a: Vec, b: Vec, t: number): Vec => add(a, mul(sub(b, a), t));
-
 
 // --- 汎用図形 ---
 

@@ -16,7 +16,7 @@ export type ToolId =
   | 'wall'
   | 'door'
   | 'window'
-  | 'furniture'
+  | 'block'
   | 'line'
   | 'arc'
   | 'point'

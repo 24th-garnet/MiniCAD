@@ -99,17 +99,17 @@ test('鏡像を2回かけると元に戻る', () => {
   for (let i = 0; i < before.length; i++) assert.ok(nearPt(before[i], after[i], 1e-6));
 });
 
-test('家具は座標と向きが追従し、寸法は変わらない', () => {
+test('ブロックは座標と向きが追従し、尺度は変わらない', () => {
   const scene = sampleScene();
-  const f = Object.values(scene.furniture).find((x) => x.name === 'ソファ')!;
-  const original = { x: f.x, y: f.y, w: f.w, h: f.h, angle: f.angle };
+  const inst = Object.values(scene.instances).find((x) => x.blockId === 'sofa')!;
+  const original = { x: inst.x, y: inst.y, scaleX: inst.scaleX, scaleY: inst.scaleY, angle: inst.angle };
 
-  transformEntities(scene, [{ type: 'furniture', id: f.id }], rotation(vec(0, 0), toRad(90)), { copy: false });
+  transformEntities(scene, [{ type: 'blockInstance', id: inst.id }], rotation(vec(0, 0), toRad(90)), { copy: false });
 
-  assert.ok(nearPt(vec(f.x, f.y), applyPoint(rotation(vec(0, 0), toRad(90)), vec(original.x, original.y))));
-  assert.ok(near(f.angle, original.angle + toRad(90), 1e-9));
-  assert.equal(f.w, original.w);
-  assert.equal(f.h, original.h);
+  assert.ok(nearPt(vec(inst.x, inst.y), applyPoint(rotation(vec(0, 0), toRad(90)), vec(original.x, original.y))));
+  assert.ok(near(inst.angle, original.angle + toRad(90), 1e-9));
+  assert.equal(inst.scaleX, original.scaleX);
+  assert.equal(inst.scaleY, original.scaleY);
 });
 
 test('鏡像したドアの開き勝手が見た目どおり反転する', () => {

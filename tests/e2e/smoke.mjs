@@ -91,7 +91,9 @@ async function run() {
         tool: ed.activeToolId,
         walls: Object.keys(s.walls).length,
         openings: Object.keys(s.openings).length,
-        furniture: Object.keys(s.furniture).length,
+        instances: Object.keys(s.instances).length,
+        blocks: Object.keys(s.blocks).length,
+        blockLabels: Object.values(s.blocks).map((b) => b.label),
         shapes: Object.keys(s.shapes).length,
         // 寸法を除いた作図図形。サンプルが寸法を持つので、数を見るときはこちら
         drawings: Object.values(s.shapes).filter((sh) => sh.shape !== 'dimension').length,
@@ -275,14 +277,14 @@ async function run() {
   );
 
   await step(
-    '家具を配置できる',
+    'ブロックを配置できる',
     async () => {
-      await page.keyboard.press('f');
+      await page.keyboard.press('b');
       await page.selectOption('.options-bar select', { index: 3 });
       await moveWorld(11500, 1500);
       await clickWorld(11500, 1500);
     },
-    (s) => assert.equal(s.furniture, 8),
+    (s) => assert.equal(s.instances, 8),
   );
 
   await step(
@@ -469,7 +471,7 @@ async function run() {
     },
     (s) => {
       assert.equal(s.walls, wallsBeforeCopy + 4, '壁が4本増えるはず');
-      assert.equal(s.furniture, 9, '範囲内の家具も複製されるはず');
+      assert.equal(s.instances, 9, '範囲内のブロックも複製されるはず');
       assert.equal(s.rooms.length, 5, '閉じた部屋が1つ増えるはず');
       // 壁4 + 家具1 + 室名1。建具は壁に乗って複製されるので選択には入らない
       assert.equal(s.selection, 6, '複製側が選択されているはず');
@@ -657,6 +659,44 @@ async function run() {
   );
 
   await step('オフセットを undo で戻せる', () => page.keyboard.press('Meta+z'), () => {});
+
+  // --- ブロック ---
+
+  const instancesBeforeBlock = (await state()).instances;
+  const blocksBeforeBlock = (await state()).blocks;
+  await step(
+    '選んだ図形をブロックにできる',
+    async () => {
+      await page.keyboard.press('v');
+      await clickWorld(5000, 9000);
+      assert.ok((await state()).selection >= 1, '図形を選択できていない');
+      await page.getByText('ブロックにする').click();
+    },
+    (s) => {
+      assert.equal(s.instances, instancesBeforeBlock + 1, 'ブロックの挿入が増えていない');
+      assert.equal(s.blocks, blocksBeforeBlock + 1, 'ブロック定義が増えていない');
+    },
+  );
+
+  await step(
+    'ブロックの名前を変えられる',
+    async () => {
+      const field = page.locator('.field').filter({ hasText: 'ブロック名' }).first();
+      await field.locator('input').fill('方位記号');
+      await field.locator('input').press('Enter');
+    },
+    (s) => assert.ok(s.blockLabels.includes('方位記号'), `改名できていない: ${s.blockLabels}`),
+  );
+
+  await step(
+    'ブロックを分解すると図形に戻る',
+    async () => {
+      await page.getByText('分解する').click();
+    },
+    (s) => assert.equal(s.instances, instancesBeforeBlock, 'インスタンスが残っている'),
+  );
+
+  await step('ブロック化を undo で戻せる', () => page.keyboard.press('Meta+z'), () => {});
 
   // --- 用紙枠と表題欄 ---
 

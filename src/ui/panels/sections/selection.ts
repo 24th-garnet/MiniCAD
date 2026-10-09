@@ -4,6 +4,8 @@ import type { EntityRef } from '../../../core/types.ts';
 import { checkboxField, el, numberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
+import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
+import { resolveSelection, selectionCenter } from '../../../core/selection.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
 /** 選択中のエンティティのプロパティ */
@@ -17,14 +19,14 @@ export class SelectionSection implements Section {
       return out;
     }
     if (sel.length > 1) {
-      out.push(readonlyField('選択数', `${sel.length} 個`), layerField(ctx), null);
+      out.push(readonlyField('選択数', `${sel.length} 個`), layerField(ctx), blockifyButton(ctx));
       out.push(
         el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除']),
       );
       return out;
     }
 
-    out.push(...fieldsFor(ctx, sel[0]), layerField(ctx));
+    out.push(...fieldsFor(ctx, sel[0]), layerField(ctx), blockifyButton(ctx));
     out.push(
       el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除 (Delete)']),
     );
@@ -81,16 +83,46 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): HTMLElement[] {
         checkboxField('開く向きを反転', op.flipY, (v) => edit(() => void (op.flipY = v))),
       ];
     }
-    case 'furniture': {
-      const f = scene.furniture[ref.id];
-      if (!f) return [];
+    case 'blockInstance': {
+      const inst = scene.instances[ref.id];
+      const def = inst ? blockOf(scene, inst) : null;
+      if (!inst || !def) return [];
+      const size = instanceSize(def, inst);
+      // 寸法は mm で編集させ、尺度に直して持つ。使う側から見れば家具のときと同じ
+      const setWidth = (v: number) => void (inst.scaleX = Math.sign(inst.scaleX) * (Math.max(50, v) / def.size.w));
+      const setHeight = (v: number) => void (inst.scaleY = Math.sign(inst.scaleY) * (Math.max(50, v) / def.size.h));
+
       return [
-        textField('名前', f.name, (v) => edit(() => void (f.name = v))),
-        numberField('幅', f.w, (v) => edit(() => void (f.w = Math.max(50, v))), { step: 50, suffix: 'mm' }),
-        numberField('奥行', f.h, (v) => edit(() => void (f.h = Math.max(50, v))), { step: 50, suffix: 'mm' }),
-        numberField('角度', toDeg(f.angle), (v) => edit(() => void (f.angle = toRad(v))), { step: 15, suffix: '°' }),
-        numberField('X', f.x, (v) => edit(() => void (f.x = v)), { step: 50, suffix: 'mm' }),
-        numberField('Y', f.y, (v) => edit(() => void (f.y = v)), { step: 50, suffix: 'mm' }),
+        def.source === 'user'
+          ? textField('ブロック名', def.label, (v) => edit(() => renameBlock(scene, def.id, v)))
+          : readonlyField('種類', def.label),
+        textField('表示名', inst.label ?? '', (v) => edit(() => void (inst.label = v.trim() || null))),
+        numberField('幅', size.w, (v) => edit(() => setWidth(v)), { step: 50, suffix: 'mm' }),
+        numberField('奥行', size.h, (v) => edit(() => setHeight(v)), { step: 50, suffix: 'mm' }),
+        numberField('角度', toDeg(inst.angle), (v) => edit(() => void (inst.angle = toRad(v))), {
+          step: 15,
+          suffix: '°',
+        }),
+        numberField('X', inst.x, (v) => edit(() => void (inst.x = v)), { step: 50, suffix: 'mm' }),
+        numberField('Y', inst.y, (v) => edit(() => void (inst.y = v)), { step: 50, suffix: 'mm' }),
+        checkboxField('左右を反転', inst.scaleX < 0, (v) =>
+          edit(() => void (inst.scaleX = Math.abs(inst.scaleX) * (v ? -1 : 1))),
+        ),
+        el(
+          'button',
+          {
+            class: 'wide',
+            type: 'button',
+            title: 'ブロックを図形に戻す',
+            onclick: () => {
+              const created = ctx.editor.store.scene.instances[ref.id]
+                ? (ctx.edit(() => void explodeInstance(scene, ref.id)), true)
+                : false;
+              if (created) ctx.editor.store.clearSelection();
+            },
+          },
+          ['分解する'],
+        ),
       ];
     }
     case 'roomLabel': {
@@ -131,3 +163,45 @@ function layerField(ctx: PanelContext): HTMLElement | null {
   );
 }
 
+
+/** 既存のブロックと重ならない表示名を作る */
+function uniqueBlockLabel(scene: PanelContext['editor']['store']['scene'], base: string): string {
+  const taken = new Set(Object.values(scene.blocks).map((b) => b.label));
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 1000; i++) {
+    if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+/**
+ * 選んだ図形をブロックにする。
+ * 対象は汎用図形だけ。壁や建具はノードのグラフを定義に持ち込むことになるので入れない。
+ */
+function blockifyButton(ctx: PanelContext): HTMLElement | null {
+  const scene = ctx.editor.store.scene;
+  const shapeIds = ctx.editor.store.selection.filter((r) => r.type === 'shape').map((r) => r.id);
+  if (shapeIds.length === 0) return null;
+
+  return el(
+    'button',
+    {
+      class: 'wide',
+      type: 'button',
+      title: '選んだ図形を名前付きの部品にする',
+      onclick: () => {
+        const center = selectionCenter(scene, resolveSelection(scene, ctx.editor.store.selection));
+        if (!center) return;
+        // モーダルで名前を聞かない。既定の名前で作って、あとから改名できるようにする
+        const label = uniqueBlockLabel(scene, '部品');
+        let created: string | null = null;
+        ctx.edit(() => {
+          created = defineBlock(scene, shapeIds, center, label);
+          return created !== null;
+        });
+        if (created) ctx.editor.store.setSelection([{ type: 'blockInstance', id: created }]);
+      },
+    },
+    ['ブロックにする'],
+  );
+}

@@ -14,7 +14,7 @@ import type { EntityRef, Id, Scene } from './types.ts';
 export interface ResolvedSelection {
   nodeIds: Id[];
   openingIds: Id[];
-  furnitureIds: Id[];
+  instanceIds: Id[];
   roomLabelIds: Id[];
   shapeIds: Id[];
 }
@@ -22,7 +22,7 @@ export interface ResolvedSelection {
 /** 操作開始時の位置。ドラッグ中に同じ delta を何度適用しても累積しないようにするため */
 export interface MoveOrigins {
   nodes: Map<Id, Vec>;
-  furniture: Map<Id, Vec>;
+  instances: Map<Id, Vec>;
   roomLabels: Map<Id, Vec>;
   /** 開口は壁に沿った距離で持つ */
   openings: Map<Id, number>;
@@ -33,7 +33,7 @@ export interface MoveOrigins {
 export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelection {
   const nodeIds = new Set<Id>();
   const openingIds = new Set<Id>();
-  const furnitureIds = new Set<Id>();
+  const instanceIds = new Set<Id>();
   const roomLabelIds = new Set<Id>();
   const shapeIds = new Set<Id>();
 
@@ -53,8 +53,8 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
       case 'opening':
         if (scene.openings[ref.id]) openingIds.add(ref.id);
         break;
-      case 'furniture':
-        if (scene.furniture[ref.id]) furnitureIds.add(ref.id);
+      case 'blockInstance':
+        if (scene.instances[ref.id]) instanceIds.add(ref.id);
         break;
       case 'roomLabel':
         if (scene.roomLabels[ref.id]) roomLabelIds.add(ref.id);
@@ -67,7 +67,7 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
   return {
     nodeIds: [...nodeIds],
     openingIds: [...openingIds],
-    furnitureIds: [...furnitureIds],
+    instanceIds: [...instanceIds],
     roomLabelIds: [...roomLabelIds],
     shapeIds: [...shapeIds],
   };
@@ -77,7 +77,7 @@ export function isEmptySelection(sel: ResolvedSelection): boolean {
   return (
     sel.nodeIds.length === 0 &&
     sel.openingIds.length === 0 &&
-    sel.furnitureIds.length === 0 &&
+    sel.instanceIds.length === 0 &&
     sel.roomLabelIds.length === 0 &&
     sel.shapeIds.length === 0
   );
@@ -86,15 +86,15 @@ export function isEmptySelection(sel: ResolvedSelection): boolean {
 export function captureOrigins(scene: Scene, sel: ResolvedSelection): MoveOrigins {
   const origins: MoveOrigins = {
     nodes: new Map(),
-    furniture: new Map(),
+    instances: new Map(),
     roomLabels: new Map(),
     openings: new Map(),
     shapes: new Map(),
   };
   for (const id of sel.nodeIds) origins.nodes.set(id, nodePos(scene, id));
-  for (const id of sel.furnitureIds) {
-    const f = scene.furniture[id];
-    if (f) origins.furniture.set(id, vec(f.x, f.y));
+  for (const id of sel.instanceIds) {
+    const inst = scene.instances[id];
+    if (inst) origins.instances.set(id, vec(inst.x, inst.y));
   }
   for (const id of sel.roomLabelIds) {
     const l = scene.roomLabels[id];
@@ -115,9 +115,9 @@ export function captureOrigins(scene: Scene, sel: ResolvedSelection): MoveOrigin
 export function selectionCenter(scene: Scene, sel: ResolvedSelection): Vec | null {
   const pts: Vec[] = [];
   for (const id of sel.nodeIds) pts.push(nodePos(scene, id));
-  for (const id of sel.furnitureIds) {
-    const f = scene.furniture[id];
-    if (f) pts.push(vec(f.x, f.y));
+  for (const id of sel.instanceIds) {
+    const inst = scene.instances[id];
+    if (inst) pts.push(vec(inst.x, inst.y));
   }
   for (const id of sel.roomLabelIds) {
     const l = scene.roomLabels[id];
@@ -143,11 +143,11 @@ export function placeSelection(scene: Scene, origins: MoveOrigins, delta: Vec): 
     node.x = origin.x + delta.x;
     node.y = origin.y + delta.y;
   }
-  for (const [id, origin] of origins.furniture) {
-    const item = scene.furniture[id];
-    if (!item) continue;
-    item.x = origin.x + delta.x;
-    item.y = origin.y + delta.y;
+  for (const [id, origin] of origins.instances) {
+    const inst = scene.instances[id];
+    if (!inst) continue;
+    inst.x = origin.x + delta.x;
+    inst.y = origin.y + delta.y;
   }
   for (const [id, origin] of origins.roomLabels) {
     const label = scene.roomLabels[id];

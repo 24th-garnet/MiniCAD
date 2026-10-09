@@ -5,15 +5,28 @@ import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 import {
   doorSwing,
-  furnitureLabelFits,
-  furniturePolygon,
   openingFrame,
   wallOutline,
   type Segment,
 } from '../core/shape.ts';
 import { paperToWorld, type LineType } from '../core/standard.ts';
+import {
+  dxfArc,
+  dxfBlock,
+  dxfInsert,
+  dxfLine,
+  dxfPrimitives,
+  dxfText,
+  fmt,
+  normalizeTextDeg,
+} from './dxfPrimitive.ts';
+import {
+  blockOf,
+  instanceLabel,
+  instanceSize,
+  labelFits,
+} from '../core/block.ts';
 import { shapePrimitives } from '../core/shapes.ts';
-import { dxfArc, dxfLine, dxfPrimitives, dxfText, fmt, normalizeTextDeg } from './dxfPrimitive.ts';
 import type { Settings } from '../core/store.ts';
 import type { Room, Scene } from '../core/types.ts';
 
@@ -108,17 +121,28 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     }
   }
 
-  // 家具
+  // ブロックの挿入。同じ定義は1つだけ書き、INSERT で使い回す
+  const usedBlocks = new Map<string, string[]>();
   const furnitureSize = paperToWorld(std.textHeight.furniture, std);
-  for (const f of Object.values(scene.furniture)) {
-    const layer = layerOf(f.layerId, LAYER_IDS.furniture);
+  for (const inst of Object.values(scene.instances)) {
+    const layer = layerOf(inst.layerId, LAYER_IDS.furniture);
     if (!printable(layer)) continue;
-    const corners = furniturePolygon(f);
-    for (let i = 0; i < corners.length; i++) {
-      pushLine(corners[i], corners[(i + 1) % corners.length], layer);
+    const def = blockOf(scene, inst);
+    if (!def) continue;
+
+    if (!usedBlocks.has(def.name)) {
+      // 定義の中身は画層 0 に置いて、INSERT 側の画層を継承させる
+      const zeroLayer = { ...layer, name: '0' };
+      const body = Object.values(def.shapes).flatMap((shape) =>
+        dxfPrimitives(shapePrimitives({ ...scene, shapes: def.shapes }, shape, std), zeroLayer, std, text),
+      );
+      usedBlocks.set(def.name, dxfBlock(def.name, vec(0, 0), body));
     }
-    if (furnitureLabelFits(f.name, f, furnitureSize)) {
-      pushText(f.name, vec(f.x, f.y), furnitureSize, normalizeTextDeg(toDeg(f.angle)), layer);
+    entities.push(dxfInsert(def.name, vec(inst.x, inst.y), inst.scaleX, inst.scaleY, toDeg(inst.angle), layer.name));
+
+    const label = instanceLabel(scene, inst);
+    if (labelFits(label, instanceSize(def, inst), furnitureSize)) {
+      pushText(label, vec(inst.x, inst.y), furnitureSize, normalizeTextDeg(toDeg(inst.angle)), layer);
     }
   }
 
@@ -234,9 +258,9 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
 
   g(0, 'ENDSEC');
 
-  // 空でも BLOCKS セクションを要求する読み手がいる
   g(0, 'SECTION');
   g(2, 'BLOCKS');
+  for (const block of usedBlocks.values()) out.push(...block);
   g(0, 'ENDSEC');
 
   g(0, 'SECTION');

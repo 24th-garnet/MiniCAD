@@ -15,7 +15,7 @@ const TOOL_GLYPH: Record<ToolId, string> = {
   wall: '▬',
   door: '⌒',
   window: '▤',
-  furniture: '▦',
+  block: '▦',
   line: '／',
   arc: '○',
   point: '・',

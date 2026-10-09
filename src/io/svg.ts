@@ -1,12 +1,18 @@
 import { add, mul, sub, toDeg, vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { paperDimensions, sheetPrimitives } from '../core/sheet.ts';
+import {
+  blockOf,
+  instanceLabel,
+  instancePrimitives,
+  instanceSize,
+  instanceVertices,
+  labelFits,
+} from '../core/block.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 import {
   doorSwing,
-  furnitureLabelFits,
-  furniturePolygon,
   openingFrame,
   openingQuad,
   wallOutline,
@@ -119,17 +125,21 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     }
   }
 
-  // --- 家具 ---
-  for (const f of Object.values(scene.furniture)) {
-    const layer = layerOf(f.layerId, LAYER_IDS.furniture);
+  // --- ブロックの挿入 ---
+  for (const inst of Object.values(scene.instances)) {
+    const layer = layerOf(inst.layerId, LAYER_IDS.furniture);
     if (!visible(layer)) continue;
-    const w = strokeWidth(layer);
+    const def = blockOf(scene, inst);
+    if (!def) continue;
     out.push(
-      `<polygon points="${pointsAttr(furniturePolygon(f))}" fill="rgba(120,113,108,0.14)" stroke="${layer.color}" stroke-width="${round(w)}"/>`,
+      `<polygon points="${pointsAttr(instanceVertices(scene, inst))}" fill="rgba(120,113,108,0.14)" stroke="none"/>`,
     );
+    out.push(...svgPrimitives(instancePrimitives(scene, inst, std), layer, std));
+
+    const label = instanceLabel(scene, inst);
     const nameSize = paperToWorld(std.textHeight.furniture, std);
-    if (furnitureLabelFits(f.name, f, nameSize)) {
-      out.push(textTag(f.name, vec(f.x, f.y), toDeg(f.angle), nameSize, theme.furnitureText));
+    if (labelFits(label, instanceSize(def, inst), nameSize)) {
+      out.push(textTag(label, vec(inst.x, inst.y), toDeg(inst.angle), nameSize, theme.furnitureText));
     }
   }
 

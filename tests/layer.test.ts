@@ -65,17 +65,17 @@ test('画層を消すと中身が既定の画層へ移る', () => {
   const scene = sampleScene();
   const extra = addLayer(scene.layers, { name: 'A-TEMP' });
   const wall = Object.values(scene.walls)[0];
-  const furniture = Object.values(scene.furniture)[0];
+  const instance = Object.values(scene.instances)[0];
   setLayerOf(scene, [
     { type: 'wall', id: wall.id },
-    { type: 'furniture', id: furniture.id },
+    { type: 'blockInstance', id: instance.id },
   ], extra.id);
   assert.equal(wall.layerId, extra.id);
 
   assert.equal(removeLayer(scene, extra.id), true);
   assert.equal(scene.layers[extra.id], undefined);
   assert.equal(wall.layerId, DEFAULT_LAYER_FOR.wall, '壁が既定の画層に戻っていない');
-  assert.equal(furniture.layerId, DEFAULT_LAYER_FOR.furniture, '家具が既定の画層に戻っていない');
+  assert.equal(instance.layerId, DEFAULT_LAYER_FOR.blockInstance, 'ブロックが既定の画層に戻っていない');
 });
 
 test('選択の画層をまとめて変えられる', () => {
