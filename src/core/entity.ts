@@ -1,5 +1,5 @@
 import { vec, type Bounds, type Vec } from './geometry.ts';
-import { getLayer, type Layer, type LayerId } from './layer.ts';
+import { getLayer, isBuiltinLayer, type Layer, type LayerId } from './layer.ts';
 import { nodePos, openingsOnWall, pruneOrphanNodes, wallEnds, wallsAtNode } from './ops.ts';
 import { furniturePolygon, openingFrame } from './shape.ts';
 import { shapeVertices } from './shapes.ts';
@@ -211,6 +211,35 @@ export function sceneBounds(scene: Scene): Bounds | null {
     }
   }
   return any ? { min: vec(minX, minY), max: vec(maxX, maxY) } : null;
+}
+
+/**
+ * 画層を消す。所属していたエンティティは種別ごとの既定画層へ移す。
+ * 組み込みの画層は消せない（フォールバック先が無くなるため）。
+ */
+export function removeLayer(scene: Scene, id: LayerId): boolean {
+  if (isBuiltinLayer(id) || !scene.layers[id]) return false;
+
+  for (const type of ENTITY_TYPES) {
+    if (type === 'node') continue;
+    const kind = ENTITY_KINDS[type];
+    const fallback = DEFAULT_LAYER_FOR[type as Exclude<EntityType, 'node'>];
+    for (const entityId of Object.keys(kind.table(scene))) {
+      if (kind.layerIdOf(scene, entityId) === id) kind.setLayerId(scene, entityId, fallback);
+    }
+  }
+  delete scene.layers[id];
+  return true;
+}
+
+/** 選択したものの画層をまとめて変える */
+export function setLayerOf(scene: Scene, refs: EntityRef[], layerId: LayerId): boolean {
+  if (!scene.layers[layerId]) return false;
+  let changed = false;
+  for (const ref of refs) {
+    if (ENTITY_KINDS[ref.type].setLayerId(scene, ref.id, layerId)) changed = true;
+  }
+  return changed;
 }
 
 /** 削除。付随するものを巻き込んだあと、宙に浮いたノードを掃除する */

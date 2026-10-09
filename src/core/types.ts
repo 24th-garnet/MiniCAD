@@ -1,9 +1,11 @@
 import type { Vec } from './geometry.ts';
+import { newId, type Id } from './id.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
 
-export type Id = string;
+export { newId };
+export type { Id };
 
 /** 壁の端点。複数の壁から共有されるので、動かすと接続した壁がすべて追従する */
 export interface Node {
@@ -139,8 +141,3 @@ export interface Room {
   labelId: Id | null;
 }
 
-let counter = 0;
-export function newId(prefix: string): Id {
-  counter += 1;
-  return `${prefix}${counter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}

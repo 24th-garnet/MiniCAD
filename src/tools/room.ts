@@ -1,5 +1,5 @@
 import { pointInPolygon } from '../core/geometry.ts';
-import { LAYER_IDS } from '../core/layer.ts';
+import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { roomAt } from '../core/rooms.ts';
 import { newId } from '../core/types.ts';
 import type { Frame } from '../render/renderer.ts';
@@ -51,7 +51,8 @@ export class RoomTool implements Tool {
         return true;
       }
       const id = newId('l');
-      store.scene.roomLabels[id] = { id, x: room.center.x, y: room.center.y, name: label, layerId: LAYER_IDS.roomName };
+      const layerId = resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.roomName);
+      store.scene.roomLabels[id] = { id, x: room.center.x, y: room.center.y, name: label, layerId };
       return true;
     });
   }

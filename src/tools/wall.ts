@@ -1,4 +1,5 @@
 import { angleOf, dist, norm, sub, toDeg, type Vec } from '../core/geometry.ts';
+import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { addWall, findOrCreateNode, splitWall } from '../core/ops.ts';
 import { pointFromPolar } from '../core/snap.ts';
 import type { Id } from '../core/types.ts';
@@ -76,7 +77,7 @@ export class WallTool implements Tool {
       const a = resolveNode(editor, start, tolerance);
       const b = resolveNode(editor, end, tolerance);
       if (a === b) return false;
-      addWall(scene, a, b, store.settings.wallThickness);
+      addWall(scene, a, b, store.settings.wallThickness, resolveNewLayer(scene.layers, store.settings.currentLayerId, LAYER_IDS.wall));
       return true;
     });
 

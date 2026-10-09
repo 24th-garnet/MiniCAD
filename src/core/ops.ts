@@ -1,5 +1,5 @@
 import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
-import { LAYER_IDS } from './layer.ts';
+import { LAYER_IDS, type LayerId } from './layer.ts';
 import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
 
 /** 同一ノードとみなす距離 (mm) */
@@ -29,14 +29,14 @@ export function findOrCreateNode(scene: Scene, p: Vec, tolerance = NODE_MERGE_TO
   return id;
 }
 
-export function addWall(scene: Scene, a: Id, b: Id, thickness: number): Wall | null {
+export function addWall(scene: Scene, a: Id, b: Id, thickness: number, layerId: LayerId = LAYER_IDS.wall): Wall | null {
   if (a === b) return null;
   const existing = Object.values(scene.walls).find(
     (w) => (w.a === a && w.b === b) || (w.a === b && w.b === a),
   );
   if (existing) return existing;
   const id = newId('w');
-  const wall: Wall = { id, a, b, thickness, layerId: LAYER_IDS.wall };
+  const wall: Wall = { id, a, b, thickness, layerId };
   scene.walls[id] = wall;
   return wall;
 }
@@ -60,7 +60,7 @@ export function splitWall(scene: Scene, wallId: Id, p: Vec, tolerance = 20): Id 
 
   const originalB = wall.b;
   wall.b = midId;
-  const second = addWall(scene, midId, originalB, wall.thickness);
+  const second = addWall(scene, midId, originalB, wall.thickness, wall.layerId);
 
   for (const op of Object.values(scene.openings)) {
     if (op.wallId !== wallId) continue;

@@ -105,6 +105,9 @@ async function run() {
         layerRows: document.querySelectorAll('.layer-row').length,
         wallLayerVisible: s.layers['wall'].visible,
         wallLayerLocked: s.layers['wall'].locked,
+        layerNames: Object.values(s.layers).map((l) => l.name),
+        currentLayerId: ed.store.settings.currentLayerId,
+        shapeLayers: Object.values(s.shapes).map((sh) => s.layers[sh.layerId]?.name),
       };
     });
 
@@ -489,6 +492,89 @@ async function run() {
     (s) => {
       assert.equal(s.wallLayerLocked, false);
       assert.equal(s.selection, 1);
+    },
+  );
+
+  // --- 画層の管理 ---
+
+  await step(
+    '画層を追加できる',
+    () => page.getByText('＋ 画層を追加').click(),
+    (s) => {
+      assert.equal(s.layerRows, 9);
+      assert.ok(s.layerNames.includes('A-USER'), `追加した画層が見当たらない: ${s.layerNames}`);
+    },
+  );
+
+  await step(
+    '画層を改名できる',
+    async () => {
+      const row = page.locator('.layer-row').last();
+      await row.locator('input.layer-name').fill('A-SITE');
+      await row.locator('input.layer-name').press('Enter');
+    },
+    (s) => assert.ok(s.layerNames.includes('A-SITE'), `改名できていない: ${s.layerNames}`),
+  );
+
+  await step(
+    '既存と同じ名前には改名できない',
+    async () => {
+      const row = page.locator('.layer-row').last();
+      await row.locator('input.layer-name').fill('A-WALL');
+      await row.locator('input.layer-name').press('Enter');
+    },
+    (s) => {
+      assert.ok(s.layerNames.includes('A-SITE'), '重複する名前を受け付けてしまった');
+      assert.equal(s.layerNames.filter((n) => n === 'A-WALL').length, 1);
+    },
+  );
+
+  await step(
+    '新規作成の画層を指定できる',
+    () => selectByLabel('新規作成の画層', 'A-SITE'),
+    (s) => assert.ok(s.currentLayerId, '現在の画層が設定されていない'),
+  );
+
+  let shapesBefore = 0;
+  await step(
+    '指定した画層に新しい線が乗る',
+    async () => {
+      shapesBefore = (await state()).shapes;
+      await page.keyboard.press('l');
+      await clickWorld(2000, -2000);
+      await clickWorld(6000, -2000);
+      // 連続モードは前の手順で ON のままなので、Enter で確定する
+      await page.keyboard.press('Enter');
+    },
+    (s) => {
+      assert.equal(s.shapes, shapesBefore + 1);
+      assert.ok(s.shapeLayers.includes('A-SITE'), `指定した画層に乗っていない: ${s.shapeLayers}`);
+    },
+  );
+
+  await step(
+    '選択したものの画層を変えられる',
+    async () => {
+      await page.keyboard.press('v');
+      await clickWorld(4000, -2000);
+      assert.equal((await state()).selection, 1, '線を選択できていない');
+      await selectByLabel('画層', 'A-GRID');
+    },
+    (s) => assert.equal(s.selection, 1),
+  );
+
+  await step(
+    '画層を削除すると中身は既定の画層へ移る',
+    async () => {
+      await page.keyboard.press('Escape');
+      const row = page.locator('.layer-row').last();
+      await row.locator('.layer-delete').click();
+    },
+    (s) => {
+      assert.equal(s.layerRows, 8);
+      assert.ok(!s.layerNames.includes('A-SITE'));
+      assert.equal(s.shapes, shapesBefore + 1, '画層を消したのに図形まで消えている');
+      assert.ok(!s.shapeLayers.includes('A-SITE'), '消した画層が残っている');
     },
   );
 

@@ -1,6 +1,6 @@
 import { add, angleOf, closestOnSegment, dist, dot, mul, norm, perp, sub, vec, type Vec } from '../core/geometry.ts';
 import { wallEnds } from '../core/ops.ts';
-import { LAYER_IDS } from '../core/layer.ts';
+import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { FURNITURE_PRESETS, furniturePolygon, type FurniturePreset } from '../core/shape.ts';
 import { newId, type Furniture } from '../core/types.ts';
 import type { Frame } from '../render/renderer.ts';
@@ -67,7 +67,7 @@ export class FurnitureTool implements Tool {
       w: this.preset.w,
       h: this.preset.h,
       angle: this.angle,
-      layerId: LAYER_IDS.furniture,
+      layerId: resolveNewLayer(editor.store.scene.layers, editor.store.settings.currentLayerId, LAYER_IDS.furniture),
     };
     if (skipWallAlign) return this.snapToGrid(editor, base);
 

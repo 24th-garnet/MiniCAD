@@ -3,6 +3,7 @@ import { wallLength } from '../../../core/ops.ts';
 import type { EntityRef } from '../../../core/types.ts';
 import { checkboxField, el, numberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
+import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
 /** 選択中のエンティティのプロパティ */
@@ -16,14 +17,14 @@ export class SelectionSection implements Section {
       return out;
     }
     if (sel.length > 1) {
+      out.push(readonlyField('選択数', `${sel.length} 個`), layerField(ctx), null);
       out.push(
-        readonlyField('選択数', `${sel.length} 個`),
         el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除']),
       );
       return out;
     }
 
-    out.push(...fieldsFor(ctx, sel[0]));
+    out.push(...fieldsFor(ctx, sel[0]), layerField(ctx));
     out.push(
       el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除 (Delete)']),
     );
@@ -104,3 +105,29 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): HTMLElement[] {
     }
   }
 }
+
+/**
+ * 選択したものの画層。複数選んでいればまとめて変える。
+ * ノードは画層を持たない（接続する壁から導く）ので、そのときは出さない。
+ */
+function layerField(ctx: PanelContext): HTMLElement | null {
+  const scene = ctx.editor.store.scene;
+  const refs = ctx.editor.store.selection.filter((r) => r.type !== 'node');
+  if (refs.length === 0) return null;
+
+  const current = new Set(refs.map((r) => layerOfRef(scene, r)?.id).filter((id) => id !== undefined));
+  const value = current.size === 1 ? [...current][0]! : '';
+
+  return selectField(
+    '画層',
+    value,
+    [
+      ...(current.size === 1 ? [] : [{ value: '', label: '(複数の画層)' }]),
+      ...Object.values(scene.layers).map((l) => ({ value: l.id, label: l.name })),
+    ],
+    (v) => {
+      if (v) ctx.edit(() => setLayerOf(scene, refs, v));
+    },
+  );
+}
+

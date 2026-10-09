@@ -1,5 +1,5 @@
 import { angleOf, dist, norm, sub, toDeg, type Vec } from '../core/geometry.ts';
-import { LAYER_IDS } from '../core/layer.ts';
+import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
 import { pointFromPolar } from '../core/snap.ts';
 import type { TextAlign } from '../core/primitive.ts';
@@ -119,7 +119,11 @@ export class ShapeTool implements Tool {
 
   private build(editor: Editor): Shape | null {
     const pts = this.points;
-    const layerId = SHAPE_GEOMETRY[shapeKindOf(this.mode, this.arcMode)].defaultLayer;
+    const layerId = resolveNewLayer(
+      editor.store.scene.layers,
+      editor.store.settings.currentLayerId,
+      SHAPE_GEOMETRY[shapeKindOf(this.mode, this.arcMode)].defaultLayer,
+    );
     const id = newId('s');
 
     switch (this.mode) {
@@ -154,7 +158,6 @@ export class ShapeTool implements Tool {
       case 'point':
         return { id, shape: 'point', layerId, at: pts[0] };
     }
-    void editor;
   }
 
   numericEntry(_editor: Editor): NumericEntry | null {

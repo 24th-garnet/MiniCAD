@@ -1,6 +1,6 @@
 import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
 import { clampOpening, wallEnds, wallLength } from '../core/ops.ts';
-import { LAYER_IDS } from '../core/layer.ts';
+import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { openingFrame, openingQuad } from '../core/shape.ts';
 import { newId, type Id, type Opening, type OpeningKind } from '../core/types.ts';
 import { theme } from '../render/theme.ts';
@@ -64,7 +64,7 @@ export class OpeningTool implements Tool {
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
-      layerId: LAYER_IDS.opening,
+      layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
     };
     store.commit(() => {
       store.scene.openings[id] = opening;
