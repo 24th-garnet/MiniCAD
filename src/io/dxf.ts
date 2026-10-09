@@ -5,9 +5,17 @@ import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 import { wallOutline, type Segment } from '../core/shape.ts';
 import { openingPrimitives } from '../core/opening.ts';
-import { paperToWorld } from '../core/standard.ts';
+import { paperToWorld, type DrawingStandard } from '../core/standard.ts';
 import {
+  dimensionGeometry,
+  dimensionPrimitives,
+  EXTENSION_OVERSHOOT_PAPER_MM,
+  TICK_PAPER_MM,
+} from '../core/dimension.ts';
+import {
+  dimensionBlockName,
   dxfBlock,
+  dxfDimension,
   dxfInsert,
   dxfLine,
   dxfPrimitives,
@@ -41,6 +49,14 @@ import type { Room, Scene } from '../core/types.ts';
 export interface DxfOptions {
   /** 日本語を \U+XXXX に変換して ASCII だけのファイルにする */
   escapeUnicode: boolean;
+  /**
+   * 寸法を本物の DIMENSION エンティティで書く。
+   *
+   * false にすると線と文字に分解する（従来の出力）。R12 の DIMENSION を
+   * 正しく読めない簡易ビューアや、ブロックを捨てて DIMSTYLE から描き直す
+   * 受け手のための逃げ道。
+   */
+  trueDimension: boolean;
 }
 
 /** 線種の定義。長さはワールドの mm（1:100 の紙で見たときに妥当な見た目になる値） */
@@ -51,6 +67,43 @@ const LTYPE_DEFS: { name: string; description: string; pattern: number[] }[] = [
   { name: 'CENTER', description: '____ _ ____', pattern: [1200, -200, 200, -200] },
   { name: 'PHANTOM', description: '____ _ _ __', pattern: [1200, -200, 200, -200, 200, -200] },
 ];
+
+/** 寸法のスタイル名。DIMSTYLE テーブルと各 DIMENSION のコード 3 で使う */
+const DIMSTYLE_NAME = 'MINICAD';
+
+/** ヘッダ変数名 → DIMSTYLE テーブル内でのグループコード */
+const DIMSTYLE_CODES: Record<string, number> = {
+  $DIMSCALE: 40, $DIMASZ: 41, $DIMEXO: 42, $DIMEXE: 44,
+  $DIMTXT: 140, $DIMTSZ: 142, $DIMGAP: 147, $DIMLFAC: 144,
+  $DIMTAD: 77, $DIMTIH: 73, $DIMTOH: 74, $DIMTOFL: 172, $DIMZIN: 78,
+};
+
+/**
+ * 寸法の見た目を決める変数。
+ *
+ * 長さ系はすべて**ワールドの mm**。モデル空間を原寸で書いて $DIMSCALE = 1 にしている以上、
+ * DIM* の長さ量も世界 mm でないと受け手での見た目が合わない。
+ * 値は core/dimension.ts が画面に描くときの式と同じものを使う。
+ */
+function dimVariables(std: DrawingStandard): { name: string; code: number; value: number }[] {
+  const tick = paperToWorld(TICK_PAPER_MM, std);
+  return [
+    { name: '$DIMSCALE', code: 40, value: 1 },
+    { name: '$DIMASZ', code: 40, value: tick },
+    // DIMTSZ > 0 で矢印ではなく45度の斜線になる（建築の流儀）
+    { name: '$DIMTSZ', code: 40, value: tick },
+    { name: '$DIMEXO', code: 40, value: 0 },
+    { name: '$DIMEXE', code: 40, value: paperToWorld(EXTENSION_OVERSHOOT_PAPER_MM, std) },
+    { name: '$DIMTXT', code: 40, value: paperToWorld(std.textHeight.dimension, std) },
+    { name: '$DIMGAP', code: 40, value: paperToWorld(std.textHeight.dimension * 0.7, std) },
+    { name: '$DIMLFAC', code: 40, value: 1 },
+    { name: '$DIMTAD', code: 70, value: 1 }, // 文字は寸法線の上
+    { name: '$DIMTIH', code: 70, value: 0 }, // 文字を寸法線と平行に
+    { name: '$DIMTOH', code: 70, value: 0 },
+    { name: '$DIMTOFL', code: 70, value: 1 }, // 補助線の間に必ず寸法線を引く
+    { name: '$DIMZIN', code: 70, value: 0 },
+  ];
+}
 
 export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, options: DxfOptions): string {
   const std = scene.standard;
@@ -121,10 +174,35 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     entities.push(...dxfPrimitives(sheetPrimitives(scene.sheet, std), sheetLayer, std, text));
   }
 
-  // 汎用図形
+  // 汎用図形。寸法だけは本物の DIMENSION エンティティとして別経路で出す
+  let dimSeq = 0;
   for (const shape of Object.values(scene.shapes)) {
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
     if (!printable(layer)) continue;
+
+    if (shape.shape === 'dimension' && options.trueDimension) {
+      const g = dimensionGeometry(scene, shape, std);
+      if (!g) continue;
+      // 実体は無名ブロックに入れる。本体は画層 0 に置き、DIMENSION 側の画層を継がせる
+      const name = dimensionBlockName(dimSeq++);
+      const body = dxfPrimitives(dimensionPrimitives(scene, shape, std), { ...layer, name: '0' }, std, text);
+      usedBlocks.set(name, dxfBlock(name, vec(0, 0), body, 1));
+      entities.push(
+        dxfDimension({
+          blockName: name,
+          layerName: layer.name,
+          styleName: DIMSTYLE_NAME,
+          defPoint: g.line.b,
+          textMid: g.textAt,
+          ext1: g.a,
+          ext2: g.b,
+          text: text(g.text),
+          measurement: g.value,
+        }),
+      );
+      continue;
+    }
+
     entities.push(...dxfPrimitives(shapePrimitives(scene, shape, std), layer, std, text));
   }
 
@@ -167,6 +245,12 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   g(70, 1);
   g(9, '$LUNITS'); // 2 = 十進表記
   g(70, 2);
+  g(9, '$DIMSTYLE');
+  g(2, DIMSTYLE_NAME);
+  for (const v of dimVariables(std)) {
+    g(9, v.name);
+    g(v.code, v.value);
+  }
   g(9, '$EXTMIN');
   g(10, bounds.min.x);
   g(20, bounds.min.y);
@@ -223,6 +307,19 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   g(42, 2.5);
   g(3, 'txt');
   g(4, '');
+  g(0, 'ENDTAB');
+
+  // DIMSTYLE。R13 以降にしかない変数（DIMDEC など）は書かない
+  g(0, 'TABLE');
+  g(2, 'DIMSTYLE');
+  g(70, 1);
+  g(0, 'DIMSTYLE');
+  g(2, DIMSTYLE_NAME);
+  g(70, 0);
+  for (const v of dimVariables(std)) {
+    // ヘッダ変数名 $DIMxxx を DIMSTYLE のグループコードに読み替える
+    g(DIMSTYLE_CODES[v.name], v.value);
+  }
   g(0, 'ENDTAB');
 
   g(0, 'ENDSEC');

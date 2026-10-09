@@ -61,6 +61,7 @@ export class FileActions implements Panel {
           const store = ctx.editor.store;
           downloadDxf(store.scene, ctx.editor.rooms, store.settings, {
             escapeUnicode: store.settings.dxfEscapeUnicode,
+            trueDimension: store.settings.dxfTrueDimension,
           });
         },
         'DXF (R12) で書き出す — 他の CAD で開けます',

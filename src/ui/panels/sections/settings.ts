@@ -29,6 +29,9 @@ export class SettingsSection implements Section {
       checkboxField('DXFの日本語を \\U+ でエスケープ', settings.dxfEscapeUnicode, (v) =>
         set(() => void (settings.dxfEscapeUnicode = v)),
       ),
+      checkboxField('DXFの寸法を DIMENSION で出す', settings.dxfTrueDimension, (v) =>
+        set(() => void (settings.dxfTrueDimension = v)),
+      ),
     ];
   }
 }

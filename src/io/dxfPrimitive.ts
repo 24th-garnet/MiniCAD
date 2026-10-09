@@ -139,10 +139,12 @@ export function dxfPrimitives(
 /**
  * ブロック定義。中身は画層 `0` に置く。
  * DXF の約束で、画層 0 のエンティティは INSERT 側の画層を継承する。
+ *
+ * `flags` はグループコード 70。寸法が参照する無名ブロックでは bit1 を立てる。
  */
-export function dxfBlock(name: string, base: Vec, body: DxfEntity[]): string[] {
+export function dxfBlock(name: string, base: Vec, body: DxfEntity[], flags = 0): string[] {
   const out: string[] = [
-    '0', 'BLOCK', '8', '0', '2', name, '70', '0',
+    '0', 'BLOCK', '8', '0', '2', name, '70', String(flags),
     '10', fmt(base.x), '20', fmt(base.y), '30', '0.0',
     '3', name, '1', '',
   ];
@@ -164,5 +166,55 @@ export function dxfInsert(
     '10', fmt(at.x), '20', fmt(at.y), '30', '0.0',
     '41', fmt(scaleX), '42', fmt(scaleY), '43', '1.0',
     '50', fmt(rotationDeg),
+  ];
+}
+
+/** 寸法が参照する無名ブロックの名前。`*D0`, `*D1`, … は AutoCAD の予約名 */
+export const dimensionBlockName = (index: number): string => `*D${index}`;
+
+export interface DxfDimensionInput {
+  blockName: string;
+  layerName: string;
+  styleName: string;
+  /** 寸法線上の点 */
+  defPoint: Vec;
+  /** 文字の中点 */
+  textMid: Vec;
+  /** 計測点 */
+  ext1: Vec;
+  ext2: Vec;
+  /** 既にエスケープ済みの寸法文字列 */
+  text: string;
+  measurement: number;
+}
+
+/**
+ * 本物の DIMENSION エンティティ。
+ *
+ * R12 の寸法は「DIMENSION エンティティ＋それが参照する無名ブロック」の二重構造で、
+ * 線と文字の実体はブロック側にある。受け手がブロックを無視して DIMSTYLE から
+ * 描き直す場合に備え、計測点 (13/14) と実測値 (42) も入れておく。
+ *
+ * グループコード 70 = 33 の内訳:
+ *   下位3bit = 1 (Aligned / 整列寸法)
+ *     MiniCAD の寸法は常に2点間の実距離なので整列。回転寸法 (0) にすると
+ *     値がコード 50 の角度への投影で決まり、斜め寸法で実測値と食い違う。
+ *   bit 32   = このブロック参照はこの寸法だけが参照する（無名ブロック）
+ */
+export function dxfDimension(a: DxfDimensionInput): DxfEntity {
+  return [
+    '0', 'DIMENSION', '8', a.layerName,
+    '2', a.blockName,
+    '10', fmt(a.defPoint.x), '20', fmt(a.defPoint.y), '30', '0.0',
+    '11', fmt(a.textMid.x), '21', fmt(a.textMid.y), '31', '0.0',
+    '12', '0.0', '22', '0.0', '32', '0.0',
+    '70', '33',
+    '1', a.text,
+    '3', a.styleName,
+    '13', fmt(a.ext1.x), '23', fmt(a.ext1.y), '33', '0.0',
+    '14', fmt(a.ext2.x), '24', fmt(a.ext2.y), '34', '0.0',
+    '42', fmt(a.measurement),
+    '50', '0.0',
+    '71', '5',
   ];
 }

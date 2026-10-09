@@ -845,6 +845,8 @@ async function run() {
   assert.ok(dxf.includes('AC1009'), 'バージョン指定がない');
   assert.ok(dxf.includes('A-WALL'), '壁の画層がない');
   assert.ok(dxf.includes('書斎'), '画面で付けた室名が DXF に入っていない');
+  assert.ok(dxf.includes('DIMSTYLE'), '寸法スタイルがない');
+  assert.ok(/\r\nDIMENSION\r\n/.test(dxf), '寸法が DIMENSION エンティティで出ていない');
   console.log('✔ 書き出した DXF の中身が妥当');
 
   // 書き出した DXF をそのまま読み戻す（書き出しと読み込みが噛み合っているかの通し確認）

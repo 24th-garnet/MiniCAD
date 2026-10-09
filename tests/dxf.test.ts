@@ -3,14 +3,18 @@ import assert from 'node:assert/strict';
 import DxfParser from 'dxf-parser';
 import { sampleScene } from '../src/io/sample.ts';
 import { detectRooms } from '../src/core/rooms.ts';
-import { sceneToDxf } from '../src/io/dxf.ts';
+import { sceneToDxf, type DxfOptions } from '../src/io/dxf.ts';
 import { defaultSettings } from '../src/core/store.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 
-function build(options = { escapeUnicode: false }) {
+function build(options: Partial<DxfOptions> = {}) {
   const scene = sampleScene();
   const rooms = detectRooms(scene);
-  const dxf = sceneToDxf(scene, rooms, defaultSettings(), options);
+  const dxf = sceneToDxf(scene, rooms, defaultSettings(), {
+    escapeUnicode: false,
+    trueDimension: true,
+    ...options,
+  });
   return { scene, rooms, dxf };
 }
 
@@ -136,4 +140,116 @@ test('ドアの開き軌跡が建具の幅と一致する', () => {
   for (const arc of parsed.entities.filter((e) => e.type === 'ARC')) {
     assert.ok(widths.has(Math.round(arc.radius)), `半径 ${arc.radius} に対応するドアがない`);
   }
+});
+
+// --- 本物の DIMENSION エンティティ ---
+
+import { dimensionGeometry, TICK_PAPER_MM } from '../src/core/dimension.ts';
+
+const dimensionsOf = (scene: ReturnType<typeof sampleScene>) =>
+  Object.values(scene.shapes).filter((s) => s.shape === 'dimension');
+
+test('寸法が DIMENSION エンティティとして出る', () => {
+  const { scene, dxf } = build();
+  const parsed = parse(dxf)!;
+  const dims = parsed.entities.filter((e) => e.type === 'DIMENSION');
+  assert.equal(dims.length, dimensionsOf(scene).length);
+  assert.ok(dims.length > 0, 'サンプルに寸法が無い');
+});
+
+test('DIMENSION の種別が 33（整列寸法 + 専用ブロック）', () => {
+  const { dxf } = build();
+  for (const e of parse(dxf)!.entities.filter((x) => x.type === 'DIMENSION')) {
+    const t = (e as { dimensionType: number }).dimensionType;
+    // 下位3bit = 1 は整列寸法。回転寸法(0)だと値が角度への投影で決まり、斜め寸法で実測値と食い違う
+    assert.equal(t & 7, 1, `種別 ${t}`);
+    assert.equal(t & 32, 32, `無名ブロックのビットが立っていない: ${t}`);
+  }
+});
+
+test('DIMENSION の計測点と実測値が幾何と一致する', () => {
+  const { scene, dxf } = build();
+  const parsed = parse(dxf)!;
+  const dims = parsed.entities.filter((e) => e.type === 'DIMENSION') as {
+    linearOrAngularPoint1: { x: number; y: number };
+    linearOrAngularPoint2: { x: number; y: number };
+    actualMeasurement: number;
+  }[];
+
+  const expected = dimensionsOf(scene)
+    .map((d) => (d.shape === 'dimension' ? dimensionGeometry(scene, d, scene.standard) : null))
+    .filter((g) => g !== null);
+  assert.equal(dims.length, expected.length);
+
+  for (let i = 0; i < dims.length; i++) {
+    const g = expected[i]!;
+    assert.ok(Math.abs(dims[i].linearOrAngularPoint1.x - g.a.x) < 0.001);
+    assert.ok(Math.abs(dims[i].linearOrAngularPoint1.y - g.a.y) < 0.001);
+    assert.ok(Math.abs(dims[i].linearOrAngularPoint2.x - g.b.x) < 0.001);
+    assert.ok(Math.abs(dims[i].linearOrAngularPoint2.y - g.b.y) < 0.001);
+    assert.ok(Math.abs(dims[i].actualMeasurement - g.value) < 0.001, `実測値 ${dims[i].actualMeasurement}`);
+  }
+});
+
+test('DIMENSION が参照する無名ブロックに線と文字の実体が入っている', () => {
+  const { dxf } = build();
+  const parsed = parse(dxf)!;
+  for (const e of parsed.entities.filter((x) => x.type === 'DIMENSION')) {
+    const name = (e as { block: string }).block;
+    assert.match(name, /^\*D\d+$/, `ブロック名 ${name}`);
+    const block = parsed.blocks[name];
+    assert.ok(block, `${name} が BLOCKS に無い`);
+    const types = (block.entities ?? []).map((x: { type: string }) => x.type);
+    // 寸法線1 + 補助線2 + 斜線2 = 5本、文字1個
+    assert.equal(types.filter((t: string) => t === 'LINE').length, 5, `${name} の線の本数`);
+    assert.equal(types.filter((t: string) => t === 'TEXT').length, 1, `${name} の文字の数`);
+  }
+});
+
+test('ブロックの中身は画層 0 に置かれ、画層は DIMENSION 側が決める', () => {
+  const { scene, dxf } = build();
+  const parsed = parse(dxf)!;
+  const dimLayer = scene.layers[LAYER_IDS.dimension].name;
+  for (const e of parsed.entities.filter((x) => x.type === 'DIMENSION')) {
+    assert.equal(e.layer, dimLayer);
+    for (const inner of parsed.blocks[(e as { block: string }).block].entities ?? []) {
+      assert.equal((inner as { layer: string }).layer, '0');
+    }
+  }
+});
+
+test('DIMSTYLE と $DIM* が入っている', () => {
+  const { scene, dxf } = build();
+  assert.ok(dxf.includes('DIMSTYLE'), 'DIMSTYLE テーブルが無い');
+  assert.ok(dxf.includes('MINICAD'), 'スタイル名が無い');
+  const parsed = parse(dxf)!;
+  // DIMTSZ > 0 が「矢印ではなく45度の斜線」を意味する
+  const expected = TICK_PAPER_MM * scene.standard.scale;
+  assert.ok(Math.abs(Number(parsed.header['$DIMTSZ']) - expected) < 1e-6, `$DIMTSZ ${parsed.header['$DIMTSZ']}`);
+  assert.equal(Number(parsed.header['$DIMSCALE']), 1, 'モデル空間は原寸なので DIMSCALE は 1');
+});
+
+test('trueDimension: false なら従来どおり線と文字に落ちる', () => {
+  const { scene, dxf } = build({ trueDimension: false });
+  const parsed = parse(dxf)!;
+  assert.equal(parsed.entities.filter((e) => e.type === 'DIMENSION').length, 0);
+
+  const dimLayer = scene.layers[LAYER_IDS.dimension].name;
+  const onLayer = parsed.entities.filter((e) => e.layer === dimLayer);
+  assert.ok(onLayer.some((e) => e.type === 'LINE'), '寸法線が出ていない');
+  assert.ok(onLayer.some((e) => e.type === 'TEXT'), '寸法値が出ていない');
+  assert.ok(!dxf.includes('*D0'), '無名ブロックが残っている');
+});
+
+test('日本語の寸法値を上書きしてもエスケープが効く', () => {
+  const scene = sampleScene();
+  const dim = Object.values(scene.shapes).find((s) => s.shape === 'dimension');
+  assert.ok(dim?.shape === 'dimension');
+  if (dim?.shape !== 'dimension') return;
+  dim.override = '約2730';
+
+  const opts = { escapeUnicode: true, trueDimension: true };
+  const dxf = sceneToDxf(scene, detectRooms(scene), defaultSettings(), opts);
+  assert.ok(!/[^\x00-\x7F]/.test(dxf), 'エスケープ時に非 ASCII が残っている');
+  assert.ok(parse(dxf), '読み戻せない');
 });

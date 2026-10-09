@@ -25,27 +25,33 @@ const layers = parsed.tables.layer.layers;
 const blocks = parsed.blocks ?? {};
 
 /**
- * INSERT を実体に展開する。
+ * ブロックを参照するエンティティを実体に展開する。
  * 受け取った CAD は定義を挿入点・尺度・回転で描くので、同じことをする。
+ *
+ * INSERT だけでなく DIMENSION も対象。R12 の寸法は線と文字の実体を
+ * 無名ブロック (*D0 …) に持つので、展開しないと図から寸法が消える。
+ * 寸法のブロックはワールド座標そのままなので、恒等変換で展開すればよい。
  */
 function expand(entities) {
   const out = [];
   for (const e of entities) {
-    if (e.type !== 'INSERT') {
+    const isDim = e.type === 'DIMENSION';
+    if (e.type !== 'INSERT' && !isDim) {
       out.push(e);
       continue;
     }
-    const def = blocks[e.name];
+    const def = blocks[isDim ? e.block : e.name];
     if (!def?.entities) continue;
-    const sx = e.xScale ?? 1;
-    const sy = e.yScale ?? 1;
-    const rot = ((e.rotation ?? 0) * Math.PI) / 180;
+    const sx = isDim ? 1 : (e.xScale ?? 1);
+    const sy = isDim ? 1 : (e.yScale ?? 1);
+    const rot = isDim ? 0 : (((e.rotation ?? 0) * Math.PI) / 180);
     const cos = Math.cos(rot);
     const sin = Math.sin(rot);
+    const origin = isDim ? { x: 0, y: 0 } : e.position;
     const at = (p) => {
       const x = p.x * sx;
       const y = p.y * sy;
-      return { x: e.position.x + x * cos - y * sin, y: e.position.y + x * sin + y * cos };
+      return { x: origin.x + x * cos - y * sin, y: origin.y + x * sin + y * cos };
     };
     // 定義は画層 0 に置かれるので、INSERT 側の画層を継承させる
     const layer = e.layer;
@@ -56,12 +62,16 @@ function expand(entities) {
         // 非一様尺度では楕円になるが、ここでは平均半径で近似する
         out.push({ ...inner, layer, center: at(inner.center), radius: inner.radius * (Math.abs(sx) + Math.abs(sy)) / 2 });
       } else if (inner.type === 'TEXT') {
-        out.push({ ...inner, layer, startPoint: at(inner.startPoint), rotation: (inner.rotation ?? 0) + (e.rotation ?? 0) });
+        out.push({ ...inner, layer, startPoint: at(inner.startPoint), rotation: (inner.rotation ?? 0) + (isDim ? 0 : (e.rotation ?? 0)) });
       }
     }
   }
   return out;
 }
+
+// 展開するとブロック参照が中身に化けるので、元の内訳も控えておく
+const rawCounts = {};
+for (const e of parsed.entities) rawCounts[e.type] = (rawCounts[e.type] ?? 0) + 1;
 
 parsed.entities = expand(parsed.entities);
 
@@ -163,6 +173,11 @@ for (const e of parsed.entities) {
   const key = `${e.layer}/${e.type}`;
   counts[key] = (counts[key] ?? 0) + 1;
 }
-console.log('エンティティ内訳:');
+console.log('エンティティ内訳（展開後）:');
 for (const [key, n] of Object.entries(counts).sort()) console.log(`  ${key}: ${n}`);
+const refs = ['INSERT', 'DIMENSION'].filter((t) => rawCounts[t]);
+if (refs.length > 0) {
+  console.log('展開したブロック参照:');
+  for (const t of refs) console.log(`  ${t}: ${rawCounts[t]}`);
+}
 console.log(`→ ${output}`);

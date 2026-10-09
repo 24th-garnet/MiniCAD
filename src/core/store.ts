@@ -16,6 +16,8 @@ export interface Settings {
   innerArea: boolean;
   /** DXF 書き出しで日本語を \U+XXXX に変換する */
   dxfEscapeUnicode: boolean;
+  /** DXF 書き出しで寸法を本物の DIMENSION エンティティにする */
+  dxfTrueDimension: boolean;
   /** 新しく作るものを置く画層。null なら種別ごとの既定 */
   currentLayerId: string | null;
 }
@@ -31,6 +33,7 @@ export function defaultSettings(): Settings {
     showGrid: true,
     innerArea: false,
     dxfEscapeUnicode: false,
+    dxfTrueDimension: true,
     currentLayerId: null,
   };
 }

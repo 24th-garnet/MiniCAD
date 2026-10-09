@@ -10,9 +10,9 @@ import { paperToWorld, type DrawingStandard } from './standard.ts';
 import type { Scene } from './types.ts';
 
 /** 端部の斜線の長さ（紙の上の mm）。建築では矢印でなく45度の斜線を使う */
-const TICK_PAPER_MM = 1.2;
+export const TICK_PAPER_MM = 1.2;
 /** 寸法補助線を寸法線より少し伸ばす量（紙の上の mm） */
-const EXTENSION_OVERSHOOT_PAPER_MM = 1.2;
+export const EXTENSION_OVERSHOOT_PAPER_MM = 1.2;
 
 export interface DimensionGeometry {
   /** 解決済みの計測点 */
