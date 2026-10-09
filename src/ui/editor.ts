@@ -1,5 +1,6 @@
 import { dist, sub, vec, type Vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
+import { sheetGeometry } from '../core/sheet.ts';
 import { pickAt } from '../core/pick.ts';
 import { detectRooms } from '../core/rooms.ts';
 import { snapPoint, type SnapResult } from '../core/snap.ts';
@@ -191,6 +192,17 @@ export class Editor {
     } else {
       this.viewport.fit(bounds);
     }
+    this.requestRender();
+  }
+
+  /** 用紙全体が見えるように合わせる。枠を出していなければ図面全体に合わせる */
+  zoomToSheet(): void {
+    const scene = this.store.scene;
+    if (!scene.sheet.show) {
+      this.zoomToFit();
+      return;
+    }
+    this.viewport.fit(sheetGeometry(scene.sheet, scene.standard).paper);
     this.requestRender();
   }
 

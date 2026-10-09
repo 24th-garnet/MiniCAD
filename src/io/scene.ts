@@ -8,17 +8,18 @@ import {
   type WeightRole,
 } from '../core/standard.ts';
 import { createWallDimensions } from '../core/dimension.ts';
+import { defaultSheet, type Sheet } from '../core/sheet.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, type Scene } from '../core/types.ts';
 
 /**
- * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法が入った。
+ * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠が入った。
  *
  * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
  * テーブルが増えるだけなら分岐は要らない。
  * 4 だけは「壁に自動表示していた寸法」を実体に変える必要があるので移行する。
  */
-export const FILE_VERSION = 4;
+export const FILE_VERSION = 5;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -56,6 +57,7 @@ export function deserialize(raw: unknown): Scene {
 
   scene.layers = readLayers(table<Record<string, unknown>>('layers'));
   scene.standard = readStandard(payload.standard);
+  scene.sheet = readSheet(payload.sheet);
   const layerOr = (v: unknown, fallback: LayerId): LayerId =>
     typeof v === 'string' && scene.layers[v] ? v : fallback;
 
@@ -187,6 +189,45 @@ function readStandard(raw: unknown): DrawingStandard {
     paperId: paperById(String(s.paperId ?? base.paperId)).id,
     orientation: s.orientation === 'portrait' ? 'portrait' : 'landscape',
     wallFill: s.wallFill !== false,
+  };
+}
+
+function readSheet(raw: unknown): Sheet {
+  const base = defaultSheet();
+  if (typeof raw !== 'object' || raw === null) return base;
+  const s = raw as Record<string, unknown>;
+  const block = (typeof s.titleBlock === 'object' && s.titleBlock !== null ? s.titleBlock : {}) as Record<string, unknown>;
+  const fields = (typeof block.fields === 'object' && block.fields !== null ? block.fields : {}) as Record<string, unknown>;
+  const origin = (typeof s.origin === 'object' && s.origin !== null ? s.origin : {}) as Record<string, unknown>;
+  const margins = (typeof s.margins === 'object' && s.margins !== null ? s.margins : null) as Record<string, unknown> | null;
+  const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback);
+
+  return {
+    show: s.show === true,
+    origin: {
+      x: numberOr(origin.x, base.origin.x),
+      y: numberOr(origin.y, base.origin.y),
+    },
+    margins: margins
+      ? {
+          binding: numberOr(margins.binding, 20),
+          top: numberOr(margins.top, 10),
+          right: numberOr(margins.right, 10),
+          bottom: numberOr(margins.bottom, 10),
+        }
+      : null,
+    titleBlock: {
+      enabled: block.enabled !== false,
+      width: numberOr(block.width, base.titleBlock.width),
+      rowHeight: numberOr(block.rowHeight, base.titleBlock.rowHeight),
+      fields: {
+        drawingName: str(fields.drawingName, base.titleBlock.fields.drawingName),
+        drawingNumber: str(fields.drawingNumber, ''),
+        company: str(fields.company, ''),
+        designer: str(fields.designer, ''),
+        date: str(fields.date, ''),
+      },
+    },
   };
 }
 

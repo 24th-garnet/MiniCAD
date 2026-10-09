@@ -1,5 +1,6 @@
 import { add, angleOf, mul, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
+import { sheetGeometry, sheetPrimitives } from '../core/sheet.ts';
 import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 import {
@@ -121,6 +122,12 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     }
   }
 
+  // 用紙枠と表題欄
+  const sheetLayer = layerOf(LAYER_IDS.sheet, LAYER_IDS.sheet);
+  if (scene.sheet.show && printable(sheetLayer)) {
+    entities.push(...dxfPrimitives(sheetPrimitives(scene.sheet, std), sheetLayer, std, text));
+  }
+
   // 汎用図形
   for (const shape of Object.values(scene.shapes)) {
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
@@ -146,7 +153,15 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     }
   }
 
-  const bounds = sceneBounds(scene) ?? { min: vec(0, 0), max: vec(1000, 1000) };
+  let bounds = sceneBounds(scene) ?? { min: vec(0, 0), max: vec(1000, 1000) };
+  if (scene.sheet.show) {
+    // 用紙を出しているなら、図面範囲は用紙を含む
+    const paper = sheetGeometry(scene.sheet, std).paper;
+    bounds = {
+      min: vec(Math.min(bounds.min.x, paper.min.x), Math.min(bounds.min.y, paper.min.y)),
+      max: vec(Math.max(bounds.max.x, paper.max.x), Math.max(bounds.max.y, paper.max.y)),
+    };
+  }
 
   // --- HEADER ---
   g(0, 'SECTION');

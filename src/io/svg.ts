@@ -1,5 +1,6 @@
 import { add, mul, sub, toDeg, vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
+import { paperDimensions, sheetPrimitives } from '../core/sheet.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 import {
@@ -29,13 +30,18 @@ const MARGIN = 400; // mm
  */
 export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): string {
   const std = scene.standard;
+  const sheet = scene.sheet;
   const b = sceneBounds(scene);
-  if (!b) return emptySvg();
+  if (!b && !sheet.show) return emptySvg();
 
-  const minX = b.min.x - MARGIN;
-  const minY = b.min.y - MARGIN;
-  const width = b.max.x - b.min.x + MARGIN * 2;
-  const height = b.max.y - b.min.y + MARGIN * 2;
+  // 用紙枠を出す設定なら、用紙そのものを書き出しの範囲にする。
+  // こうすると尺度を変えても紙の実寸（A3 なら 420×297mm）が変わらない
+  const paper = paperDimensions(std);
+  const sheetGeo = sheet.show ? { minX: sheet.origin.x, minY: sheet.origin.y } : null;
+  const minX = sheetGeo ? sheetGeo.minX : b!.min.x - MARGIN;
+  const minY = sheetGeo ? sheetGeo.minY : b!.min.y - MARGIN;
+  const width = sheetGeo ? paper.w * std.scale : b!.max.x - b!.min.x + MARGIN * 2;
+  const height = sheetGeo ? paper.h * std.scale : b!.max.y - b!.min.y + MARGIN * 2;
 
   const layerOf = (id: string | undefined, fallback: string): Layer => getLayer(scene.layers, id, fallback);
   /** 画層の線の太さをワールドの mm に直す */
@@ -54,6 +60,11 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
   out.push(`<rect width="${round(width)}" height="${round(height)}" fill="${theme.paper}"/>`);
   // y 反転 + 原点合わせ
   out.push(`<g transform="translate(${round(-minX)} ${round(minY + height)}) scale(1 -1)">`);
+
+  const sheetLayer = layerOf(LAYER_IDS.sheet, LAYER_IDS.sheet);
+  if (sheet.show && visible(sheetLayer)) {
+    out.push(...svgPrimitives(sheetPrimitives(sheet, std), sheetLayer, std));
+  }
 
   for (const room of rooms) {
     const poly = room.innerPolygon.length >= 3 ? room.innerPolygon : room.polygon;

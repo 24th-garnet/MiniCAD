@@ -26,6 +26,7 @@ import {
 } from '../core/shape.ts';
 import type { Furniture } from '../core/types.ts';
 import { shapePrimitives } from '../core/shapes.ts';
+import { sheetPrimitives } from '../core/sheet.ts';
 import { fontOf, theme } from './theme.ts';
 import { drawPrimitives } from './primitive.ts';
 import {
@@ -50,6 +51,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   ctx.fillRect(0, 0, vp.width, vp.height);
 
   if (frame.settings.showGrid) drawGrid(frame);
+  drawSheet(frame);
   drawRooms(frame);
   drawWalls(frame);
   drawOpenings(frame);
@@ -104,6 +106,16 @@ function drawGrid(frame: Frame): void {
 
   line(vec(bounds.min.x, 0), vec(bounds.max.x, 0), theme.axis, 1.5);
   line(vec(0, bounds.min.y), vec(0, bounds.max.y), theme.axis, 1.5);
+}
+
+// --- 用紙枠と表題欄 ---
+
+function drawSheet(frame: Frame): void {
+  const { scene } = frame;
+  if (!scene.sheet.show) return;
+  const layer = layerFor(frame, LAYER_IDS.sheet, LAYER_IDS.sheet);
+  if (!layer.visible) return;
+  drawPrimitives(frame, sheetPrimitives(scene.sheet, scene.standard), layer);
 }
 
 // --- 部屋 ---

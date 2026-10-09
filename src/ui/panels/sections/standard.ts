@@ -1,7 +1,6 @@
 import {
   JIS_TEXT_HEIGHTS,
   LINE_GROUPS,
-  PAPER_SIZES,
   PLAN_SCALES,
   STANDARD_PRESETS,
   lineGroupById,
@@ -51,12 +50,6 @@ export class StandardSection implements Section {
         String(std.textHeight.dimension),
         JIS_TEXT_HEIGHTS.map((h) => ({ value: String(h), label: `${h} mm` })),
         (v) => edit(() => void (std.textHeight.dimension = Number(v))),
-      ),
-      selectField(
-        '用紙 (JIS Z 8311)',
-        std.paperId,
-        PAPER_SIZES.map((p) => ({ value: p.id, label: p.label })),
-        (v) => edit(() => void (std.paperId = v)),
       ),
       checkboxField('壁を塗りつぶす', std.wallFill, (v) => edit(() => void (std.wallFill = v))),
       readonlyField('細 / 太 / 極太', `${group.thin} / ${group.thick} / ${group.extraThick} mm`),

@@ -2,6 +2,7 @@ import type { Vec } from './geometry.ts';
 import { newId, type Id } from './id.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
+import { defaultSheet, type Sheet } from './sheet.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
 
 export { newId };
@@ -91,6 +92,8 @@ export interface Scene {
   layers: Record<LayerId, Layer>;
   /** 線群・尺度・文字高さなどの製図規格。図面の属性なのでシーンと一緒に保存する */
   standard: DrawingStandard;
+  /** 用紙枠と表題欄。これも図面の属性 */
+  sheet: Sheet;
 }
 
 export function emptyScene(): Scene {
@@ -103,6 +106,7 @@ export function emptyScene(): Scene {
     shapes: {},
     layers: defaultLayers(),
     standard: jisStandard(),
+    sheet: defaultSheet(),
   };
 }
 

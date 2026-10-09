@@ -23,6 +23,7 @@ import { RoomsSection } from './panels/sections/rooms.ts';
 import { SelectionSection } from './panels/sections/selection.ts';
 import { SettingsSection } from './panels/sections/settings.ts';
 import { ShortcutsSection } from './panels/sections/shortcuts.ts';
+import { SheetSection } from './panels/sections/sheet.ts';
 import { StandardSection } from './panels/sections/standard.ts';
 import { StatsSection } from './panels/sections/stats.ts';
 import { StatusBar } from './status-bar.ts';
@@ -92,6 +93,7 @@ export class App {
         new SelectionSection(),
         new RoomsSection(),
         new StandardSection(),
+        new SheetSection(),
         new LayersSection(),
         new SettingsSection(),
         new StatsSection(),

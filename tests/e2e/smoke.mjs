@@ -109,6 +109,8 @@ async function run() {
         wallLayerLocked: s.layers['wall'].locked,
         layerNames: Object.values(s.layers).map((l) => l.name),
         currentLayerId: ed.store.settings.currentLayerId,
+        sheetShown: s.sheet.show,
+        sheetTitle: s.sheet.titleBlock.fields.drawingName,
         shapeLayers: Object.values(s.shapes).map((sh) => s.layers[sh.layerId]?.name),
         dimensions: Object.values(s.shapes).filter((sh) => sh.shape === 'dimension').length,
         dimensionValues: Object.values(s.shapes)
@@ -482,7 +484,7 @@ async function run() {
   await step(
     '画層パネルが全画層を出している',
     async () => {},
-    (s) => assert.equal(s.layerRows, 8, '既定の画層は8つ'),
+    (s) => assert.equal(s.layerRows, 9, '既定の画層は9つ'),
   );
 
   await step(
@@ -553,13 +555,35 @@ async function run() {
     },
   );
 
+  // --- 用紙枠と表題欄 ---
+
+  await step(
+    '用紙枠を表示できる',
+    async () => {
+      await page.getByText('用紙枠を表示').click();
+    },
+    (s) => assert.equal(s.sheetShown, true),
+  );
+
+  await step(
+    '表題欄の図面名称を変えられる',
+    async () => {
+      const field = page.locator('.field').filter({ hasText: '図面名称' }).first();
+      await field.locator('input').fill('テスト住宅 1階平面図');
+      await field.locator('input').press('Enter');
+    },
+    (s) => assert.equal(s.sheetTitle, 'テスト住宅 1階平面図'),
+  );
+
+  await step('用紙に合わせて表示できる', () => page.click('button[title="用紙全体が見えるように表示"]'), () => {});
+
   // --- 画層の管理 ---
 
   await step(
     '画層を追加できる',
     () => page.getByText('＋ 画層を追加').click(),
     (s) => {
-      assert.equal(s.layerRows, 9);
+      assert.equal(s.layerRows, 10);
       assert.ok(s.layerNames.includes('A-USER'), `追加した画層が見当たらない: ${s.layerNames}`);
     },
   );
@@ -629,7 +653,7 @@ async function run() {
       await row.locator('.layer-delete').click();
     },
     (s) => {
-      assert.equal(s.layerRows, 8);
+      assert.equal(s.layerRows, 9);
       assert.ok(!s.layerNames.includes('A-SITE'));
       assert.equal(s.drawings, shapesBefore + 1, '画層を消したのに図形まで消えている');
       assert.ok(!s.shapeLayers.includes('A-SITE'), '消した画層が残っている');
@@ -660,7 +684,9 @@ async function run() {
     return err ? err.textContent.slice(0, 200) : null;
   }, svg);
   assert.equal(svgError, null, `SVG が XML として壊れている: ${svgError}`);
-  console.log('✔ 書き出した SVG が XML として妥当');
+  assert.ok(svg.includes('width="420mm"'), '用紙枠を出したのに SVG が用紙の実寸でない');
+  assert.ok(svg.includes('テスト住宅 1階平面図'), '表題欄が SVG に出ていない');
+  console.log('✔ 書き出した SVG が用紙の実寸で、表題欄を含む');
 
   // 書き出した DXF の中身まで確認する
   const [dxfDownload] = await Promise.all([

@@ -43,6 +43,8 @@ export const LAYER_IDS = {
   roomName: 'room-name',
   /** 汎用図形（線・円弧・円・ポリライン・点）の既定 */
   shape: 'shape',
+  /** 用紙枠と表題欄 */
+  sheet: 'sheet',
   axis: 'axis',
   draft: 'draft',
 } as const;
@@ -115,6 +117,18 @@ export function defaultLayers(): Record<LayerId, Layer> {
       color: '#3f3f46',
       aci: 7,
       weightRole: 'thin',
+      lineWeightOverride: null,
+      lineType: 'continuous',
+      visible: true,
+      locked: false,
+      printable: true,
+    },
+    {
+      id: LAYER_IDS.sheet,
+      name: 'A-ANNO-TTLB',
+      color: '#3f3f46',
+      aci: 7,
+      weightRole: 'thick',
       lineWeightOverride: null,
       lineType: 'continuous',
       visible: true,
