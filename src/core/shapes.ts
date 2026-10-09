@@ -103,6 +103,15 @@ export type Shape =
 export type ShapeKind = Shape['shape'];
 
 /**
+ * id と画層を除いた図形。図形を組み立てる側（プリセット・DXF 取り込み）が使う。
+ * `Omit<Shape, ...>` は共用体にそのまま掛けると各枝に分配されないので、
+ * 明示的に分配してから Omit する。
+ */
+export type ShapeBody = {
+  [K in ShapeKind]: Omit<Extract<Shape, { shape: K }>, 'id' | 'layerId'>;
+}[ShapeKind];
+
+/**
  * 図形の種別ごとの幾何。DOM には触らない。
  *
  * `Record<ShapeKind, ...>` で持つことで、種別を足したときに

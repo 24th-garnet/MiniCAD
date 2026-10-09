@@ -1,14 +1,7 @@
 import { vec, type Vec } from './geometry.ts';
 import type { Id } from './id.ts';
 import { LAYER_IDS } from './layer.ts';
-import type { Shape } from './shapes.ts';
-
-/**
- * id と画層を除いた図形。
- * `Omit<Shape, ...>` は共用体にそのまま掛けると各枝に分配されないので、
- * 明示的に分配してから Omit する。
- */
-type ShapeBody = { [K in Shape['shape']]: Omit<Extract<Shape, { shape: K }>, 'id' | 'layerId'> }[Shape['shape']];
+import type { Shape, ShapeBody } from './shapes.ts';
 import type { BlockDef } from './block.ts';
 
 /**

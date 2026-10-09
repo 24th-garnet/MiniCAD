@@ -5,6 +5,7 @@ import { sampleScene } from '../../io/sample.ts';
 import { sceneToSvg } from '../../io/svg.ts';
 import { buildPrintDocument, printDocument } from '../../io/print.ts';
 import { el } from '../dom.ts';
+import { openDxfImport } from './dxf-import.ts';
 import type { Panel, PanelContext } from '../panel.ts';
 
 export class FileActions implements Panel {
@@ -14,11 +15,17 @@ export class FileActions implements Panel {
     const button = (label: string, onClick: () => void, title?: string) =>
       el('button', { type: 'button', onclick: onClick, title: title ?? label }, [label]);
 
-    const fileInput = el('input', { type: 'file', accept: '.json,application/json' });
+    const fileInput = el('input', { type: 'file', accept: '.json,.dxf,application/json' });
     fileInput.style.display = 'none';
     fileInput.addEventListener('change', () => {
       const file = fileInput.files?.[0];
+      fileInput.value = '';
       if (!file) return;
+      // DXF は設定を聞いてから取り込むので、JSON とは別経路にする
+      if (file.name.toLowerCase().endsWith('.dxf')) {
+        openDxfImport(ctx, file);
+        return;
+      }
       void file.text().then((text) => {
         try {
           ctx.loadScene(deserialize(JSON.parse(text)));
@@ -26,7 +33,6 @@ export class FileActions implements Panel {
           window.alert(`読み込めませんでした: ${(err as Error).message}`);
         }
       });
-      fileInput.value = '';
     });
 
     this.host.append(
@@ -39,7 +45,7 @@ export class FileActions implements Panel {
         if (!window.confirm('現在の間取りを破棄してサンプルを読み込みますか？')) return;
         ctx.loadScene(sampleScene());
       }),
-      button('開く', () => fileInput.click(), 'JSON を読み込む'),
+      button('開く', () => fileInput.click(), 'JSON / DXF を読み込む'),
       button('保存', () => downloadJson(ctx.editor.store.scene), 'JSON で保存 (Cmd/Ctrl+S)'),
       button(
         'SVG',

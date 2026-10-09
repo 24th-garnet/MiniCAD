@@ -516,3 +516,57 @@ input.layer-name:focus {
   color: #7a5a1e;
   line-height: 1.5;
 }
+
+/* --- ダイアログ --- */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgb(24 24 27 / 35%);
+}
+
+.dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 32px rgb(24 24 27 / 25%);
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.dialog-body {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.dialog-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.dialog-actions button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}

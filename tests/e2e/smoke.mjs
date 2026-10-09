@@ -8,7 +8,9 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -844,6 +846,36 @@ async function run() {
   assert.ok(dxf.includes('A-WALL'), '壁の画層がない');
   assert.ok(dxf.includes('書斎'), '画面で付けた室名が DXF に入っていない');
   console.log('✔ 書き出した DXF の中身が妥当');
+
+  // 書き出した DXF をそのまま読み戻す（書き出しと読み込みが噛み合っているかの通し確認）
+  const before = await state();
+  // ダウンロードの実体には拡張子が付かないので、.dxf の名前で置き直してから読ませる
+  const reimportPath = join(tmpdir(), 'minicad-e2e-reimport.dxf');
+  await writeFile(reimportPath, dxf, 'utf8');
+  await page.setInputFiles('input[type=file]', reimportPath);
+  await page.waitForSelector('.dialog');
+  const summary = await page.locator('.dialog-text').first().textContent();
+  assert.ok(/LINE \d+/.test(summary), `取り込み前の内訳が出ていない: ${summary}`);
+  await page.click('.dialog-actions button.primary');
+  await page.waitForSelector('.dialog h2:text("DXF を読み込みました")');
+  const report = await page.locator('.dialog-text').first().textContent();
+  assert.ok(report.includes('既存の画層を使用'), `画層が再利用されていない: ${report}`);
+  assert.ok(!report.includes('画層を追加'), `画層が増えている: ${report}`);
+  await page.click('.dialog-actions button.primary');
+
+  const after = await state();
+  assert.ok(after.drawings > before.drawings, 'DXF を読み込んでも図形が増えていない');
+  assert.equal(after.layerRows, before.layerRows, '読み込みで画層が増えた');
+  assert.equal(after.blocks, before.blocks, '読み込みでブロック定義が増殖した');
+  assert.ok(after.instances > before.instances, '家具がブロック挿入として戻っていない');
+  console.log('✔ 書き出した DXF をそのまま読み戻せる');
+
+  // 取り込み全体が 1 回の undo で取り消せる
+  await page.keyboard.press('Control+z');
+  await sleep(150);
+  const undone = await state();
+  assert.equal(undone.drawings, before.drawings, '取り込みが1回の undo で戻らない');
+  console.log('✔ 取り込みを undo 1回で取り消せる');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */
