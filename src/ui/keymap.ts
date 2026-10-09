@@ -80,8 +80,8 @@ export function defaultBindings(): Binding[] {
       run: (ctx) => ctx.set(() => void (ctx.editor.store.settings.snapGrid = !ctx.editor.store.settings.snapGrid)),
     },
     {
-      keys: ['o', 'O'],
-      display: 'O',
+      keys: ['F8'],
+      display: 'F8',
       description: '直交・角度スナップ',
       run: (ctx) => ctx.set(() => void (ctx.editor.store.settings.ortho = !ctx.editor.store.settings.ortho)),
     },

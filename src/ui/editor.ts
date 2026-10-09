@@ -137,8 +137,8 @@ export class Editor {
     return this.viewport.toWorldLength(PICK_RADIUS_PX);
   }
 
-  pick(world: Vec): EntityRef | null {
-    return pickAt(this.store.scene, world, this.pickRadius());
+  pick(world: Vec, tolerance = this.pickRadius()): EntityRef | null {
+    return pickAt(this.store.scene, world, tolerance);
   }
 
   // --- 描画 ---

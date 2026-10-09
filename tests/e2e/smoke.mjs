@@ -601,6 +601,63 @@ async function run() {
     },
   );
 
+  // --- オフセット・トリム・延長 ---
+
+  const drawingsBeforeModify = (await state()).drawings;
+  await step(
+    '線をオフセットできる',
+    async () => {
+      // この手順で使う範囲を画面に入れる
+      await page.evaluate(() => {
+        const ed = window.minicad.editorInstance;
+        ed.viewport.fit({ min: { x: -2000, y: -4000 }, max: { x: 18000, y: 12000 } });
+        ed.requestRender();
+      });
+      // 交差する2本を空いているところに引く
+      await page.locator('#canvas').focus();
+      await page.keyboard.press('l');
+      await clickWorld(2000, 9000);
+      await clickWorld(8000, 9000);
+      await page.keyboard.press('Enter');
+      await clickWorld(5000, 7000);
+      await clickWorld(5000, 11000);
+      await page.keyboard.press('Enter');
+
+      await page.keyboard.press('o');
+      await page.fill('#numeric-input', '800');
+      await page.keyboard.press('Enter');
+      await clickWorld(3000, 9400);
+    },
+    (s) => {
+      assert.equal(s.tool, 'offset');
+      assert.equal(s.drawings, drawingsBeforeModify + 3, 'オフセットで1本増えるはず');
+    },
+  );
+
+  await step(
+    'トリムで交点から先を落とせる',
+    async () => {
+      await page.keyboard.press('u');
+      await clickWorld(3000, 9000);
+    },
+    (s) => {
+      assert.equal(s.tool, 'trim');
+      // 元の1本が切られて1本になる（左側が消える）ので総数は変わらない
+      assert.equal(s.drawings, drawingsBeforeModify + 3, 'トリムで本数が合わない');
+    },
+  );
+
+  await step(
+    '延長で境界まで伸ばせる',
+    async () => {
+      await page.keyboard.press('e');
+      await clickWorld(7500, 9800);
+    },
+    (s) => assert.equal(s.tool, 'extend'),
+  );
+
+  await step('オフセットを undo で戻せる', () => page.keyboard.press('Meta+z'), () => {});
+
   // --- 用紙枠と表題欄 ---
 
   await step(
