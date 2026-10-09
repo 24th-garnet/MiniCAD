@@ -339,6 +339,85 @@ async function run() {
     (s) => assert.equal(s.shapes, 5),
   );
 
+  // --- 複写・回転・鏡像 ---
+
+  await step(
+    '範囲選択した壁を複写できる',
+    async () => {
+      await page.keyboard.press('v');
+      // 書斎を窓選択（左→右なので完全に含むものだけ）
+      const from = await at(9400, -600);
+      const to = await at(14600, 3400);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 10 });
+      await page.mouse.up();
+      assert.ok((await state()).selection >= 4, '書斎の壁を選択できていない');
+
+      await page.keyboard.press('y');
+      await clickWorld(10000, 0);
+      await clickWorld(10000, 3500);
+    },
+    (s) => {
+      assert.equal(s.walls, 18, '壁が4本増えるはず');
+      assert.equal(s.furniture, 9, '範囲内の家具も複製されるはず');
+      assert.equal(s.rooms.length, 5, '閉じた部屋が1つ増えるはず');
+      // 壁4 + 家具1 + 室名1。建具は壁に乗って複製されるので選択には入らない
+      assert.equal(s.selection, 6, '複製側が選択されているはず');
+      assert.equal(s.rooms.filter((r) => r.name === '書斎').length, 2, '室名も複製されるはず');
+    },
+  );
+
+  await step(
+    '複写を undo で戻せる',
+    () => page.keyboard.press('Meta+z'),
+    (s) => {
+      assert.equal(s.walls, 14);
+      assert.equal(s.rooms.length, 4);
+    },
+  );
+
+  await step(
+    '角度を打ち込んで回転できる',
+    async () => {
+      await page.keyboard.press('Meta+Shift+z'); // 複写をやり直す
+      assert.equal((await state()).walls, 18, '前提: 複写が戻っている');
+      await page.keyboard.press('v');
+      const from = await at(9400, 3400);
+      const to = await at(14600, 6900);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 10 });
+      await page.mouse.up();
+
+      await page.keyboard.press('r');
+      await clickWorld(12000, 5000);
+      await clickWorld(14000, 5000);
+      assert.ok((await state()).numericVisible, '角度の入力欄が出ていない');
+      await page.fill('#numeric-input', '90');
+      await page.keyboard.press('Enter');
+    },
+    (s) => {
+      assert.equal(s.tool, 'rotate');
+      assert.equal(s.walls, 18, '回転では本数が変わらないはず');
+      assert.equal(s.rooms.length, 5, '回転しても部屋は保たれるはず');
+    },
+  );
+
+  await step(
+    '元を残して鏡像できる',
+    async () => {
+      await page.keyboard.press('x');
+      await page.getByText('元を残す').click();
+      await clickWorld(2000, 7000);
+      await clickWorld(6000, 7000);
+    },
+    (s) => {
+      assert.equal(s.tool, 'mirror');
+      assert.equal(s.walls, 22, '鏡像で4本増えるはず');
+    },
+  );
+
   await step(
     '画層パネルが全画層を出している',
     async () => {},

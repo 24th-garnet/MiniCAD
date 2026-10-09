@@ -6,6 +6,9 @@ import type { Panel, PanelContext } from '../panel.ts';
 const TOOL_GLYPH: Record<ToolId, string> = {
   select: '↖',
   measure: '↔',
+  copy: '⧉',
+  rotate: '↻',
+  mirror: '⇄',
   wall: '▬',
   door: '⌒',
   window: '▤',

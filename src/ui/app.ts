@@ -7,6 +7,7 @@ import { OpeningTool } from '../tools/opening.ts';
 import { RoomTool } from '../tools/room.ts';
 import { SelectTool } from '../tools/select.ts';
 import { ShapeTool } from '../tools/shape.ts';
+import { TransformTool } from '../tools/transform.ts';
 import { WallTool } from '../tools/wall.ts';
 import { CommandInput } from './command-input.ts';
 import { Editor } from './editor.ts';
@@ -46,6 +47,9 @@ export class App {
     for (const tool of [
       new SelectTool(),
       new MeasureTool(),
+      new TransformTool('copy', 'copy', '複写', 'Y'),
+      new TransformTool('rotate', 'rotate', '回転', 'R'),
+      new TransformTool('mirror', 'mirror', '鏡像', 'X'),
       new WallTool(),
       new OpeningTool('door', 'door', 'ドア', 'D', 800),
       new OpeningTool('window', 'window', '窓', 'S', 1700),

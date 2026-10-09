@@ -1,5 +1,8 @@
 import { add, dot, norm, sub, vec, type Vec } from './geometry.ts';
 import { clampOpening, nodePos, wallEnds } from './ops.ts';
+import type { Shape } from './shapes.ts';
+import { shapeVertices, transformShape } from './shapes.ts';
+import { translation } from './transform.ts';
 import type { EntityRef, Id, Scene } from './types.ts';
 
 /**
@@ -12,6 +15,7 @@ export interface ResolvedSelection {
   openingIds: Id[];
   furnitureIds: Id[];
   roomLabelIds: Id[];
+  shapeIds: Id[];
 }
 
 /** 操作開始時の位置。ドラッグ中に同じ delta を何度適用しても累積しないようにするため */
@@ -21,6 +25,8 @@ export interface MoveOrigins {
   roomLabels: Map<Id, Vec>;
   /** 開口は壁に沿った距離で持つ */
   openings: Map<Id, number>;
+  /** 図形は種別ごとに持つ座標が違うので、元の図形ごと控えておく */
+  shapes: Map<Id, Shape>;
 }
 
 export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelection {
@@ -28,6 +34,7 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
   const openingIds = new Set<Id>();
   const furnitureIds = new Set<Id>();
   const roomLabelIds = new Set<Id>();
+  const shapeIds = new Set<Id>();
 
   for (const ref of refs) {
     switch (ref.type) {
@@ -51,6 +58,9 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
       case 'roomLabel':
         if (scene.roomLabels[ref.id]) roomLabelIds.add(ref.id);
         break;
+      case 'shape':
+        if (scene.shapes[ref.id]) shapeIds.add(ref.id);
+        break;
     }
   }
   return {
@@ -58,6 +68,7 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
     openingIds: [...openingIds],
     furnitureIds: [...furnitureIds],
     roomLabelIds: [...roomLabelIds],
+    shapeIds: [...shapeIds],
   };
 }
 
@@ -66,7 +77,8 @@ export function isEmptySelection(sel: ResolvedSelection): boolean {
     sel.nodeIds.length === 0 &&
     sel.openingIds.length === 0 &&
     sel.furnitureIds.length === 0 &&
-    sel.roomLabelIds.length === 0
+    sel.roomLabelIds.length === 0 &&
+    sel.shapeIds.length === 0
   );
 }
 
@@ -76,6 +88,7 @@ export function captureOrigins(scene: Scene, sel: ResolvedSelection): MoveOrigin
     furniture: new Map(),
     roomLabels: new Map(),
     openings: new Map(),
+    shapes: new Map(),
   };
   for (const id of sel.nodeIds) origins.nodes.set(id, nodePos(scene, id));
   for (const id of sel.furnitureIds) {
@@ -89,6 +102,10 @@ export function captureOrigins(scene: Scene, sel: ResolvedSelection): MoveOrigin
   for (const id of sel.openingIds) {
     const o = scene.openings[id];
     if (o) origins.openings.set(id, o.offset);
+  }
+  for (const id of sel.shapeIds) {
+    const s = scene.shapes[id];
+    if (s) origins.shapes.set(id, structuredClone(s));
   }
   return origins;
 }
@@ -104,6 +121,10 @@ export function selectionCenter(scene: Scene, sel: ResolvedSelection): Vec | nul
   for (const id of sel.roomLabelIds) {
     const l = scene.roomLabels[id];
     if (l) pts.push(vec(l.x, l.y));
+  }
+  for (const id of sel.shapeIds) {
+    const s = scene.shapes[id];
+    if (s) pts.push(...shapeVertices(scene, s));
   }
   if (pts.length === 0) return null;
   const sum = pts.reduce((acc, p) => add(acc, p), vec(0, 0));
@@ -132,6 +153,9 @@ export function placeSelection(scene: Scene, origins: MoveOrigins, delta: Vec): 
     if (!label) continue;
     label.x = origin.x + delta.x;
     label.y = origin.y + delta.y;
+  }
+  for (const [id, origin] of origins.shapes) {
+    if (scene.shapes[id]) scene.shapes[id] = transformShape(origin, translation(delta));
   }
   for (const [id, origin] of origins.openings) {
     const opening = scene.openings[id];

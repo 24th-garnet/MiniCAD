@@ -6,6 +6,9 @@ import type { Editor } from '../ui/editor.ts';
 export type ToolId =
   | 'select'
   | 'measure'
+  | 'copy'
+  | 'rotate'
+  | 'mirror'
   | 'wall'
   | 'door'
   | 'window'

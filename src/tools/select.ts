@@ -1,6 +1,8 @@
 import { dist, sub, vec, type Vec } from '../core/geometry.ts';
 import { pickInRect } from '../core/pick.ts';
 import { mergeNodesAt } from '../core/ops.ts';
+import { translation } from '../core/transform.ts';
+import { transformEntities } from '../core/transformOps.ts';
 import {
   captureOrigins,
   isEmptySelection,
@@ -26,6 +28,10 @@ type DragState =
       sel: ResolvedSelection;
       origins: MoveOrigins;
       moved: boolean;
+      /** Alt を押しながら始めたら複写移動 */
+      copy: boolean;
+      /** 直近に適用した変位。複写移動の確定に使う */
+      delta: Vec;
     }
   | { kind: 'rect'; start: Vec; current: Vec; additive: boolean };
 
@@ -95,6 +101,8 @@ export class SelectTool implements Tool {
         sel,
         origins: captureOrigins(editor.store.scene, sel),
         moved: false,
+        copy: p.alt,
+        delta: vec(0, 0),
       };
       this.applyMove(editor, p);
       return;
@@ -123,8 +131,19 @@ export class SelectTool implements Tool {
     }
 
     if (drag.kind === 'move' && drag.moved) {
-      if (drag.sel.nodeIds.length > 0) mergeNodesAt(editor.store.scene, drag.sel.nodeIds);
-      editor.store.commitFrom(drag.before);
+      if (drag.copy) {
+        // ドラッグ中は元を動かしていたので、いったん操作前に戻してから複製を作る
+        const restored = drag.before;
+        editor.store.scene = structuredClone(restored);
+        const result = transformEntities(editor.store.scene, [...editor.store.selection], translation(drag.delta), {
+          copy: true,
+        });
+        editor.store.commitFrom(restored);
+        if (result.refs.length > 0) editor.store.setSelection(result.refs);
+      } else {
+        if (drag.sel.nodeIds.length > 0) mergeNodesAt(editor.store.scene, drag.sel.nodeIds);
+        editor.store.commitFrom(drag.before);
+      }
     }
   }
 
@@ -146,6 +165,7 @@ export class SelectTool implements Tool {
     }
 
     placeSelection(editor.store.scene, drag.origins, delta);
+    drag.delta = delta;
     drag.moved = true;
     editor.notifyChanged();
   }
@@ -201,7 +221,7 @@ export class SelectTool implements Tool {
     const n = editor.store.selection.length;
     if (this.drag.kind === 'rect') return '左→右: 完全に含むものを選択 / 右→左: 触れるものを選択';
     if (n === 0) return 'クリックで選択・ドラッグで範囲選択 / Shift+クリックで追加';
-    return `${n} 個を選択中 — ドラッグで移動、矢印キーで微調整、[ ] で家具を回転、Delete で削除`;
+    return `${n} 個を選択中 — ドラッグで移動（Alt で複写）、矢印キーで微調整、[ ] で家具を回転、Delete で削除`;
   }
 }
 

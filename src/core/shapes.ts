@@ -15,6 +15,7 @@ import type { Primitive, TextAlign } from './primitive.ts';
 import type { Segment } from './shape.ts';
 import type { SnapKind } from './snap.ts';
 import type { DrawingStandard } from './standard.ts';
+import { applyPoint, directionAngleAfter, isMirror, type Transform } from './transform.ts';
 import type { Id, Scene } from './types.ts';
 
 interface ShapeBase {
@@ -89,6 +90,8 @@ export interface ShapeGeometry<S extends Shape = Shape> {
   pickPriority: number;
   snapPoints(scene: Scene, s: S): { point: Vec; kind: SnapKind }[];
   primitives(scene: Scene, s: S, std: DrawingStandard): Primitive[];
+  /** アフィン変換を適用した新しい図形を返す（元は変更しない） */
+  transform(s: S, t: Transform): S;
 }
 
 /** 円弧を折れ線に分割するときの最大の刻み（ラジアン）。約11.25度 */
@@ -140,6 +143,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       { point: mid(s.a, s.b), kind: 'midpoint' },
     ],
     primitives: (_scene, s) => [{ kind: 'segments', segments: [{ a: s.a, b: s.b }] }],
+    transform: (s, t) => ({ ...s, a: applyPoint(t, s.a), b: applyPoint(t, s.b) }),
   },
 
   polyline: {
@@ -153,6 +157,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       ...segmentMidpoints(s.points, s.closed),
     ],
     primitives: (_scene, s) => [{ kind: 'segments', segments: chain(s.points, s.closed) }],
+    transform: (s, t) => ({ ...s, points: s.points.map((p) => applyPoint(t, p)) }),
   },
 
   arc: {
@@ -173,6 +178,14 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
     primitives: (_scene, s) => [
       { kind: 'arc', center: s.center, radius: s.radius, startAngle: s.startAngle, endAngle: s.endAngle },
     ],
+    transform: (s, t) => {
+      const start = directionAngleAfter(t, s.startAngle);
+      const end = directionAngleAfter(t, s.endAngle);
+      // 鏡像では掃く向きが逆になる。「常に反時計回り」を保つため始点と終点を入れ替える
+      return isMirror(t)
+        ? { ...s, center: applyPoint(t, s.center), startAngle: end, endAngle: start }
+        : { ...s, center: applyPoint(t, s.center), startAngle: start, endAngle: end };
+    },
   },
 
   circle: {
@@ -195,6 +208,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       })),
     ],
     primitives: (_scene, s) => [{ kind: 'circle', center: s.center, radius: s.radius }],
+    transform: (s, t) => ({ ...s, center: applyPoint(t, s.center) }),
   },
 
   text: {
@@ -207,6 +221,8 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
     primitives: (_scene, s) => [
       { kind: 'text', text: s.text, at: s.at, paperMm: s.height, angle: s.angle, align: s.align },
     ],
+    // 文字は鏡像にしない。CAD の慣例で、鏡像コマンドでも文字は読める向きに保つ
+    transform: (s, t) => ({ ...s, at: applyPoint(t, s.at), angle: directionAngleAfter(t, s.angle) }),
   },
 
   point: {
@@ -229,6 +245,7 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
         },
       ];
     },
+    transform: (s, t) => ({ ...s, at: applyPoint(t, s.at) }),
   },
 };
 
@@ -249,6 +266,9 @@ export function shapePrimitives(scene: Scene, s: Shape, std: DrawingStandard): P
 }
 export function shapePickPriority(s: Shape): number {
   return SHAPE_GEOMETRY[s.shape].pickPriority;
+}
+export function transformShape(s: Shape, t: Transform): Shape {
+  return SHAPE_GEOMETRY[s.shape].transform(s as never, t);
 }
 
 /**
