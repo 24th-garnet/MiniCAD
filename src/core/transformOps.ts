@@ -3,12 +3,15 @@ import { resolveSelection } from './selection.ts';
 import { transformShape } from './shapes.ts';
 import { applyPoint, directionAngleAfter, isMirror, type Transform } from './transform.ts';
 import { newId, type EntityRef, type Id, type Scene } from './types.ts';
+import { copyConstraints } from './constraintOps.ts';
 
 export interface TransformResult {
   /** 操作のあと選択しておくべきもの。複写なら複製側 */
   refs: EntityRef[];
   /** 複写で作った元ノード → 新ノードの対応 */
   nodeMap: Map<Id, Id>;
+  /** 複写で作った元の壁 → 新しい壁の対応。拘束の複製に使う */
+  wallMap: Map<Id, Id>;
 }
 
 export interface TransformOptions {
@@ -95,7 +98,7 @@ function moveEntities(
     ...sel.roomLabelIds.map((id) => ({ type: 'roomLabel' as const, id })),
     ...sel.shapeIds.map((id) => ({ type: 'shape' as const, id })),
   ];
-  return { refs, nodeMap: new Map() };
+  return { refs, nodeMap: new Map(), wallMap: new Map() };
 }
 
 function copyEntities(
@@ -175,7 +178,10 @@ function copyEntities(
     refs.push({ type: 'shape', id: newShapeId });
   }
 
-  return { refs, nodeMap };
+  // 全参照先が複製された拘束だけを写す。片側だけだと複製が元に引きずられて動く
+  copyConstraints(scene, wallMap);
+
+  return { refs, nodeMap, wallMap };
 }
 
 /**

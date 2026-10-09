@@ -1,6 +1,7 @@
 import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
+import { dropConstraintsForWall, splitConstraints } from './constraintOps.ts';
 
 /** 同一ノードとみなす距離 (mm) */
 export const NODE_MERGE_TOLERANCE = 1;
@@ -61,6 +62,8 @@ export function splitWall(scene: Scene, wallId: Id, p: Vec, tolerance = 20): Id 
   const originalB = wall.b;
   wall.b = midId;
   const second = addWall(scene, midId, originalB, wall.thickness, wall.layerId);
+  // 角度系の拘束は後半にも効かせ、長さの拘束は意味が壊れるので捨てる
+  if (second) splitConstraints(scene, wallId, second.id);
 
   for (const op of Object.values(scene.openings)) {
     if (op.wallId !== wallId) continue;
@@ -153,6 +156,7 @@ export function mergeNodesAt(scene: Scene, movedIds: Id[], tolerance = 30): bool
     for (const w of Object.values(scene.walls)) {
       const key = [w.a, w.b].sort().join('|');
       if (w.a === w.b || seen.has(key)) {
+        dropConstraintsForWall(scene, w.id);
         delete scene.walls[w.id];
         for (const op of Object.values(scene.openings)) {
           if (op.wallId === w.id) delete scene.openings[op.id];

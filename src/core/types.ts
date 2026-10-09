@@ -3,6 +3,7 @@ import { newId, type Id } from './id.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
 import type { BlockDef, BlockInstance } from './block.ts';
+import type { Constraint } from './constraints.ts';
 import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
@@ -96,6 +97,8 @@ export interface Scene {
   blocks: Record<Id, BlockDef>;
   /** ブロックの挿入 */
   instances: Record<Id, BlockInstance>;
+  /** 幾何拘束。対象は壁（ノードではない。constraints.ts の冒頭を参照） */
+  constraints: Record<Id, Constraint>;
 }
 
 export function emptyScene(): Scene {
@@ -110,6 +113,7 @@ export function emptyScene(): Scene {
     sheet: defaultSheet(),
     blocks: builtinBlocks(),
     instances: {},
+    constraints: {},
   };
 }
 

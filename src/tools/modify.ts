@@ -62,8 +62,14 @@ export class ModifyTool implements Tool {
       }
       case 'trim':
         return target.type === 'shape' ? trimShape(scene, target.id, at) : trimWall(scene, target.id, at);
-      case 'extend':
-        return target.type === 'shape' ? extendShape(scene, target.id, at) : extendWall(scene, target.id, at);
+      case 'extend': {
+        if (target.type === 'shape') return extendShape(scene, target.id, at);
+        // 延長は既存ノードを交点へ動かすので拘束と衝突する。
+        // 伸ばした壁の両端を固定し、整合は周りのほうで取らせる
+        const wall = scene.walls[target.id];
+        if (wall) editor.store.solverPins = new Set([wall.a, wall.b]);
+        return extendWall(scene, target.id, at);
+      }
     }
   }
 

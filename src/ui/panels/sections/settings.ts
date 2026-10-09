@@ -32,6 +32,9 @@ export class SettingsSection implements Section {
       checkboxField('DXFの寸法を DIMENSION で出す', settings.dxfTrueDimension, (v) =>
         set(() => void (settings.dxfTrueDimension = v)),
       ),
+      checkboxField('拘束の記号を表示', settings.showConstraints, (v) =>
+        set(() => void (settings.showConstraints = v)),
+      ),
     ];
   }
 }

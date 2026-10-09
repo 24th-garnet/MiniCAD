@@ -5,6 +5,7 @@ import { instanceVertices } from './block.ts';
 import { openingFrame } from './shape.ts';
 import { shapeVertices } from './shapes.ts';
 import { DEFAULT_LAYER_FOR, type EntityRef, type EntityType, type Id, type Scene } from './types.ts';
+import { pruneConstraints } from './constraintOps.ts';
 
 /**
  * エンティティ種別ごとの操作をまとめた表。
@@ -249,6 +250,10 @@ export function removeEntities(scene: Scene, refs: EntityRef[]): boolean {
   for (const ref of refs) {
     if (ENTITY_KINDS[ref.type].remove(scene, ref.id)) changed = true;
   }
-  if (changed) pruneOrphanNodes(scene);
+  if (changed) {
+    pruneOrphanNodes(scene);
+    // 参照先の壁を失った拘束は、出口で一括して掃除する（個別の remove に書くより漏れない）
+    pruneConstraints(scene);
+  }
   return changed;
 }

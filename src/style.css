@@ -570,3 +570,19 @@ input.layer-name:focus {
   border-color: #2563eb;
   color: #fff;
 }
+
+.constraint-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.constraint-buttons button {
+  flex: 1 1 auto;
+}
+
+.field > button.danger {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+}

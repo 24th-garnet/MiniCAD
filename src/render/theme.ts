@@ -28,6 +28,8 @@ export const theme = {
   selectionRectStroke: '#2563eb',
   crossingRect: 'rgba(22, 163, 74, 0.12)',
   crossingRectStroke: '#16a34a',
+  constraint: '#7c3aed',
+  constraintConflict: '#dc2626',
 } as const;
 
 export const FONT_FAMILY = 'system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif';

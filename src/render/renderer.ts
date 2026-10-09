@@ -12,6 +12,8 @@ import {
   type Vec,
 } from '../core/geometry.ts';
 import { isSnappable } from '../core/entity.ts';
+import { wallEnds } from '../core/ops.ts';
+import { CONSTRAINT_SPECS } from '../core/constraints.ts';
 import { LAYER_IDS } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 
@@ -59,6 +61,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawShapes(frame);
   drawRoomLabels(frame);
   drawNodes(frame);
+  drawConstraints(frame);
   ctx.setLineDash([]);
   overlay?.(frame);
   ctx.restore();
@@ -332,6 +335,52 @@ function drawNodes(frame: Frame): void {
     ctx.lineWidth = isHover || isSelected ? 2 : 1;
     ctx.stroke();
   }
+}
+
+/**
+ * 幾何拘束の記号。
+ *
+ * 壁の中点のそばに、ズームに依らない大きさで小さく置く。
+ * 同じ壁に複数付いていれば法線方向にずらして並べる。
+ * 壁そのものはハイライトしない — 選択色・ホバー色・画層色の3系統が既にあり、
+ * 4つ目を重ねると読めなくなるため。
+ *
+ * 使うのは fillText と measureText だけなので、テストの Canvas スタブがそのまま通る。
+ */
+function drawConstraints(frame: Frame): void {
+  const { ctx, vp, scene, settings } = frame;
+  if (!settings.showConstraints) return;
+  const all = Object.values(scene.constraints);
+  if (all.length === 0) return;
+
+  const violated = frame.violated ?? new Set<string>();
+  const used = new Map<string, number>();
+
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.font = fontOf(11, 600);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (const c of all) {
+    ctx.fillStyle = violated.has(c.id) ? theme.constraintConflict : theme.constraint;
+    // 平行・直角は2本の壁の関係なので、両方に同じ記号を出す。でないと相手が分からない
+    for (const wallId of c.walls) {
+      const wall = scene.walls[wallId];
+      if (!wall) continue;
+      const [a, b] = wallEnds(scene, wall);
+      const d = norm(sub(b, a));
+      if (d.x === 0 && d.y === 0) continue;
+      const n = perp(d);
+      const slot = used.get(wallId) ?? 0;
+      used.set(wallId, slot + 1);
+
+      const s = vp.toScreen(vec((a.x + b.x) / 2, (a.y + b.y) / 2));
+      // 法線方向に 14px ずつ重ねる。画面は y 下向きなので符号を反転する
+      ctx.fillText(CONSTRAINT_SPECS[c.kind].glyph, s.x + n.x * 14 * (slot + 1), s.y - n.y * 14 * (slot + 1));
+    }
+  }
+  ctx.restore();
 }
 
 // --- ツールのプレビュー描画に使う共通部品 ---

@@ -15,16 +15,17 @@ import type { Shape } from '../core/shapes.ts';
 import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
+import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
 
 /**
  * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠、
- * 5 → 6 で家具がブロックになった。
+ * 5 → 6 で家具がブロック、6 → 7 で幾何拘束。
  *
  * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
  * テーブルが増えるだけなら分岐は要らない。
  * 4 だけは「壁に自動表示していた寸法」を実体に変える必要があるので移行する。
  */
-export const FILE_VERSION = 6;
+export const FILE_VERSION = 7;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -121,6 +122,20 @@ export function deserialize(raw: unknown): Scene {
     if (shape) scene.shapes[id] = shape;
   }
   migrateDimensions(scene, obj);
+
+  for (const [id, c] of Object.entries(table<Record<string, unknown>>('constraints'))) {
+    if (!isConstraintKind(c?.kind)) continue;
+    const walls = Array.isArray(c.walls) ? c.walls.filter((w): w is string => typeof w === 'string') : [];
+    const spec = CONSTRAINT_SPECS[c.kind];
+    // 参照先の壁が実在するものだけ採る（開口が壁を検査するのと同じ作法）
+    if (!spec.applicable(scene, walls)) continue;
+    scene.constraints[id] = {
+      id,
+      kind: c.kind,
+      walls,
+      value: spec.usesValue ? numberOr(c.value, spec.initialValue(scene, walls) ?? 0) : null,
+    };
+  }
 
   for (const [id, l] of Object.entries(table<Record<string, unknown>>('roomLabels'))) {
     if (typeof l?.x !== 'number' || typeof l?.y !== 'number') continue;

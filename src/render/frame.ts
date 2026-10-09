@@ -15,6 +15,8 @@ export interface Frame {
   /** `type:id` の集合 */
   selected: Set<string>;
   hover: EntityRef | null;
+  /** 直近の solve で満たせなかった拘束の id。赤く出す。見た目だけの情報なので省略可 */
+  violated?: Set<string>;
 }
 
 export const refKey = (ref: EntityRef): string => `${ref.type}:${ref.id}`;

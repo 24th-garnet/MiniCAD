@@ -9,6 +9,7 @@ import { sceneToSvg } from '../src/io/svg.ts';
 import { deserialize, serialize } from '../src/io/scene.ts';
 import { pickAt } from '../src/core/pick.ts';
 import { vec } from '../src/core/geometry.ts';
+import { addConstraint } from '../src/core/constraintOps.ts';
 
 /** 呼ばれたメソッドを記録するだけの CanvasRenderingContext2D 代替 */
 function stubContext() {
@@ -133,4 +134,37 @@ test('クリック位置から壁とブロックを拾える', () => {
   assert.equal(pickAt(scene, vec(3000, 2500), 20), null);
   // 窓の真上は開口部として拾われる
   assert.equal(pickAt(scene, vec(2000, 0), 80)?.type, 'opening');
+});
+
+test('拘束の記号が描かれ、違反は別の色になる', () => {
+  const scene = sampleScene();
+  const wall = Object.values(scene.walls)[0];
+  const c = addConstraint(scene, 'horizontal', [wall.id])!;
+  assert.ok(c, '拘束を付けられない');
+
+  const vp = new Viewport();
+  vp.resize(1200, 800);
+  vp.fit({ min: vec(0, 0), max: vec(8000, 6000) });
+
+  const draw = (violated: Set<string>, showConstraints: boolean) => {
+    const { ctx, calls } = stubContext();
+    render({
+      ctx,
+      vp,
+      scene,
+      rooms: detectRooms(scene),
+      settings: { ...defaultSettings(), showConstraints },
+      selected: new Set(),
+      hover: null,
+      violated,
+    });
+    return calls;
+  };
+
+  const withSymbol = draw(new Set(), true).filter((x) => x === 'fillText').length;
+  const without = draw(new Set(), false).filter((x) => x === 'fillText').length;
+  assert.equal(withSymbol, without + 1, '拘束の記号が1つ増えていない');
+
+  // 違反していても落ちない（色が変わるだけ）
+  assert.doesNotThrow(() => draw(new Set([c.id]), true));
 });

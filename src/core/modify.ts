@@ -1,3 +1,4 @@
+import { dropConstraintsForWall } from './constraintOps.ts';
 import {
   EPS,
   add,
@@ -412,6 +413,7 @@ export function trimWall(scene: Scene, id: Id, pickPoint: Vec): boolean {
   for (const op of Object.values(scene.openings)) {
     if (op.wallId === victim.id) delete scene.openings[op.id];
   }
+  dropConstraintsForWall(scene, victim.id);
   delete scene.walls[victim.id];
   return true;
 }

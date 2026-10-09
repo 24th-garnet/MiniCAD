@@ -162,6 +162,7 @@ export class Editor {
       settings: this.store.settings,
       selected,
       hover: this.hover,
+      violated: new Set(this.store.lastSolve?.violated ?? []),
     };
     render(frame, (f) => this.tool.drawOverlay?.(this, f));
   }

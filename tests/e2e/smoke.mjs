@@ -878,6 +878,54 @@ async function run() {
   const undone = await state();
   assert.equal(undone.drawings, before.drawings, '取り込みが1回の undo で戻らない');
   console.log('✔ 取り込みを undo 1回で取り消せる');
+
+  // --- 幾何拘束 ---
+  // 傾いた壁を1本足して選び、インスペクタから水平拘束を付ける
+  const tilt = async () =>
+    page.evaluate(async () => {
+      const ed = window.minicad.editorInstance;
+      const [ops, geom] = await Promise.all([import('/src/core/ops.ts'), import('/src/core/geometry.ts')]);
+      let id = null;
+      ed.store.commit(() => {
+        const a = ops.findOrCreateNode(ed.store.scene, geom.vec(-6000, -6000));
+        const b = ops.findOrCreateNode(ed.store.scene, geom.vec(-2000, -5000));
+        id = ops.addWall(ed.store.scene, a, b, 120).id;
+      });
+      ed.store.setSelection([{ type: 'wall', id }]);
+      return id;
+    });
+
+  const slope = async (id) =>
+    page.evaluate((wallId) => {
+      const s = window.minicad.editorInstance.store.scene;
+      const w = s.walls[wallId];
+      return w ? Math.abs(s.nodes[w.a].y - s.nodes[w.b].y) : null;
+    }, id);
+
+  const wallId = await tilt();
+  await sleep(150);
+  assert.ok((await slope(wallId)) > 500, '傾いた壁になっていない');
+
+  const horizontal = page.locator('.constraint-buttons button', { hasText: '水平' });
+  await horizontal.click();
+  await sleep(200);
+  assert.ok((await slope(wallId)) < 0.1, '水平拘束が効いていない');
+  console.log('✔ 拘束を付けると壁が水平になる');
+
+  // 矛盾する拘束は弾かれ、形も変わらない
+  const beforeConflict = await slope(wallId);
+  await page.locator('.constraint-buttons button', { hasText: '垂直' }).click();
+  await sleep(200);
+  const warn = await page.locator('.warn-note').first().textContent();
+  assert.match(warn ?? '', /矛盾/, `矛盾が知らされていない: ${warn}`);
+  assert.equal(await slope(wallId), beforeConflict, '弾かれたのに形が変わった');
+  console.log('✔ 矛盾する拘束は弾かれ、形も元のまま');
+
+  // undo 1回で拘束ごと戻る
+  await page.keyboard.press('Control+z');
+  await sleep(200);
+  assert.ok((await slope(wallId)) > 500, '拘束の追加が undo で戻らない');
+  console.log('✔ 拘束の追加を undo 1回で取り消せる');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

@@ -1,5 +1,7 @@
 import { ENTITY_KINDS } from './entity.ts';
-import { emptyScene, sameRef, type EntityRef, type Scene } from './types.ts';
+import { pruneConstraints } from './constraintOps.ts';
+import { solveScene, type SolveResult } from './constraintSolver.ts';
+import { emptyScene, sameRef, type EntityRef, type Id, type Scene } from './types.ts';
 
 export interface Settings {
   /** グリッド間隔 (mm) */
@@ -18,6 +20,8 @@ export interface Settings {
   dxfEscapeUnicode: boolean;
   /** DXF 書き出しで寸法を本物の DIMENSION エンティティにする */
   dxfTrueDimension: boolean;
+  /** 幾何拘束の記号を画面に出す */
+  showConstraints: boolean;
   /** 新しく作るものを置く画層。null なら種別ごとの既定 */
   currentLayerId: string | null;
 }
@@ -34,6 +38,7 @@ export function defaultSettings(): Settings {
     innerArea: false,
     dxfEscapeUnicode: false,
     dxfTrueDimension: true,
+    showConstraints: true,
     currentLayerId: null,
   };
 }
@@ -51,11 +56,22 @@ export class Store {
   settings: Settings = defaultSettings();
   selection: EntityRef[] = [];
 
+  /**
+   * 次の solve で動かさないノード。`commit` / `commitFrom` が1回使って必ず空にする。
+   *
+   * `commit` の呼び出しは17箇所あるのでシグネチャは変えない。
+   * pin は正しさの要件ではなく「どちらが動くか」の指定で、ソルバは現在の配置から
+   * 出発して近傍にとどまるので、pin を渡さなくても最小変更な解が得られる。
+   */
+  solverPins = new Set<Id>();
+
   private undoStack: Scene[] = [];
   private redoStack: Scene[] = [];
   private listeners = new Set<Listener>();
   /** commit 中のネストを検出して二重スナップショットを防ぐ */
   private inCommit = false;
+  /** 直近の拘束の解き結果。画面で違反を赤く出すのに使う */
+  lastSolve: SolveResult | null = null;
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
@@ -80,10 +96,12 @@ export class Store {
     } finally {
       this.inCommit = false;
     }
+    const pins = this.takePins();
     if (result === false) {
       this.scene = snapshot;
       return;
     }
+    this.applyConstraints(pins);
     this.undoStack.push(snapshot);
     if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
     this.redoStack.length = 0;
@@ -91,11 +109,31 @@ export class Store {
     this.emit();
   }
 
+  /** 成否に関わらず pin は1回で使い切る */
+  private takePins(): Set<Id> {
+    const pins = this.solverPins;
+    this.solverPins = new Set();
+    return pins;
+  }
+
+  /**
+   * 拘束を解く。
+   *
+   * ここが全編集経路の網になる。`undo` / `redo` / `replaceScene` では**解かない** —
+   * 過去の状態を解き直すと undo → redo → undo が元に戻らず履歴が壊れるし、
+   * 読み込んだ他人のファイルの形を勝手に動かすのも筋が悪い。
+   */
+  private applyConstraints(pinned: Set<Id>): void {
+    pruneConstraints(this.scene);
+    this.lastSolve = solveScene(this.scene, { pinned });
+  }
+
   /**
    * ドラッグのように「開始時のスナップショットを取り、途中は自由に書き換える」種類の操作用。
    * before には操作開始前のシーンを渡す。
    */
   commitFrom(before: Scene): void {
+    this.applyConstraints(this.takePins());
     this.undoStack.push(before);
     if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
     this.redoStack.length = 0;

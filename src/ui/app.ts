@@ -23,6 +23,7 @@ import { BlocksSection } from './panels/sections/blocks.ts';
 import { LayersSection } from './panels/sections/layers.ts';
 import { RoomsSection } from './panels/sections/rooms.ts';
 import { SelectionSection } from './panels/sections/selection.ts';
+import { ConstraintsSection } from './panels/sections/constraints.ts';
 import { SettingsSection } from './panels/sections/settings.ts';
 import { ShortcutsSection } from './panels/sections/shortcuts.ts';
 import { SheetSection } from './panels/sections/sheet.ts';
@@ -96,6 +97,7 @@ export class App {
       new OptionsBar(root.getElementById('options')!),
       new Inspector(root.getElementById('inspector')!, [
         new SelectionSection(),
+        new ConstraintsSection(),
         new RoomsSection(),
         new StandardSection(),
         new SheetSection(),

@@ -1,3 +1,4 @@
+import { solveScene } from '../core/constraintSolver.ts';
 import { resolveDelta, type CoordInput } from '../core/coord-input.ts';
 import { dist, sub, vec, type Vec } from '../core/geometry.ts';
 import { pickInRect } from '../core/pick.ts';
@@ -166,6 +167,8 @@ export class SelectTool implements Tool {
     }
 
     placeSelection(editor.store.scene, drag.origins, delta);
+    // 掴んでいるノードを固定して解く。掴んだ点はマウスに追従し、周りが拘束を満たすように動く
+    solveScene(editor.store.scene, { pinned: new Set(drag.sel.nodeIds) });
     drag.delta = delta;
     drag.moved = true;
     editor.notifyChanged();
@@ -185,6 +188,8 @@ export class SelectTool implements Tool {
       store.commit(() => {
         const sel = resolveSelection(store.scene, store.selection);
         if (isEmptySelection(sel)) return false;
+        // 動かした先を固定して、残りを拘束に追従させる
+        store.solverPins = new Set(sel.nodeIds);
         translateSelection(store.scene, sel, delta);
       });
       return true;
@@ -226,6 +231,7 @@ export class SelectTool implements Tool {
     const delta = resolveDelta(input, resolvedCenter(store.scene, sel), null);
     if (!delta || (delta.x === 0 && delta.y === 0)) return;
     store.commit(() => {
+      store.solverPins = new Set(sel.nodeIds);
       translateSelection(store.scene, sel, delta);
       if (sel.nodeIds.length > 0) mergeNodesAt(store.scene, sel.nodeIds);
     });
