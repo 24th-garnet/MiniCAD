@@ -64,6 +64,46 @@ export function numberField(
   return el('div', { class: 'field' }, [el('span', {}, [options.suffix ? `${label} (${options.suffix})` : label]), input]);
 }
 
+/**
+ * 上書きできる数値。空欄なら null（＝既定に従う）。
+ * 壁の高さや窓台の高さのように「上書きが無ければ既定」という値に使う。
+ */
+export function optionalNumberField(
+  label: string,
+  value: number | null,
+  fallback: number,
+  onCommit: (v: number | null) => void,
+  options: NumberFieldOptions = {},
+): HTMLElement {
+  const input = el('input', {
+    type: 'number',
+    value: value === null ? '' : String(Math.round(value * 100) / 100),
+    placeholder: `既定 ${Math.round(fallback)}`,
+    step: options.step ?? 1,
+    min: options.min,
+  });
+  const commit = () => {
+    const text = input.value.trim();
+    if (text === '') {
+      onCommit(null);
+      return;
+    }
+    const v = Number(text);
+    if (Number.isFinite(v)) onCommit(v);
+  };
+  input.addEventListener('change', commit);
+  input.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') {
+      commit();
+      input.blur();
+    }
+  });
+  return el('div', { class: 'field' }, [
+    el('span', {}, [options.suffix ? `${label} (${options.suffix})` : label]),
+    input,
+  ]);
+}
+
 export function textField(label: string, value: string, onCommit: (v: string) => void): HTMLElement {
   const input = el('input', { type: 'text', value });
   const commit = () => onCommit(input.value);

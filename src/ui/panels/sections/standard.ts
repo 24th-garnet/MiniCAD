@@ -5,7 +5,7 @@ import {
   STANDARD_PRESETS,
   lineGroupById,
 } from '../../../core/standard.ts';
-import { checkboxField, el, readonlyField, selectField } from '../../dom.ts';
+import { checkboxField, el, numberField, readonlyField, selectField } from '../../dom.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
 /** 製図規格。図面の属性なので変更は履歴に残す */
@@ -13,6 +13,7 @@ export class StandardSection implements Section {
   render(ctx: PanelContext): (HTMLElement | null)[] {
     const scene = ctx.editor.store.scene;
     const std = scene.standard;
+    const level = scene.level;
     const edit = ctx.edit;
     const group = lineGroupById(std.lineGroupId);
 
@@ -53,6 +54,12 @@ export class StandardSection implements Section {
       ),
       checkboxField('壁を塗りつぶす', std.wallFill, (v) => edit(() => void (std.wallFill = v))),
       readonlyField('細 / 太 / 極太', `${group.thin} / ${group.thick} / ${group.extraThick} mm`),
+      // 高さは紙の属性ではなく建物の属性なので Level に持っているが、設定欄はここにまとめる
+      numberField('壁の高さ', level.wallHeight, (v: number) => edit(() => void (level.wallHeight = Math.max(1, v))), {
+        step: 100,
+        min: 1,
+        suffix: 'mm',
+      }),
     ];
   }
 }

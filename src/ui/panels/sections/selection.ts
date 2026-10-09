@@ -1,8 +1,8 @@
 import { toDeg, toRad } from '../../../core/geometry.ts';
 import { wallLength } from '../../../core/ops.ts';
 import { isOpeningKind, OPENING_KINDS, type EntityRef } from '../../../core/types.ts';
-import { OPENING_SYMBOLS } from '../../../core/opening.ts';
-import { checkboxField, el, numberField, readonlyField, selectField, textField } from '../../dom.ts';
+import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
+import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
@@ -51,6 +51,13 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
           min: 10,
           suffix: 'mm',
         }),
+        optionalNumberField(
+          '高さ',
+          wall.height,
+          scene.level.wallHeight,
+          (v) => edit(() => void (wall.height = v === null ? null : Math.max(1, v))),
+          { step: 100, min: 1, suffix: 'mm' },
+        ),
       ];
     }
     case 'node': {
@@ -78,6 +85,20 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
         numberField('幅', op.width, (v) => edit(() => void (op.width = Math.max(100, v))), { step: 50, suffix: 'mm' }),
         numberField('始点からの位置', op.offset, (v) => edit(() => void (op.offset = v)), { step: 50, suffix: 'mm' }),
         readonlyField('壁の長さ', wall ? `${Math.round(wallLength(scene, wall))} mm` : '-'),
+        optionalNumberField(
+          '窓台の高さ',
+          op.sillHeight,
+          OPENING_PROFILES[op.kind].sillHeight,
+          (v) => edit(() => void (op.sillHeight = v === null ? null : Math.max(0, v))),
+          { step: 50, min: 0, suffix: 'mm' },
+        ),
+        optionalNumberField(
+          '建具の高さ',
+          op.height,
+          OPENING_PROFILES[op.kind].height,
+          (v) => edit(() => void (op.height = v === null ? null : Math.max(1, v))),
+          { step: 50, min: 1, suffix: 'mm' },
+        ),
         // 反転が意味を持たない種別では欄自体を出さない
         symbol.usesFlipX ? checkboxField('吊元・引き勝手を反転', op.flipX, (v) => edit(() => void (op.flipX = v))) : null,
         symbol.usesFlipY ? checkboxField('開く向きを反転', op.flipY, (v) => edit(() => void (op.flipY = v))) : null,

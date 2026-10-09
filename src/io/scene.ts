@@ -16,16 +16,17 @@ import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
+import { defaultLevel, type Level } from '../core/level.ts';
 
 /**
  * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠、
- * 5 → 6 で家具がブロック、6 → 7 で幾何拘束。
+ * 5 → 6 で家具がブロック、6 → 7 で幾何拘束、7 → 8 で高さ（壁・建具・階）。
  *
  * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
  * テーブルが増えるだけなら分岐は要らない。
  * 4 だけは「壁に自動表示していた寸法」を実体に変える必要があるので移行する。
  */
-export const FILE_VERSION = 7;
+export const FILE_VERSION = 8;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -64,6 +65,7 @@ export function deserialize(raw: unknown): Scene {
   scene.layers = readLayers(table<Record<string, unknown>>('layers'));
   scene.standard = readStandard(payload.standard);
   scene.sheet = readSheet(payload.sheet);
+  scene.level = readLevel(payload.level);
   const layerOr = (v: unknown, fallback: LayerId): LayerId =>
     typeof v === 'string' && scene.layers[v] ? v : fallback;
 
@@ -79,6 +81,7 @@ export function deserialize(raw: unknown): Scene {
       a: w.a,
       b: w.b,
       thickness: numberOr(w.thickness, 120),
+      height: finiteOrNull(w.height),
       layerId: layerOr(w.layerId, LAYER_IDS.wall),
     };
   }
@@ -94,6 +97,8 @@ export function deserialize(raw: unknown): Scene {
       kind,
       flipX: o.flipX === true,
       flipY: o.flipY === true,
+      sillHeight: finiteOrNull(o.sillHeight),
+      height: finiteOrNull(o.height),
       layerId: layerOr(o.layerId, LAYER_IDS.opening),
     };
   }
@@ -253,6 +258,15 @@ function readLayers(raw: Record<string, Record<string, unknown>>): Record<LayerI
   return layers;
 }
 
+function readLevel(raw: unknown): Level {
+  const base = defaultLevel();
+  const l = (raw ?? {}) as Record<string, unknown>;
+  return {
+    floorZ: numberOr(l.floorZ, base.floorZ),
+    wallHeight: Math.max(1, numberOr(l.wallHeight, base.wallHeight)),
+  };
+}
+
 function readStandard(raw: unknown): DrawingStandard {
   const base = jisStandard();
   if (typeof raw !== 'object' || raw === null) return base;
@@ -315,6 +329,10 @@ function readSheet(raw: unknown): Sheet {
     },
   };
 }
+
+/** 上書きがあればその値、無ければ null。「既定に従う」を null 1値で表す既存の流儀に合わせる */
+const finiteOrNull = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null;
 
 const numberOr = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;

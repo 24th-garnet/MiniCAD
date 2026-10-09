@@ -1,6 +1,7 @@
 import { angleOf, sub } from './geometry.ts';
 import type { Primitive } from './primitive.ts';
 import { doorSwing, openingAt, openingFrame, subFrame, type OpeningFrame, type Segment } from './shape.ts';
+import { nonNegativeOr, positiveOr, type Level } from './level.ts';
 import type { Opening, OpeningKind, Scene } from './types.ts';
 import { OPENING_KINDS } from './types.ts';
 
@@ -179,6 +180,49 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     primitives: (f) => [{ kind: 'segments', segments: [...sashes(f), meetTick(f)] }],
   },
 };
+
+/**
+ * 建具の縦方向の寸法。床 (FL) からの高さ (mm)。
+ *
+ * `OPENING_SYMBOLS` と同じく `Record<OpeningKind, …>` なので、
+ * `OPENING_KINDS` に種別を足すとこの表も型エラーになる。
+ * 平面の記号と縦方向の寸法を1つのファイルに置いておけば、
+ * 種別を足すときに見る場所が1箇所で済む。
+ */
+export interface OpeningProfile {
+  /** 床から開口下端（窓台） */
+  sillHeight: number;
+  /** 開口の高さ。頭（まぐさの下端）は sillHeight + height */
+  height: number;
+}
+
+export const OPENING_PROFILES: Record<OpeningKind, OpeningProfile> = {
+  // 戸はすべて床から。既製内部建具の枠内法高さは 2000 が最頻
+  door: { sillHeight: 0, height: 2000 },
+  doubleDoor: { sillHeight: 0, height: 2000 },
+  unequalDoor: { sillHeight: 0, height: 2000 },
+  slidingDouble: { sillHeight: 0, height: 2000 },
+  slidingSingle: { sillHeight: 0, height: 2000 },
+  slidingPocket: { sillHeight: 0, height: 2000 },
+  folding: { sillHeight: 0, height: 2000 },
+  opening: { sillHeight: 0, height: 2000 },
+  // 腰窓。窓台 800 は FL から下枠までの標準で、高さ 1100 は引違いサッシの一般的な寸法。
+  // 頭が 1900 になり、建具の頭 2000 の下に収まってまぐさの見え方が自然になる。
+  // 掃き出し窓は種別を足さず、その開口の sillHeight を 0 に上書きして表す
+  window: { sillHeight: 800, height: 1100 },
+  windowSliding: { sillHeight: 800, height: 1100 },
+};
+
+/**
+ * 開口の上端と下端 (mm)。開口ごとの上書きがあればそれを使う。
+ * 負値や NaN は既定に落とす（`deserialize` を通らない手書き JSON への保険）。
+ */
+export function openingVertical(opening: Opening, level: Level): { sill: number; head: number } {
+  const profile = OPENING_PROFILES[opening.kind];
+  const sill = nonNegativeOr(opening.sillHeight, profile.sillHeight);
+  const height = positiveOr(opening.height, profile.height);
+  return { sill: level.floorZ + sill, head: level.floorZ + sill + height };
+}
 
 /**
  * 片開きの戸と、その開き軌跡。

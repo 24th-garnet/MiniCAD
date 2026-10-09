@@ -212,3 +212,85 @@ test('引き込む側のかくれ線が DXF にエンティティ単位の線種
   assert.match(dxf, /\r\n6\r\nHIDDEN\r\n/);
   assert.ok(new DxfParser().parseSync(dxf), '線種を入れたら読めなくなった');
 });
+
+// --- 縦方向の寸法（3D が使う） ---
+
+import { OPENING_PROFILES, openingVertical } from '../src/core/opening.ts';
+import { defaultLevel, wallHeightOf } from '../src/core/level.ts';
+
+test('建具の高さの既定が妥当な範囲に収まる', () => {
+  const level = defaultLevel();
+  for (const kind of OPENING_KINDS) {
+    const p = OPENING_PROFILES[kind];
+    assert.ok(Number.isFinite(p.sillHeight) && p.sillHeight >= 0, `${kind}: 窓台 ${p.sillHeight}`);
+    assert.ok(Number.isFinite(p.height) && p.height > 0, `${kind}: 高さ ${p.height}`);
+    // まぐさが必ず残る（開口が壁の天端まで抜けない）
+    assert.ok(p.sillHeight + p.height <= level.wallHeight, `${kind}: 頭 ${p.sillHeight + p.height} が壁高を超える`);
+
+    const family = OPENING_SYMBOLS[kind].family;
+    if (family === 'door') assert.equal(p.sillHeight, 0, `${kind} は床から始まるべき`);
+    else assert.ok(p.sillHeight > 0, `${kind} は既定が腰窓であるべき`);
+  }
+});
+
+test('開口ごとの上書きが効き、おかしな値は既定に落ちる', () => {
+  const level = defaultLevel();
+  const base = (over: Partial<Opening>) => {
+    const { scene, opening } = sceneWith('window');
+    Object.assign(opening, over);
+    return openingVertical(opening, level);
+  };
+
+  assert.deepEqual(base({}), { sill: 800, head: 1900 }, '既定の腰窓');
+  // 掃き出し窓は種別ではなく上書きで表す
+  assert.deepEqual(base({ sillHeight: 0, height: 2000 }), { sill: 0, head: 2000 });
+  // 0 は窓台として正当な値なので上書きとして採る
+  assert.equal(base({ sillHeight: 0 }).sill, 0);
+  // 高さ 0 や負値・NaN は既定へ
+  assert.deepEqual(base({ height: 0 }), { sill: 800, head: 1900 });
+  assert.deepEqual(base({ sillHeight: -100 }), { sill: 800, head: 1900 });
+  assert.deepEqual(base({ height: Number.NaN }), { sill: 800, head: 1900 });
+});
+
+test('床の高さが開口の位置に乗る', () => {
+  const { opening } = sceneWith('door');
+  const v = openingVertical(opening, { floorZ: 3000, wallHeight: 2400 });
+  assert.deepEqual(v, { sill: 3000, head: 5000 });
+});
+
+test('壁と建具の高さが JSON の往復で保たれる', () => {
+  const scene = sampleScene();
+  const wall = Object.values(scene.walls)[0];
+  const opening = Object.values(scene.openings)[0];
+  wall.height = 2700;
+  opening.sillHeight = 0;
+  opening.height = 2000;
+  scene.level = { floorZ: 0, wallHeight: 2500 };
+
+  const back = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
+  assert.equal(back.walls[wall.id].height, 2700);
+  assert.equal(back.openings[opening.id].sillHeight, 0);
+  assert.equal(back.openings[opening.id].height, 2000);
+  assert.deepEqual(back.level, { floorZ: 0, wallHeight: 2500 });
+});
+
+test('高さを持たない旧ファイルは既定値に落ちる', () => {
+  const scene = sampleScene();
+  const raw = JSON.parse(JSON.stringify(serialize(scene)));
+  for (const w of Object.values(raw.scene.walls) as Record<string, unknown>[]) delete w.height;
+  for (const o of Object.values(raw.scene.openings) as Record<string, unknown>[]) {
+    delete o.sillHeight;
+    delete o.height;
+  }
+  delete raw.scene.level;
+
+  const back = deserialize(raw);
+  assert.deepEqual(back.level, defaultLevel());
+  for (const w of Object.values(back.walls)) assert.equal(w.height, null);
+  for (const o of Object.values(back.openings)) {
+    assert.equal(o.sillHeight, null);
+    assert.equal(o.height, null);
+  }
+  const wall = Object.values(back.walls)[0];
+  assert.equal(wallHeightOf(wall, back.level), 2400, '既定の壁高に落ちていない');
+});

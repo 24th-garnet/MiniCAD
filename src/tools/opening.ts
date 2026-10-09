@@ -79,6 +79,8 @@ export class OpeningTool implements Tool {
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
+      sillHeight: null,
+      height: null,
       layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
     };
     store.commit(() => {
@@ -133,6 +135,8 @@ export class OpeningTool implements Tool {
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
+      sillHeight: null,
+      height: null,
       layerId: LAYER_IDS.opening,
     };
     const f = openingFrame(scene, preview);

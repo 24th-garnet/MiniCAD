@@ -55,6 +55,8 @@ export function sampleScene(): Scene {
       kind,
       flipX: false,
       flipY,
+      sillHeight: null,
+      height: null,
       layerId: LAYER_IDS.opening,
     };
     scene.openings[id] = opening;

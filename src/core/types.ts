@@ -4,6 +4,7 @@ import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
 import type { BlockDef, BlockInstance } from './block.ts';
 import type { Constraint } from './constraints.ts';
+import { defaultLevel, type Level } from './level.ts';
 import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
@@ -26,6 +27,8 @@ export interface Wall {
   b: Id;
   /** 壁厚 (mm) */
   thickness: number;
+  /** 壁の高さ (mm)。null なら階の既定 */
+  height: number | null;
   layerId: LayerId;
 }
 
@@ -67,6 +70,10 @@ export interface Opening {
   /** ドアの開き勝手を反転 */
   flipX: boolean;
   flipY: boolean;
+  /** 窓台の高さ＝床から開口下端 (mm)。null なら建具種別の既定 */
+  sillHeight: number | null;
+  /** 開口の高さ (mm)。null なら建具種別の既定 */
+  height: number | null;
   layerId: LayerId;
 }
 
@@ -99,6 +106,8 @@ export interface Scene {
   instances: Record<Id, BlockInstance>;
   /** 幾何拘束。対象は壁（ノードではない。constraints.ts の冒頭を参照） */
   constraints: Record<Id, Constraint>;
+  /** 階の縦方向の設定。3D の押し出しが使う */
+  level: Level;
 }
 
 export function emptyScene(): Scene {
@@ -114,6 +123,7 @@ export function emptyScene(): Scene {
     blocks: builtinBlocks(),
     instances: {},
     constraints: {},
+    level: defaultLevel(),
   };
 }
 
