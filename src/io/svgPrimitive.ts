@@ -2,7 +2,7 @@ import { arcPointAt } from '../core/shapes.ts';
 import type { Vec } from '../core/geometry.ts';
 import { layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import type { Primitive } from '../core/primitive.ts';
-import { paperToWorld, type DrawingStandard } from '../core/standard.ts';
+import { LINE_TYPE_PATTERNS, paperToWorld, type DrawingStandard } from '../core/standard.ts';
 import { FONT_FAMILY, theme } from '../render/theme.ts';
 
 export const round = (n: number): number => Math.round(n * 100) / 100;
@@ -49,14 +49,22 @@ export function escapeXml(s: string): string {
   });
 }
 
+const dashAttrOf = (pattern: number[]): string =>
+  pattern.length === 0 ? '' : ` stroke-dasharray="${pattern.map(round).join(' ')}"`;
+
 /** 中間表現を SVG に落とす3つのバックエンドのうちの1つ */
 export function svgPrimitives(prims: Primitive[], layer: Layer, std: DrawingStandard): string[] {
   const width = paperToWorld(layerWeight(layer, std), std);
-  const dash = layerDashWorld(layer, std);
-  const dashAttr = dash.length === 0 ? '' : ` stroke-dasharray="${dash.map(round).join(' ')}"`;
+  const layerDash = dashAttrOf(layerDashWorld(layer, std));
   const out: string[] = [];
 
   for (const prim of prims) {
+    // 記号が自前の線種を持っていれば画層の線種より優先する
+    const dashAttr =
+      'lineType' in prim && prim.lineType
+        ? dashAttrOf(LINE_TYPE_PATTERNS[prim.lineType].map((mm) => mm * std.scale))
+        : layerDash;
+
     switch (prim.kind) {
       case 'segments':
         for (const s of prim.segments) out.push(lineTag(s.a, s.b, layer.color, width, dashAttr));

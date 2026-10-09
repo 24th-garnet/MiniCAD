@@ -28,7 +28,31 @@ export interface Wall {
   layerId: LayerId;
 }
 
-export type OpeningKind = 'door' | 'window' | 'opening';
+/**
+ * 建具の種別。JIS A 0150 の平面表示記号に対応する。
+ *
+ * 配列を種別の唯一の出どころにしてあるので、ここに足せば
+ * `OPENING_SYMBOLS`（core/opening.ts）の埋め忘れが型エラーになる。
+ */
+export const OPENING_KINDS = [
+  'door',
+  'doubleDoor',
+  'unequalDoor',
+  'slidingDouble',
+  'slidingSingle',
+  'slidingPocket',
+  'folding',
+  'opening',
+  'window',
+  'windowSliding',
+] as const;
+
+export type OpeningKind = (typeof OPENING_KINDS)[number];
+
+const OPENING_KIND_SET: ReadonlySet<string> = new Set<string>(OPENING_KINDS);
+
+export const isOpeningKind = (v: unknown): v is OpeningKind =>
+  typeof v === 'string' && OPENING_KIND_SET.has(v);
 
 /** 壁に開ける穴（ドア・窓）。壁の始点からの距離で位置を持つので、壁を伸ばしてもズレない */
 export interface Opening {

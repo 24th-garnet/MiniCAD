@@ -15,7 +15,8 @@ import { isSnappable } from '../core/entity.ts';
 import { LAYER_IDS } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 
-import { doorSwing, openingFrame, openingQuad, wallOutline, wallQuad } from '../core/shape.ts';
+import { openingFrame, openingJambs, openingQuad, wallOutline, wallQuad } from '../core/shape.ts';
+import { openingPrimitives } from '../core/opening.ts';
 import {
   blockOf,
   instanceLabel,
@@ -218,7 +219,7 @@ function drawWalls(frame: Frame): void {
 // --- 開口部（ドア・窓）---
 
 function drawOpenings(frame: Frame): void {
-  const { ctx, vp, scene, selected, hover } = frame;
+  const { scene, selected, hover } = frame;
   for (const op of Object.values(scene.openings)) {
     const layer = layerFor(frame, op.layerId, LAYER_IDS.opening);
     if (!layer.visible) continue;
@@ -229,41 +230,12 @@ function drawOpenings(frame: Frame): void {
       : hover?.type === 'opening' && hover.id === op.id
         ? theme.wallHover
         : null;
+
+    // 小口（ジャム）は壁の幾何なので記号の表には入れない
     applyLayer(frame, layer, accent);
+    strokeSegments(frame, openingJambs(f));
 
-    // 開口の両端に小口（ジャム）を描く
-    const half = mul(f.normal, f.thickness / 2);
-    strokeSegments(frame, [
-      { a: add(f.start, half), b: sub(f.start, half) },
-      { a: add(f.end, half), b: sub(f.end, half) },
-    ]);
-
-    if (op.kind === 'window') {
-      // JIS A 0150 の窓記号に倣い、壁厚の中に2本の平行線を入れる
-      const lines = [-0.5, 0.5].map((t) => {
-        const off = mul(f.normal, (f.thickness / 2) * t);
-        return { a: add(f.start, off), b: add(f.end, off) };
-      });
-      strokeSegments(frame, lines);
-    } else if (op.kind === 'door') {
-      const swing = doorSwing(f, op.flipX, op.flipY);
-      strokeSegments(frame, [{ a: swing.hinge, b: swing.open }]);
-      const s = vp.toScreen(swing.hinge);
-      const r = vp.toScreenLength(swing.radius);
-      // 画面は y 下向きなので角度の符号を反転して描く
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.arc(
-        s.x,
-        s.y,
-        r,
-        -angleOf(sub(swing.open, swing.hinge)),
-        -angleOf(sub(swing.closed, swing.hinge)),
-        swing.ccwFromOpenToClosed,
-      );
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    drawPrimitives(frame, openingPrimitives(scene, op), layer, accent);
   }
 }
 

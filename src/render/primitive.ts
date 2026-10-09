@@ -1,5 +1,6 @@
 import type { Layer } from '../core/layer.ts';
 import type { Primitive } from '../core/primitive.ts';
+import { LINE_TYPE_PATTERNS } from '../core/standard.ts';
 import { fontOf, theme } from './theme.ts';
 import { applyLayer, normalizeTextAngle, strokeSegments, textPx, tracePolygon, type Frame } from './frame.ts';
 
@@ -10,6 +11,11 @@ export function drawPrimitives(frame: Frame, prims: Primitive[], layer: Layer, a
 
   for (const prim of prims) {
     applyLayer(frame, layer, accent);
+    // 記号が自前の線種を持っていれば画層の線種より優先する（dashPx と同じ式）
+    if ('lineType' in prim && prim.lineType) {
+      const pattern = LINE_TYPE_PATTERNS[prim.lineType].map((mm) => mm * frame.scene.standard.scale);
+      ctx.setLineDash(pattern.map((mm) => Math.max(1, vp.toScreenLength(mm))));
+    }
 
     switch (prim.kind) {
       case 'segments':

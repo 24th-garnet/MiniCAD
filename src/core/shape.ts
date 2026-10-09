@@ -10,6 +10,11 @@ export function wallQuad(scene: Scene, wall: Wall): Vec[] {
   return [add(a, n), add(b, n), sub(b, n), sub(a, n)];
 }
 
+export interface Segment {
+  a: Vec;
+  b: Vec;
+}
+
 export interface OpeningFrame {
   /** 開口の中心（壁芯上） */
   center: Vec;
@@ -43,14 +48,53 @@ export function openingFrame(scene: Scene, opening: Opening): OpeningFrame | nul
   };
 }
 
+/**
+ * 開口の局所座標 → ワールド座標。
+ * `u` は壁の進行方向（開口の中心が 0）、`v` は法線方向（壁芯が 0）。
+ * 建具記号の幾何はすべてこの座標で書くと読みやすくなる。
+ */
+export const openingAt =
+  (frame: OpeningFrame) =>
+  (u: number, v: number): Vec =>
+    add(frame.center, add(mul(frame.dir, u), mul(frame.normal, v)));
+
+/**
+ * 開口の一部分だけを切り出した frame。
+ * 両開き戸や親子扉を `doorSwing` の使い回しで書くためにある。
+ * `u0`/`u1` は開口の中心を 0 とした進行方向の位置。
+ */
+export function subFrame(frame: OpeningFrame, u0: number, u1: number): OpeningFrame {
+  const at = openingAt(frame);
+  const start = at(u0, 0);
+  const end = at(u1, 0);
+  return {
+    center: at((u0 + u1) / 2, 0),
+    dir: frame.dir,
+    normal: frame.normal,
+    start,
+    end,
+    thickness: frame.thickness,
+    width: Math.abs(u1 - u0),
+  };
+}
+
+/**
+ * 開口の小口（ジャム）。
+ *
+ * これは壁の幾何であって建具の記号ではないので、記号の表には入れない。
+ * DXF では `wallOutline` が壁側で出しているため、ここを足すと二重線になる。
+ */
+export function openingJambs(frame: OpeningFrame): Segment[] {
+  const half = mul(frame.normal, frame.thickness / 2);
+  return [
+    { a: add(frame.start, half), b: sub(frame.start, half) },
+    { a: add(frame.end, half), b: sub(frame.end, half) },
+  ];
+}
+
 export function openingQuad(frame: OpeningFrame): Vec[] {
   const n = mul(frame.normal, frame.thickness / 2 + 1);
   return [add(frame.start, n), add(frame.end, n), sub(frame.end, n), sub(frame.start, n)];
-}
-
-export interface Segment {
-  a: Vec;
-  b: Vec;
 }
 
 /**

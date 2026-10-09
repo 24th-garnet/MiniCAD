@@ -2,8 +2,11 @@ import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
 import { clampOpening, wallEnds, wallLength } from '../core/ops.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { openingFrame, openingQuad } from '../core/shape.ts';
+import { OPENING_SYMBOLS, openingKindsOf, openingPrimitives } from '../core/opening.ts';
 import { newId, type Id, type Opening, type OpeningKind } from '../core/types.ts';
 import { theme } from '../render/theme.ts';
+import { drawPrimitives } from '../render/primitive.ts';
+import { getLayer } from '../core/layer.ts';
 import type { Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
 import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
@@ -13,7 +16,12 @@ interface Candidate {
   offset: number;
 }
 
-/** ドア・窓を壁に差し込むツール。壁の上にしか置けないので、常に最寄りの壁へ吸着する */
+/**
+ * ドア・窓を壁に差し込むツール。壁の上にしか置けないので、常に最寄りの壁へ吸着する。
+ *
+ * 種別はツールではなくオプションのセレクタで選ぶ。JIS A 0150 の建具は 10 種あり、
+ * 1 種ごとにツールを立てるとツールバーが破綻するため。
+ */
 export class OpeningTool implements Tool {
   readonly id: ToolId;
   readonly label: string;
@@ -21,20 +29,27 @@ export class OpeningTool implements Tool {
   readonly cursor = 'crosshair';
   readonly group = 'draw' as const;
 
-  private readonly kind: OpeningKind;
-  /** 開口幅 (mm)。ツールバーから変更される */
+  private readonly family: 'door' | 'window';
+  /** 選択中の種別。オプションのセレクタで切り替える */
+  kind: OpeningKind;
+  /** 開口幅 (mm)。種別を変えると既定値に追従する */
   width: number;
   flipX = false;
   flipY = false;
 
   private candidate: Candidate | null = null;
 
-  constructor(kind: OpeningKind, id: ToolId, label: string, shortcut: string, width: number) {
-    this.kind = kind;
+  constructor(family: 'door' | 'window', id: ToolId, label: string, shortcut: string) {
+    this.family = family;
     this.id = id;
     this.label = label;
     this.shortcut = shortcut;
-    this.width = width;
+    this.kind = openingKindsOf(family)[0];
+    this.width = OPENING_SYMBOLS[this.kind].defaultWidth;
+  }
+
+  private get symbol() {
+    return OPENING_SYMBOLS[this.kind];
   }
 
   onActivate(editor: Editor): void {
@@ -72,13 +87,14 @@ export class OpeningTool implements Tool {
   }
 
   onKeyDown(editor: Editor, e: KeyboardEvent): boolean {
-    // 開き勝手の反転。X で吊元、Y で開く向き
-    if (e.key === 'x' || e.key === 'X') {
+    // 反転。X で吊元・引き勝手、Y で開く向き。
+    // その種別で意味を持たないときは握りつぶさず、他のショートカットへ通す
+    if ((e.key === 'x' || e.key === 'X') && this.symbol.usesFlipX) {
       this.flipX = !this.flipX;
       editor.requestRender();
       return true;
     }
-    if (e.key === 'y' || e.key === 'Y') {
+    if ((e.key === 'y' || e.key === 'Y') && this.symbol.usesFlipY) {
       this.flipY = !this.flipY;
       editor.requestRender();
       return true;
@@ -136,20 +152,39 @@ export class OpeningTool implements Tool {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
+
+    // 置く前に記号そのものを見せる。開き勝手や引き勝手は置いてから直すより選ぶほうが速い
+    const layer = getLayer(scene.layers, LAYER_IDS.opening, LAYER_IDS.opening);
+    drawPrimitives(frame, openingPrimitives(scene, preview), layer, theme.preview);
   }
 
   options(): OptionField[] {
-    return [
+    const flips = [
+      this.symbol.usesFlipX ? 'X で吊元・引き勝手' : null,
+      this.symbol.usesFlipY ? 'Y で開く向き' : null,
+    ].filter(Boolean);
+    const fields: OptionField[] = [
+      {
+        kind: 'select',
+        label: '種類',
+        value: this.kind,
+        options: openingKindsOf(this.family).map((k) => ({ value: k, label: OPENING_SYMBOLS[k].label })),
+        onChange: (v: string) => {
+          this.kind = v as OpeningKind;
+          this.width = this.symbol.defaultWidth;
+        },
+      },
       {
         kind: 'number',
         label: '幅 (mm)',
         value: this.width,
         step: 50,
         min: 100,
-        onChange: (v) => void (this.width = Math.max(100, v)),
+        onChange: (v: number) => void (this.width = Math.max(100, v)),
       },
-      { kind: 'note', text: 'X で吊元反転 / Y で開き反転' },
     ];
+    if (flips.length > 0) fields.push({ kind: 'note', text: `${flips.join(' / ')}を反転` });
+    return fields;
   }
 
   status(editor: Editor): string {
@@ -157,6 +192,7 @@ export class OpeningTool implements Tool {
     if (!this.candidate) return '壁の上にカーソルを合わせてクリック';
     const wall = editor.store.scene.walls[this.candidate.wallId];
     const total = wall ? Math.round(wallLength(editor.store.scene, wall)) : 0;
-    return `幅 ${this.width}mm / 壁長 ${total}mm の ${Math.round(this.candidate.offset)}mm の位置  —  X で吊元反転、Y で開き反転`;
+    const hint = this.symbol.usesFlipX || this.symbol.usesFlipY ? '  —  X / Y で反転' : '';
+    return `${this.symbol.label} 幅 ${this.width}mm / 壁長 ${total}mm の ${Math.round(this.candidate.offset)}mm の位置${hint}`;
   }
 }

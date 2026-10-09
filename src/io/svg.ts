@@ -1,4 +1,4 @@
-import { add, mul, sub, toDeg, vec } from '../core/geometry.ts';
+import { add, toDeg, vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { paperDimensions, sheetPrimitives } from '../core/sheet.ts';
 import {
@@ -11,13 +11,8 @@ import {
 } from '../core/block.ts';
 import { getLayer, LAYER_IDS, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
-import {
-  doorSwing,
-  openingFrame,
-  openingQuad,
-  wallOutline,
-  wallQuad,
-} from '../core/shape.ts';
+import { openingFrame, openingJambs, openingQuad, wallOutline, wallQuad } from '../core/shape.ts';
+import { openingPrimitives } from '../core/opening.ts';
 import { paperToWorld } from '../core/standard.ts';
 import type { Settings } from '../core/store.ts';
 import type { Room, Scene } from '../core/types.ts';
@@ -105,24 +100,10 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     if (!visible(layer)) continue;
     const f = openingFrame(scene, op);
     if (!f) continue;
+    // 小口（ジャム）は壁の幾何なので記号の表には入れない
     const w = strokeWidth(layer);
-    const half = mul(f.normal, f.thickness / 2);
-    for (const p of [f.start, f.end]) out.push(lineTag(add(p, half), sub(p, half), layer.color, w));
-
-    if (op.kind === 'window') {
-      for (const t of [-0.5, 0.5]) {
-        const off = mul(f.normal, (f.thickness / 2) * t);
-        out.push(lineTag(add(f.start, off), add(f.end, off), layer.color, w));
-      }
-    } else if (op.kind === 'door') {
-      const swing = doorSwing(f, op.flipX, op.flipY);
-      out.push(lineTag(swing.hinge, swing.open, layer.color, w));
-      // SVG の弧は y 反転した座標系で描くので、掃く向きの指定も反転する
-      const sweep = swing.ccwFromOpenToClosed ? 0 : 1;
-      out.push(
-        `<path d="M ${round(swing.open.x)} ${round(swing.open.y)} A ${round(swing.radius)} ${round(swing.radius)} 0 0 ${sweep} ${round(swing.closed.x)} ${round(swing.closed.y)}" fill="none" stroke="${layer.color}" stroke-width="${round(w)}" stroke-dasharray="${round(w * 6)} ${round(w * 4)}"/>`,
-      );
-    }
+    for (const jamb of openingJambs(f)) out.push(lineTag(jamb.a, jamb.b, layer.color, w));
+    out.push(...svgPrimitives(openingPrimitives(scene, op), layer, std));
   }
 
   // --- ブロックの挿入 ---

@@ -1,0 +1,244 @@
+import { angleOf, sub } from './geometry.ts';
+import type { Primitive } from './primitive.ts';
+import { doorSwing, openingAt, openingFrame, subFrame, type OpeningFrame, type Segment } from './shape.ts';
+import type { Opening, OpeningKind, Scene } from './types.ts';
+import { OPENING_KINDS } from './types.ts';
+
+/**
+ * 建具の平面表示記号。JIS A 0150 の別表「平面表示記号」に倣う。
+ *
+ * `Record<OpeningKind, …>` で持つので、`OPENING_KINDS`（types.ts）に種別を足すと
+ * **ここだけが型エラーになる**。以前は renderer / svg / dxf / インスペクタ / 読み込みの
+ * 5 箇所に同じ分岐が散らばっていて、どれも足し忘れても型エラーが出なかった。
+ *
+ * 記号はブロック（INSERT）ではなく関数で組む。召し合わせの印や戸袋の見切りは
+ * 開口幅に依存しない一方、障子線の長さだけが幅に比例するので、
+ * 2 軸の尺度しか持たない INSERT では表せないため。
+ * 円弧を含む記号は非一様尺度で楕円になってしまう、という事情もある。
+ */
+export interface OpeningSymbol {
+  label: string;
+  /** どちらのツールから置けるか */
+  family: 'door' | 'window';
+  defaultWidth: number;
+  /** 吊元・引き勝手の反転（X キー）が意味を持つか */
+  usesFlipX: boolean;
+  /** 開き勝手の反転（Y キー）が意味を持つか */
+  usesFlipY: boolean;
+  primitives(frame: OpeningFrame, opening: Opening): Primitive[];
+}
+
+/**
+ * 窓の障子線を置く位置。壁厚に対する比。
+ * 引戸の障子線は壁芯の上（v = 0）に 1 本引く、というのが規格の描き方で、
+ * 2 本に分かれるのは窓だけ。
+ */
+const LANE = 0.25;
+
+/**
+ * 召し合わせ（戸が重なる位置）の印の長さ。壁厚に対する比で、開口幅に依存しない。
+ * 窓の障子線（±LANE）より外まで伸ばさないと、引違い窓で印が埋もれて見えない。
+ */
+const TICK = 0.45;
+
+/** 戸袋の見付け。壁厚に対する比 */
+const POCKET = 0.3;
+
+/** 折戸の山の深さ。開口幅に対する比 */
+const FOLD = 1 / 6;
+
+/** 親子扉の子扉が占める割合 */
+const CHILD = 1 / 3;
+
+export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
+  door: {
+    label: '片開き戸',
+    family: 'door',
+    defaultWidth: 800,
+    usesFlipX: true,
+    usesFlipY: true,
+    primitives: (f, op) => swing(f, op.flipX, op.flipY),
+  },
+
+  doubleDoor: {
+    label: '両開き戸',
+    family: 'door',
+    defaultWidth: 1600,
+    usesFlipX: false,
+    usesFlipY: true,
+    primitives: (f, op) => leaves(f, 0, op.flipY),
+  },
+
+  // 子扉を 1/3、親扉を 2/3 に割る。flipX でどちら側が子かが入れ替わる
+  unequalDoor: {
+    label: '親子扉',
+    family: 'door',
+    defaultWidth: 1200,
+    usesFlipX: true,
+    usesFlipY: true,
+    primitives: (f, op) => leaves(f, f.width * (op.flipX ? 0.5 - CHILD : CHILD - 0.5), op.flipY),
+  },
+
+  slidingDouble: {
+    label: '引違い戸',
+    family: 'door',
+    defaultWidth: 1650,
+    usesFlipX: false,
+    usesFlipY: false,
+    primitives: (f) => {
+      const at = openingAt(f);
+      return [{ kind: 'segments', segments: [{ a: at(-f.width / 2, 0), b: at(f.width / 2, 0) }, meetTick(f)] }];
+    },
+  },
+
+  // 片引き戸(I)。引き残し側を破線にして、戸がどちらへ引けるかを示す
+  slidingSingle: {
+    label: '片引き戸',
+    family: 'door',
+    defaultWidth: 1600,
+    usesFlipX: true,
+    usesFlipY: false,
+    primitives: (f, op) => {
+      const at = openingAt(f);
+      const s = op.flipX ? -1 : 1;
+      return [
+        { kind: 'segments', segments: [{ a: at(0, 0), b: at((s * f.width) / 2, 0) }, meetTick(f)] },
+        { kind: 'segments', segments: [{ a: at((-s * f.width) / 2, 0), b: at(0, 0) }], lineType: 'hidden' },
+      ];
+    },
+  },
+
+  // 引込戸。戸袋を壁の中に箱で描き、引き込まれた戸を破線で入れる
+  slidingPocket: {
+    label: '引込み戸',
+    family: 'door',
+    defaultWidth: 1600,
+    usesFlipX: true,
+    usesFlipY: false,
+    primitives: (f, op) => {
+      const at = openingAt(f);
+      const s = op.flipX ? -1 : 1;
+      const edge = (s * f.width) / 2;
+      const p = f.thickness * POCKET;
+      return [
+        {
+          kind: 'segments',
+          segments: [
+            { a: at(-edge, 0), b: at(0, 0) },
+            { a: at(0, p), b: at(edge, p) },
+            { a: at(0, -p), b: at(edge, -p) },
+            { a: at(edge, p), b: at(edge, -p) },
+          ],
+        },
+        { kind: 'segments', segments: [{ a: at(0, 0), b: at(edge, 0) }], lineType: 'hidden' },
+      ];
+    },
+  },
+
+  folding: {
+    label: '折戸',
+    family: 'door',
+    defaultWidth: 1200,
+    usesFlipX: false,
+    usesFlipY: true,
+    primitives: (f, op) => {
+      const at = openingAt(f);
+      const w = f.width;
+      const d = w * FOLD * (op.flipY ? -1 : 1);
+      const points = [at(-w / 2, 0), at(-w / 4, d), at(0, 0), at(w / 4, d), at(w / 2, 0)];
+      return [{ kind: 'segments', segments: chain(points) }];
+    },
+  },
+
+  // 出入口一般。建具の種類を決めないときの記号で、召し合わせの印だけを置く
+  opening: {
+    label: '出入口（建具なし）',
+    family: 'door',
+    defaultWidth: 900,
+    usesFlipX: false,
+    usesFlipY: false,
+    primitives: (f) => [{ kind: 'segments', segments: [meetTick(f)] }],
+  },
+
+  // はめごろし・上げ下げ・すべり出し・回転なども平面では同じ記号になる（規格どおり）
+  window: {
+    label: '窓',
+    family: 'window',
+    defaultWidth: 1700,
+    usesFlipX: false,
+    usesFlipY: false,
+    primitives: (f) => [{ kind: 'segments', segments: sashes(f) }],
+  },
+
+  windowSliding: {
+    label: '引違い窓',
+    family: 'window',
+    defaultWidth: 1700,
+    usesFlipX: false,
+    usesFlipY: false,
+    primitives: (f) => [{ kind: 'segments', segments: [...sashes(f), meetTick(f)] }],
+  },
+};
+
+/**
+ * 片開きの戸と、その開き軌跡。
+ *
+ * 円弧の向きの約束（ワールドは y 上向き・`Primitive.arc` は start から end へ反時計回り）を
+ * **この 1 箇所**に閉じ込める。以前は 3 つのバックエンドが各自で変換していて、
+ * 取り違えによってドアの軌跡が 270 度になるバグを出したことがある。
+ */
+function swing(frame: OpeningFrame, flipX: boolean, flipY: boolean): Primitive[] {
+  const s = doorSwing(frame, flipX, flipY);
+  const openAngle = angleOf(sub(s.open, s.hinge));
+  const closedAngle = angleOf(sub(s.closed, s.hinge));
+  const [startAngle, endAngle] = s.ccwFromOpenToClosed ? [openAngle, closedAngle] : [closedAngle, openAngle];
+  return [
+    { kind: 'segments', segments: [{ a: s.hinge, b: s.open }] },
+    { kind: 'arc', center: s.hinge, radius: s.radius, startAngle, endAngle },
+  ];
+}
+
+/**
+ * 突き合わせの 2 枚戸（両開き・親子）。`meet` は突き合わせ位置（開口の中心が 0）。
+ * 左右それぞれを 1 枚の片開き戸として `swing` に流すので、
+ * 90 度という不変条件も円弧の向きの約束も自動的に守られる。
+ */
+function leaves(frame: OpeningFrame, meet: number, flipY: boolean): Primitive[] {
+  const half = frame.width / 2;
+  return [
+    ...swing(subFrame(frame, -half, meet), false, flipY),
+    ...swing(subFrame(frame, meet, half), true, flipY),
+  ];
+}
+
+/** 召し合わせの印。壁芯を横切る短い線 */
+function meetTick(frame: OpeningFrame): Segment {
+  const at = openingAt(frame);
+  const t = frame.thickness * TICK;
+  return { a: at(0, t), b: at(0, -t) };
+}
+
+/** 窓の障子線。壁厚の中に 2 本 */
+function sashes(frame: OpeningFrame): Segment[] {
+  const at = openingAt(frame);
+  const t = frame.thickness * LANE;
+  const half = frame.width / 2;
+  return [
+    { a: at(-half, t), b: at(half, t) },
+    { a: at(-half, -t), b: at(half, -t) },
+  ];
+}
+
+const chain = (points: { x: number; y: number }[]): Segment[] =>
+  points.slice(0, -1).map((a, i) => ({ a, b: points[i + 1] }));
+
+/** 画面・SVG・DXF が共通で呼ぶ入口 */
+export function openingPrimitives(scene: Scene, opening: Opening): Primitive[] {
+  const frame = openingFrame(scene, opening);
+  if (!frame) return [];
+  return OPENING_SYMBOLS[opening.kind].primitives(frame, opening);
+}
+
+/** 種別セレクタ用。ツールの系統で絞り込む */
+export const openingKindsOf = (family: 'door' | 'window'): OpeningKind[] =>
+  OPENING_KINDS.filter((k) => OPENING_SYMBOLS[k].family === family);

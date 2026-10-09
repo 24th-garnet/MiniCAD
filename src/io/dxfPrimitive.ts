@@ -1,10 +1,26 @@
 import { toDeg, type Vec } from '../core/geometry.ts';
 import type { Layer } from '../core/layer.ts';
 import type { Primitive } from '../core/primitive.ts';
-import { paperToWorld, type DrawingStandard } from '../core/standard.ts';
+import { paperToWorld, type DrawingStandard, type LineType } from '../core/standard.ts';
 
 /** DXF のエンティティ1つ。グループコードと値が交互に並ぶ */
 export type DxfEntity = string[];
+
+/** R12 が持てる線種。MiniCAD の線種をこの名前に対応させる */
+export const LTYPE_NAMES: Record<LineType, string> = {
+  continuous: 'CONTINUOUS',
+  dashed: 'DASHED',
+  hidden: 'HIDDEN',
+  center: 'CENTER',
+  phantom: 'PHANTOM',
+};
+
+/**
+ * エンティティ単位の線種（グループコード 6）。
+ * 省略すると画層の線種に従う。記号自身が線種を持つとき（ドアの開き軌跡など）に使う。
+ */
+const ltypeTag = (lineType: LineType | undefined): string[] =>
+  lineType ? ['6', LTYPE_NAMES[lineType]] : [];
 
 /** 小数は DXF が読みやすい固定表記にする（指数表記を避ける） */
 export function fmt(n: number): string {
@@ -21,21 +37,28 @@ export function normalizeTextDeg(deg: number): number {
   return d;
 }
 
-export const dxfLine = (a: Vec, b: Vec, layerName: string): DxfEntity => [
-  '0', 'LINE', '8', layerName,
+export const dxfLine = (a: Vec, b: Vec, layerName: string, lineType?: LineType): DxfEntity => [
+  '0', 'LINE', '8', layerName, ...ltypeTag(lineType),
   '10', fmt(a.x), '20', fmt(a.y), '30', '0.0',
   '11', fmt(b.x), '21', fmt(b.y), '31', '0.0',
 ];
 
 /** DXF の ARC は start から end へ反時計回りに描かれる。角度は度 */
-export const dxfArc = (center: Vec, radius: number, startDeg: number, endDeg: number, layerName: string): DxfEntity => [
-  '0', 'ARC', '8', layerName,
+export const dxfArc = (
+  center: Vec,
+  radius: number,
+  startDeg: number,
+  endDeg: number,
+  layerName: string,
+  lineType?: LineType,
+): DxfEntity => [
+  '0', 'ARC', '8', layerName, ...ltypeTag(lineType),
   '10', fmt(center.x), '20', fmt(center.y), '30', '0.0',
   '40', fmt(radius), '50', fmt(startDeg), '51', fmt(endDeg),
 ];
 
-export const dxfCircle = (center: Vec, radius: number, layerName: string): DxfEntity => [
-  '0', 'CIRCLE', '8', layerName,
+export const dxfCircle = (center: Vec, radius: number, layerName: string, lineType?: LineType): DxfEntity => [
+  '0', 'CIRCLE', '8', layerName, ...ltypeTag(lineType),
   '10', fmt(center.x), '20', fmt(center.y), '30', '0.0',
   '40', fmt(radius),
 ];
@@ -77,20 +100,22 @@ export function dxfPrimitives(
   for (const prim of prims) {
     switch (prim.kind) {
       case 'segments':
-        for (const s of prim.segments) out.push(dxfLine(s.a, s.b, layer.name));
+        for (const s of prim.segments) out.push(dxfLine(s.a, s.b, layer.name, prim.lineType));
         break;
 
       case 'arc':
-        out.push(dxfArc(prim.center, prim.radius, toDeg(prim.startAngle), toDeg(prim.endAngle), layer.name));
+        out.push(
+          dxfArc(prim.center, prim.radius, toDeg(prim.startAngle), toDeg(prim.endAngle), layer.name, prim.lineType),
+        );
         break;
 
       case 'circle':
-        out.push(dxfCircle(prim.center, prim.radius, layer.name));
+        out.push(dxfCircle(prim.center, prim.radius, layer.name, prim.lineType));
         break;
 
       case 'polygon':
         for (let i = 0; i < prim.points.length; i++) {
-          out.push(dxfLine(prim.points[i], prim.points[(i + 1) % prim.points.length], layer.name));
+          out.push(dxfLine(prim.points[i], prim.points[(i + 1) % prim.points.length], layer.name, prim.lineType));
         }
         break;
 

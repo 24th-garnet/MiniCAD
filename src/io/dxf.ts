@@ -1,17 +1,12 @@
-import { add, angleOf, mul, sub, toDeg, vec, type Vec } from '../core/geometry.ts';
+import { add, toDeg, vec, type Vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { sheetGeometry, sheetPrimitives } from '../core/sheet.ts';
 import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
+import { wallOutline, type Segment } from '../core/shape.ts';
+import { openingPrimitives } from '../core/opening.ts';
+import { paperToWorld } from '../core/standard.ts';
 import {
-  doorSwing,
-  openingFrame,
-  wallOutline,
-  type Segment,
-} from '../core/shape.ts';
-import { paperToWorld, type LineType } from '../core/standard.ts';
-import {
-  dxfArc,
   dxfBlock,
   dxfInsert,
   dxfLine,
@@ -19,6 +14,7 @@ import {
   dxfText,
   fmt,
   normalizeTextDeg,
+  LTYPE_NAMES,
 } from './dxfPrimitive.ts';
 import {
   blockOf,
@@ -46,15 +42,6 @@ export interface DxfOptions {
   /** 日本語を \U+XXXX に変換して ASCII だけのファイルにする */
   escapeUnicode: boolean;
 }
-
-/** R12 が持てる線種。MiniCAD の線種をこの名前に対応させる */
-const LTYPE_NAMES: Record<LineType, string> = {
-  continuous: 'CONTINUOUS',
-  dashed: 'DASHED',
-  hidden: 'HIDDEN',
-  center: 'CENTER',
-  phantom: 'PHANTOM',
-};
 
 /** 線種の定義。長さはワールドの mm（1:100 の紙で見たときに妥当な見た目になる値） */
 const LTYPE_DEFS: { name: string; description: string; pattern: number[] }[] = [
@@ -85,9 +72,6 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   const pushSegments = (segments: Segment[], layer: Layer) => {
     for (const s of segments) pushLine(s.a, s.b, layer);
   };
-  const pushArc = (center: Vec, radius: number, startDeg: number, endDeg: number, layer: Layer) => {
-    entities.push(dxfArc(center, radius, startDeg, endDeg, layer.name));
-  };
   const pushText = (value: string, at: Vec, height: number, rotationDeg: number, layer: Layer) => {
     entities.push(dxfText(text(value), at, height, rotationDeg, layer.name));
   };
@@ -99,26 +83,11 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
     pushSegments(wallOutline(scene, wall), layer);
   }
 
-  // 建具
+  // 建具。小口（ジャム）は wallOutline が壁側で出しているので、ここで足すと二重線になる
   for (const op of Object.values(scene.openings)) {
     const layer = layerOf(op.layerId, LAYER_IDS.opening);
     if (!printable(layer)) continue;
-    const f = openingFrame(scene, op);
-    if (!f) continue;
-    if (op.kind === 'window') {
-      for (const t of [-0.5, 0.5]) {
-        const off = mul(f.normal, (f.thickness / 2) * t);
-        pushLine(add(f.start, off), add(f.end, off), layer);
-      }
-    } else if (op.kind === 'door') {
-      const swing = doorSwing(f, op.flipX, op.flipY);
-      pushLine(swing.hinge, swing.open, layer);
-      // DXF の ARC は start から end へ反時計回りに描かれる
-      const openDeg = toDeg(angleOf(sub(swing.open, swing.hinge)));
-      const closedDeg = toDeg(angleOf(sub(swing.closed, swing.hinge)));
-      const [startDeg, endDeg] = swing.ccwFromOpenToClosed ? [openDeg, closedDeg] : [closedDeg, openDeg];
-      pushArc(swing.hinge, swing.radius, startDeg, endDeg, layer);
-    }
+    entities.push(...dxfPrimitives(openingPrimitives(scene, op), layer, std, text));
   }
 
   // ブロックの挿入。同じ定義は1つだけ書き、INSERT で使い回す

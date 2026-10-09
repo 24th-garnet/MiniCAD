@@ -14,7 +14,7 @@ import { BLOCK_PRESETS } from '../core/blockPresets.ts';
 import type { Shape } from '../core/shapes.ts';
 import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
-import { emptyScene, type Scene } from '../core/types.ts';
+import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 
 /**
  * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠、
@@ -83,7 +83,8 @@ export function deserialize(raw: unknown): Scene {
   }
   for (const [id, o] of Object.entries(table<Record<string, unknown>>('openings'))) {
     if (typeof o?.wallId !== 'string' || !scene.walls[o.wallId]) continue;
-    const kind = o.kind === 'window' || o.kind === 'opening' ? o.kind : 'door';
+    // 表引きにしておかないと、種別を足したときに読み込みで 'door' に化けて静かに壊れる
+    const kind = isOpeningKind(o.kind) ? o.kind : 'door';
     scene.openings[id] = {
       id,
       wallId: o.wallId,
