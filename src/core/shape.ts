@@ -103,27 +103,76 @@ export function openingQuad(frame: OpeningFrame): Vec[] {
  *
  * 画面の「輪郭線のみ」表示と DXF 書き出しが、どちらもこの関数の結果を使う。
  */
-export function wallOutline(scene: Scene, wall: Wall): Segment[] {
+export interface WallHole {
+  opening: Opening;
+  /** 壁の始点からの距離 (mm)。0..total にクランプ済み */
+  lo: number;
+  hi: number;
+}
+
+/**
+ * 壁を「開口で分断された区間」に分けた結果。
+ *
+ * 輪郭線（2D）と押し出し（3D）が同じ区間計算を共有するためにある。
+ *
+ * `holes` は開口の `offset` 昇順。`spans` の計算が「カーソルを単調に進める」
+ * 形になっているので、**この並び順が前提**になっている
+ * （`openingsOnWall` が offset でソートして返すことに依存している）。
+ */
+export interface WallSpans {
+  a: Vec;
+  b: Vec;
+  /** 単位ベクトル a → b */
+  dir: Vec;
+  /** 進行方向の左向き。長さは壁厚の半分 */
+  normal: Vec;
+  total: number;
+  thickness: number;
+  holes: WallHole[];
+  /** 壁の実体が残っている区間 */
+  spans: [number, number][];
+}
+
+export function wallSpans(scene: Scene, wall: Wall): WallSpans | null {
   const [a, b] = wallEnds(scene, wall);
   const total = dist(a, b);
-  if (total < 1e-6) return [];
-  const d = norm(sub(b, a));
-  const n = mul(perp(d), wall.thickness / 2);
+  if (total < 1e-6) return null;
+  const dir = norm(sub(b, a));
+  const normal = mul(perp(dir), wall.thickness / 2);
 
-  const at = (along: number, side: number): Vec => add(add(a, mul(d, along)), mul(n, side));
-
-  // 開口部で分断された、壁が実在する区間
-  const holes = openingsOnWall(scene, wall.id)
-    .map((o) => [Math.max(0, o.offset - o.width / 2), Math.min(total, o.offset + o.width / 2)] as const)
-    .filter(([lo, hi]) => hi > lo);
+  const holes: WallHole[] = openingsOnWall(scene, wall.id)
+    .map((opening) => ({
+      opening,
+      lo: Math.max(0, opening.offset - opening.width / 2),
+      hi: Math.min(total, opening.offset + opening.width / 2),
+    }))
+    .filter((h) => h.hi > h.lo);
 
   const spans: [number, number][] = [];
   let cursor = 0;
-  for (const [lo, hi] of holes) {
+  for (const { lo, hi } of holes) {
     if (lo > cursor) spans.push([cursor, lo]);
     cursor = Math.max(cursor, hi);
   }
   if (cursor < total) spans.push([cursor, total]);
+
+  return { a, b, dir, normal, total, thickness: wall.thickness, holes, spans };
+}
+
+/**
+ * 壁芯からの位置。`side` は +1 / -1 / 0（壁芯上）。
+ *
+ * **式を整理しないこと。** `a + dir*along + normal*side` にまとめると
+ * 浮動小数の結合順が変わり、DXF に書く座標が最下位桁でずれる。
+ */
+export const wallPointAt = (ws: WallSpans, along: number, side: number): Vec =>
+  add(add(ws.a, mul(ws.dir, along)), mul(ws.normal, side));
+
+export function wallOutline(scene: Scene, wall: Wall): Segment[] {
+  const ws = wallSpans(scene, wall);
+  if (!ws) return [];
+  const { total, holes, spans } = ws;
+  const at = (along: number, side: number): Vec => wallPointAt(ws, along, side);
 
   const segments: Segment[] = [];
   for (const [lo, hi] of spans) {
@@ -133,7 +182,7 @@ export function wallOutline(scene: Scene, wall: Wall): Segment[] {
   }
 
   // 開口部の小口
-  for (const [lo, hi] of holes) {
+  for (const { lo, hi } of holes) {
     segments.push({ a: at(lo, 1), b: at(lo, -1) });
     segments.push({ a: at(hi, 1), b: at(hi, -1) });
   }
