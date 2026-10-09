@@ -81,6 +81,22 @@ export function instanceOutline(scene: Scene, inst: BlockInstance): Segment[] {
   return out;
 }
 
+/**
+ * 挿入したブロックの**外形の四隅**（反時計回り）。
+ *
+ * `instanceVertices` は輪郭線の端点を全部返す「点の集まり」で、多角形の環ではない。
+ * 3D の押し出しのように「環として回したい」用途ではこちらを使う。
+ */
+export function instanceFootprint(scene: Scene, inst: BlockInstance): Vec[] {
+  const def = blockOf(scene, inst);
+  if (!def) return [];
+  const { w, h } = def.size;
+  // ブロックの図形は基点を中心に組まれている（blockPresets.ts の outlineRect と同じ）
+  return [vec(-w / 2, -h / 2), vec(w / 2, -h / 2), vec(w / 2, h / 2), vec(-w / 2, h / 2)].map((p) =>
+    instanceToWorld(inst, p),
+  );
+}
+
 export function instanceVertices(scene: Scene, inst: BlockInstance): Vec[] {
   const out: Vec[] = [];
   for (const seg of instanceOutline(scene, inst)) out.push(seg.a, seg.b);

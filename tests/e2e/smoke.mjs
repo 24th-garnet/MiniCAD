@@ -109,6 +109,7 @@ async function run() {
           wallFill: s.standard.wallFill,
         },
         layerRows: document.querySelectorAll('.layer-row').length,
+        view3d: !document.getElementById('canvas3d').hidden,
         wallLayerVisible: s.layers['wall'].visible,
         wallLayerLocked: s.layers['wall'].locked,
         layerNames: Object.values(s.layers).map((l) => l.name),
@@ -926,6 +927,37 @@ async function run() {
   await sleep(200);
   assert.ok((await slope(wallId)) > 500, '拘束の追加が undo で戻らない');
   console.log('✔ 拘束の追加を undo 1回で取り消せる');
+
+  // --- 3D ---
+  const before3d = await state();
+  await page.keyboard.press('F3');
+  await sleep(400);
+  const shown = await state();
+  assert.equal(shown.view3d, true, '3D に切り替わっていない');
+  assert.equal(shown.walls, before3d.walls, '切り替えでシーンが変わった');
+  assert.deepEqual(shown.rooms, before3d.rooms, '切り替えで部屋が変わった');
+  console.log('✔ 3D に切り替えてもシーンは変わらない');
+
+  // カメラを動かしても副作用が無い
+  const canvas3d = await page.locator('#canvas3d').boundingBox();
+  const mid = { x: canvas3d.x + canvas3d.width / 2, y: canvas3d.y + canvas3d.height / 2 };
+  await page.mouse.move(mid.x, mid.y);
+  await page.mouse.down();
+  await page.mouse.move(mid.x + 120, mid.y - 60, { steps: 6 });
+  await page.mouse.up();
+  await page.mouse.wheel(0, -240);
+  await sleep(300);
+  await page.click('.view-tabs button[title="平行投影に切り替える"]');
+  await sleep(300);
+  await page.keyboard.press('F3');
+  await sleep(300);
+
+  const back = await state();
+  assert.equal(back.view3d, false, '2D に戻っていない');
+  assert.equal(back.walls, before3d.walls, 'カメラ操作でシーンが変わった');
+  assert.equal(back.selection, before3d.selection, 'カメラ操作で選択が変わった');
+  assert.deepEqual(back.rooms, before3d.rooms);
+  console.log('✔ 3D のカメラ操作に副作用がない');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

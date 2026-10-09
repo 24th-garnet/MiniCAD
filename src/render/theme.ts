@@ -30,6 +30,14 @@ export const theme = {
   crossingRectStroke: '#16a34a',
   constraint: '#7c3aed',
   constraintConflict: '#dc2626',
+  // 3D。画層は増やさず、ここに色を持つ
+  sky3d: '#e8eef2',
+  wall3d: '#d8d3c6',
+  floor3d: '#efe9dc',
+  furniture3d: '#c9bfae',
+  door3d: '#b7a98f',
+  glass3d: 'rgba(125, 175, 220, 0.42)',
+  edge3d: 'rgba(63, 63, 70, 0.35)',
 } as const;
 
 export const FONT_FAMILY = 'system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif';

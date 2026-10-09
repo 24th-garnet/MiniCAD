@@ -30,6 +30,8 @@ import { SheetSection } from './panels/sections/sheet.ts';
 import { StandardSection } from './panels/sections/standard.ts';
 import { StatsSection } from './panels/sections/stats.ts';
 import { StatusBar } from './status-bar.ts';
+import { ViewTabs } from './panels/view-tabs.ts';
+import { Viewer3D } from '../render3d/viewer.ts';
 
 const AUTOSAVE_DELAY_MS = 600;
 
@@ -41,12 +43,14 @@ export class App {
   private readonly editor: Editor;
   private readonly panels: Panel[];
   private readonly statusBar: StatusBar;
+  private readonly viewer3d: Viewer3D;
   private readonly ctx: PanelContext;
   private autosaveTimer: number | undefined;
 
   constructor(root: Document = document) {
     const canvas = root.getElementById('canvas') as HTMLCanvasElement;
     this.editor = new Editor(canvas);
+    this.viewer3d = new Viewer3D(root.getElementById('canvas3d') as HTMLCanvasElement, this.editor);
 
     // 並び順がそのままツールバーの並び。グループが変わるところに区切りが入る
     for (const tool of [
@@ -82,6 +86,17 @@ export class App {
     };
 
     const bindings = defaultBindings();
+    // 3D の切り替えだけは Viewer を掴む必要があるので、ここで足す。
+    // 表に入れておけばショートカット一覧にも自動で出る
+    bindings.push({
+      keys: ['F3'],
+      display: 'F3',
+      description: '2D / 3D 切り替え',
+      run: (ctx) => {
+        this.viewer3d.setVisible(!this.viewer3d.isVisible());
+        ctx.refresh();
+      },
+    });
     const toolbar = new Toolbar(root.getElementById('toolbar')!);
     const fileActions = new FileActions(root.getElementById('file-actions')!);
     const commandInput = new CommandInput(
@@ -109,6 +124,7 @@ export class App {
       ]),
       this.statusBar,
       commandInput,
+      new ViewTabs(root.getElementById('view-tabs')!, this.viewer3d),
     ];
 
     toolbar.build(this.ctx);
@@ -130,6 +146,10 @@ export class App {
 
   get editorInstance(): Editor {
     return this.editor;
+  }
+
+  get viewer(): Viewer3D {
+    return this.viewer3d;
   }
 
   private deleteSelection(): void {

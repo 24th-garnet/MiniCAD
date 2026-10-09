@@ -9,43 +9,9 @@ import { sceneToSvg } from '../src/io/svg.ts';
 import { deserialize, serialize } from '../src/io/scene.ts';
 import { pickAt } from '../src/core/pick.ts';
 import { vec } from '../src/core/geometry.ts';
+import { stubContext } from './stub-context.ts';
 import { addConstraint } from '../src/core/constraintOps.ts';
 
-/** 呼ばれたメソッドを記録するだけの CanvasRenderingContext2D 代替 */
-function stubContext() {
-  const calls: string[] = [];
-  const noop =
-    (name: string) =>
-    (...args: unknown[]) => {
-      calls.push(name);
-      for (const a of args) {
-        if (typeof a === 'number' && !Number.isFinite(a)) {
-          throw new Error(`${name} に有限でない数値が渡されました: ${String(a)}`);
-        }
-      }
-    };
-  const ctx: Record<string, unknown> = {
-    save: noop('save'),
-    restore: noop('restore'),
-    beginPath: noop('beginPath'),
-    closePath: noop('closePath'),
-    moveTo: noop('moveTo'),
-    lineTo: noop('lineTo'),
-    rect: noop('rect'),
-    arc: noop('arc'),
-    ellipse: noop('ellipse'),
-    fill: noop('fill'),
-    stroke: noop('stroke'),
-    fillRect: noop('fillRect'),
-    strokeRect: noop('strokeRect'),
-    fillText: noop('fillText'),
-    translate: noop('translate'),
-    rotate: noop('rotate'),
-    setLineDash: noop('setLineDash'),
-    measureText: (t: string) => ({ width: t.length * 6 }),
-  };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
-}
 
 test('サンプル間取りが例外なく描画できる', () => {
   const scene = sampleScene();

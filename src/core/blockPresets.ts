@@ -89,3 +89,26 @@ export function buildPresetBlock(preset: BlockPreset): BlockDef {
 export function builtinBlocks(): Record<Id, BlockDef> {
   return Object.fromEntries(BLOCK_PRESETS.map((p) => [p.id, buildPresetBlock(p)]));
 }
+
+/**
+ * ブロックを 3D で立てるときの高さ (mm)。
+ *
+ * `BlockDef` は平面の大きさ (w × h) しか持たないので、プリセットごとにここで補う。
+ * 階段は箱にすると嘘になるので 0（立てない）。
+ */
+export const BLOCK_HEIGHTS: Record<string, number> = {
+  'bed-single': 450,
+  'bed-double': 450,
+  sofa: 700,
+  dining: 700,
+  chair: 450,
+  kitchen: 850,
+  sink: 800,
+  toilet: 700,
+  bath: 600,
+  stairs: 0,
+  box: 700,
+};
+
+/** ユーザーが作ったブロックの高さ */
+export const DEFAULT_BLOCK_HEIGHT = 700;

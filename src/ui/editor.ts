@@ -39,6 +39,7 @@ export class Editor {
   private roomsCache: Room[] | null = null;
   private sceneRevision = 0;
   private cachedRevision = -1;
+
   private frameRequested = false;
   private panning = false;
   private panStart: Vec = vec(0, 0);
@@ -108,6 +109,11 @@ export class Editor {
   }
 
   // --- 部屋の自動検出（シーンが変わったときだけ再計算）---
+
+  /** シーンの版。派生データをキャッシュする側が、作り直す判断に使う */
+  get revision(): number {
+    return this.sceneRevision;
+  }
 
   get rooms(): Room[] {
     if (this.roomsCache === null || this.cachedRevision !== this.sceneRevision) {
