@@ -852,6 +852,69 @@ async function run() {
 
   // 書き出した DXF をそのまま読み戻す（書き出しと読み込みが噛み合っているかの通し確認）
   const before = await state();
+  // --- 今回足した書き出し -------------------------------------------------
+
+  // 実測 JSON（数量拾いへ渡す）
+  const [measuresDownload] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.click('button[title="実測 JSON を書き出す — 数量拾いへ渡します"]'),
+  ]);
+  const measures = JSON.parse(await readFile(await measuresDownload.path(), 'utf8'));
+  assert.equal(measures.schema_version, 'mdr-measures-1', '契約の版が違う');
+  assert.equal(measures.source, 'minicad');
+  assert.ok(measures.rooms.length > 0, '部屋が 1 つも出ていない');
+  for (const room of measures.rooms) {
+    assert.ok(room.floor_area > 0, `床面積が 0: ${room.id}`);
+    assert.ok(room.perimeter > 0, `周長が 0: ${room.id}`);
+    assert.ok(room.wall_area > 0, `壁の面積が 0: ${room.id}`);
+  }
+  // 根拠は固定の語彙だけ
+  const allowed = new Set(['実測', '推定', '代用', '既定', '外接', '未検出', '未計測']);
+  for (const v of Object.values(measures.basis)) assert.ok(allowed.has(v), `知らない根拠: ${v}`);
+  for (const r of measures.rooms) {
+    for (const v of Object.values(r.basis)) assert.ok(allowed.has(v), `知らない根拠: ${v}`);
+  }
+  console.log('✔ 実測 JSON が書き出せて、根拠が固定の語彙で入る');
+
+  // 立面図
+  const [elevDownload] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.click('button[title="開口のある壁の立面を SVG で書き出す"]'),
+  ]);
+  const elev = await readFile(await elevDownload.path(), 'utf8');
+  const elevError = await page.evaluate((source) => {
+    const doc = new DOMParser().parseFromString(source, 'image/svg+xml');
+    const err = doc.querySelector('parsererror');
+    return err ? err.textContent.slice(0, 200) : null;
+  }, elev);
+  assert.equal(elevError, null, `立面の SVG が XML として壊れている: ${elevError}`);
+  assert.ok(elev.includes('class="opening"'), '開口が描かれていない');
+  assert.ok(elev.includes('class="dim"'), '高さ方向の寸法が入っていない');
+  assert.ok(elev.includes('未計測'), '持っていないものの但し書きが無い');
+  console.log('✔ 立面図が書き出せて、高さ寸法と但し書きが入る');
+
+  // Shift-JIS の DXF（Jw_cad 用）
+  // 作図設定はインスペクタに常時出ている
+  // checkboxField は input と label を兄弟に並べる
+  const sjis = page.locator('.field.checkbox:has(label:text-is("DXFをShift-JISで書く (Jw_cad 用)")) input');
+  assert.ok(await sjis.count(), 'Shift-JIS の設定が見つからない');
+  {
+    await sjis.check();
+    const [sjisDownload] = await Promise.all([
+      page.waitForEvent('download', { timeout: 5000 }),
+      page.click('button[title="DXF (R12) で書き出す — 他の CAD で開けます"]'),
+    ]);
+    const bytes = await readFile(await sjisDownload.path());
+    const text = new TextDecoder('shift_jis').decode(bytes);
+    assert.ok(text.includes('ANSI_932'), '文字コードの宣言が ANSI_932 でない');
+    assert.ok(text.includes('書斎'), 'Shift-JIS で室名が化けた');
+    // UTF-8 として読むと化けること（＝本当に Shift-JIS で書かれている）
+    const asUtf8 = new TextDecoder('utf-8').decode(bytes);
+    assert.ok(!asUtf8.includes('書斎'), 'UTF-8 のまま書かれている');
+    await sjis.uncheck();
+    console.log('✔ Shift-JIS の DXF で室名が化けない（Jw_cad の読み方で確認）');
+  }
+
   // ダウンロードの実体には拡張子が付かないので、.dxf の名前で置き直してから読ませる
   const reimportPath = join(tmpdir(), 'minicad-e2e-reimport.dxf');
   await writeFile(reimportPath, dxf, 'utf8');
