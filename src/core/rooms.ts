@@ -192,3 +192,55 @@ export function roomAt(rooms: Room[], p: Vec): Room | null {
 
 /** 面積 (m^2) を帖数に換算する。1帖 = 1.62 m^2（不動産公正競争規約の下限値） */
 export const toTatami = (areaM2: number): number => areaM2 / 1.62;
+
+/**
+ * ポリゴンの周長 (mm)。巾木・回り縁の長さの素になる。
+ *
+ * 面積は `signedArea` が出すのに、周長を出す関数がこれまで無かった。
+ */
+export function perimeterOf(polygon: Vec[]): number {
+  if (polygon.length < 2) return 0;
+  let sum = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    sum += dist(polygon[i], polygon[(i + 1) % polygon.length]);
+  }
+  return sum;
+}
+
+/**
+ * 部屋の中に入れ子になっている部屋（柱型・PS・内部に独立して建つ箱）を探す。
+ *
+ * `detectRooms` は壁グラフの平面フェイスを列挙するだけなので、**外側の部屋の面積が
+ * 内側の島のぶんを二重に含んでいる**。数量を拾うときはこれを引かないと、床も天井も
+ * 仕上げが多すぎる数になる。
+ *
+ * 包含は**面積の大小ではなく内法ポリゴンの代表点**で判定する。壁芯で判定すると、
+ * 壁を共有する隣り合った部屋が「内側」と誤判定される。
+ *
+ * 返すのは添字の対応表（外側 → 内側たち）。`Room` を書き換えないのは、画面の
+ * 面積表示を変えるのが**別の議論**だから。書き出し側が控除して使う。
+ */
+export function nestingOf(rooms: Room[]): Map<number, number[]> {
+  const out = new Map<number, number[]>();
+  for (let inner = 0; inner < rooms.length; inner++) {
+    const p = rooms[inner].center;
+    let best = -1;
+    let bestArea = Infinity;
+    for (let outer = 0; outer < rooms.length; outer++) {
+      if (outer === inner) continue;
+      if (rooms[outer].area <= rooms[inner].area) continue;
+      if (!pointInPolygon(p, rooms[outer].polygon)) continue;
+      // 何重にも入れ子なら、**一番内側の親**に付ける
+      if (rooms[outer].area < bestArea) {
+        best = outer;
+        bestArea = rooms[outer].area;
+      }
+    }
+    if (best >= 0) {
+      const got = out.get(best);
+      if (got) got.push(inner);
+      else out.set(best, [inner]);
+    }
+  }
+  return out;
+}

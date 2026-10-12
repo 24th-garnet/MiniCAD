@@ -5,6 +5,7 @@ import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
 import { wallOutline, type Segment } from '../core/shape.ts';
 import { openingPrimitives } from '../core/opening.ts';
+import { encodeCp932 } from './cp932.ts';
 import { paperToWorld, type DrawingStandard } from '../core/standard.ts';
 import {
   dimensionGeometry,
@@ -49,6 +50,15 @@ import type { Room, Scene } from '../core/types.ts';
 export interface DxfOptions {
   /** 日本語を \U+XXXX に変換して ASCII だけのファイルにする */
   escapeUnicode: boolean;
+  /**
+   * Shift-JIS (cp932) で書き出す。
+   *
+   * **Jw_cad は Shift-JIS しか読めない。** UTF-8 のまま渡すと室名も表題欄も
+   * 文字化けする。`$DWGCODEPAGE` もこれに合わせて切り替える。
+   *
+   * AutoCAD など UTF-8 を読む受け手には不要なので、既定は false。
+   */
+  shiftJis?: boolean;
   /**
    * 寸法を本物の DIMENSION エンティティで書く。
    *
@@ -239,6 +249,9 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   g(2, 'HEADER');
   g(9, '$ACADVER');
   g(1, 'AC1009');
+  // **宣言と中身を食い違わせない。** 受け手は これを見て読み方を決める
+  g(9, '$DWGCODEPAGE');
+  g(1, options.shiftJis ? 'ANSI_932' : 'UTF-8');
   g(9, '$INSUNITS'); // 4 = ミリメートル
   g(70, 4);
   g(9, '$MEASUREMENT'); // 1 = メートル法
@@ -352,19 +365,36 @@ function escapeUnicode(s: string): string {
   return out;
 }
 
+/**
+ * DXF をファイルとして書き出す。
+ *
+ * `shiftJis` のときは cp932 のバイト列にしてから Blob にする。文字列のまま
+ * Blob に渡すとブラウザが UTF-8 で書いてしまい、`$DWGCODEPAGE` の宣言と
+ * 中身が食い違う。
+ *
+ * 収まらなかった字は `?` になるので、**黙って落とさずに数を返す**。
+ */
 export function downloadDxf(
   scene: Scene,
   rooms: Room[],
   settings: Settings,
   options: DxfOptions,
   filename = 'madori.dxf',
-): void {
+): string[] {
   const dxf = sceneToDxf(scene, rooms, settings, options);
-  const blob = new Blob([dxf], { type: 'application/dxf' });
+  let dropped: string[] = [];
+  let body: BlobPart = dxf;
+  if (options.shiftJis) {
+    const got = encodeCp932(dxf);
+    body = got.bytes.buffer as ArrayBuffer;
+    dropped = got.dropped;
+  }
+  const blob = new Blob([body], { type: 'application/dxf' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return dropped;
 }

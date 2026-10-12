@@ -1,5 +1,7 @@
 import { emptyScene } from '../../core/types.ts';
 import { downloadDxf } from '../../io/dxf.ts';
+import { measuresToJson, sceneToMeasures } from '../../io/measures.ts';
+import { elevationToSvg, sceneToElevations } from '../../io/elevation.ts';
 import { clearLocal, deserialize, downloadJson, triggerDownload } from '../../io/scene.ts';
 import { sampleScene } from '../../io/sample.ts';
 import { sceneToSvg } from '../../io/svg.ts';
@@ -59,12 +61,54 @@ export class FileActions implements Panel {
         'DXF',
         () => {
           const store = ctx.editor.store;
-          downloadDxf(store.scene, ctx.editor.rooms, store.settings, {
+          const dropped = downloadDxf(store.scene, ctx.editor.rooms, store.settings, {
             escapeUnicode: store.settings.dxfEscapeUnicode,
             trueDimension: store.settings.dxfTrueDimension,
+            shiftJis: store.settings.dxfShiftJis,
           });
+          // **黙って ? に落とさない。** 室名が化けたまま渡るのが一番困る
+          if (dropped.length > 0) {
+            const chars = [...new Set(dropped)].join('');
+            window.alert(`Shift-JIS に無い文字が ${dropped.length} 字ありました。`
+              + `「?」になっています: ${chars}`);
+          }
         },
         'DXF (R12) で書き出す — 他の CAD で開けます',
+      ),
+      button(
+        '数量',
+        () => {
+          const store = ctx.editor.store;
+          const rooms = ctx.editor.rooms;
+          if (rooms.length === 0) {
+            window.alert('壁で閉じた部屋がありません。数量を拾えません。');
+            return;
+          }
+          // 図面名は表題欄から取る。無ければ既定の名前
+          const title = store.scene.sheet.titleBlock.fields.drawingName.trim();
+          const planId = title.length > 0 ? title : 'madori';
+          const file = sceneToMeasures(store.scene, rooms, { planId });
+          const blob = new Blob([measuresToJson(file)], { type: 'application/json' });
+          triggerDownload(blob, `${planId}.measures.json`);
+        },
+        '実測 JSON を書き出す — 数量拾いへ渡します',
+      ),
+      button(
+        '立面',
+        () => {
+          const scene = ctx.editor.store.scene;
+          const got = sceneToElevations(scene);
+          if (got.length === 0) {
+            window.alert('開口のある壁がありません。立面を起こせません。');
+            return;
+          }
+          const svg = elevationToSvg(got, {
+            scale: scene.standard.scale,
+            dimensions: true,
+          });
+          triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'rimen.svg');
+        },
+        '開口のある壁の立面を SVG で書き出す',
       ),
       button(
         '印刷',

@@ -18,6 +18,8 @@ export interface Settings {
   innerArea: boolean;
   /** DXF 書き出しで日本語を \U+XXXX に変換する */
   dxfEscapeUnicode: boolean;
+  /** DXF を Shift-JIS (cp932) で書く。Jw_cad は Shift-JIS しか読めない */
+  dxfShiftJis: boolean;
   /** DXF 書き出しで寸法を本物の DIMENSION エンティティにする */
   dxfTrueDimension: boolean;
   /** 幾何拘束の記号を画面に出す */
@@ -37,6 +39,7 @@ export function defaultSettings(): Settings {
     showGrid: true,
     innerArea: false,
     dxfEscapeUnicode: false,
+    dxfShiftJis: false,
     dxfTrueDimension: true,
     showConstraints: true,
     currentLayerId: null,
