@@ -39,6 +39,9 @@ export function mount(container: HTMLElement, options: MountOptions = {}): MiniC
     },
     setMode: (mode) => app.setMode(mode),
     setComments: (list) => app.setComments(list),
+    capture: (view) => app.capture(view),
+    getCamera: () => app.viewer.cameraParams,
+    setCamera: (params) => app.viewer.setCameraParams(params),
     destroy: () => app.destroy(),
   };
 

@@ -29,6 +29,9 @@ cad.setScene(file);      // 差し替え。deserialize を通るので整合性�
 cad.getMeasures('p-1');  // mdr-measures-1
 cad.setMode('pro');
 cad.setComments(anchors);  // 一覧を差し替える。図面には保存されない
+cad.capture();             // いま見えている絵を PNG で。保存はホスト
+cad.getCamera();           // ウォークスルー・AI パースへはこの形で渡す
+cad.setCamera({ fovDeg: 35 });
 cad.destroy();           // DOM からも window からも痕跡を消す
 ```
 
@@ -172,6 +175,11 @@ interface Capabilities {
 | 立面図 | `sceneToElevations(scene)` → SVG |
 | 印刷 | `buildPrintDocument(svg, standard)`。PDF はブラウザの「PDF として保存」 |
 | キャプチャ | canvas → PNG |
+| 断面図 | `sectionToSvg(sectionAlong(scene, a, b))` → SVG |
+| 展開図 | `roomElevationsToSvg(sceneToRoomElevations(...))` → SVG |
+| 3D | `sceneToDxf3d(...)` → DXF R12 の `3DFACE` |
+| キャプチャ | `capture()` → PNG。保存はホスト |
+| カメラ | `getCamera()` / `setCamera()`。ウォークスルーと AI パースへ渡す形 |
 | 変更の通知 | 編集のたびに発火。保存するかどうかはホストが決める |
 
 **PDF は書かない。** 日本語を PDF に埋めるには CID フォントのサブセット埋め込みが
@@ -202,6 +210,11 @@ interface Capabilities {
   （拾い側が `openings[]` を壁面積の控除にも使っているため）
 - **3D でのコメントの配置。** 3D ではバッジを叩いて開けますが、置けるのは 2D からだけです
   （3D では面の上の点を取る必要があり、`Select3D` の持ち物になります）
+- **レンダリング。** カメラの引数は出しますが、絵は作りません（実行時依存ゼロと
+  正面衝突します）。ワイヤーの「2 点透視（垂直補正）」も持っていません——縦線を
+  常に垂直に保つには投影の中心をずらした錐台が要り、`screenRay` と当たり判定も
+  一緒に作り直すことになります
+- **断面図の、切った先。** 切り口は出しますが、その向こうに見えるものは描きません
 - **透過の書き出し。** 画面では効きますが、SVG にも DXF にも出せません
   （書き出すときに落としたと知らせます）
 - **複数図面の書き出し。** 書き出すのは作業中の 1 枚だけです

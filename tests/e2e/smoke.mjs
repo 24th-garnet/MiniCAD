@@ -2035,6 +2035,43 @@ async function run() {
   const saved = await page.evaluate(() => window.minicadApi.getScene());
   assert.equal(Object.keys(saved.scene.views).length, 2, '図面が保存されていない');
   console.log('✔ 図面を切り替えると画層の見え方と縮尺がまとめて入れ替わる');
+
+  // --- キャプチャとカメラ引数 ---
+  // **絵は PNG で出すだけ、保存はホスト。** レンダリングはしない
+  const png2d = await page.evaluate(async () => {
+    const blob = await window.minicadApi.capture('2d');
+    return blob ? { type: blob.type, size: blob.size } : null;
+  });
+  assert.ok(png2d, '2D のキャプチャが取れない');
+  assert.equal(png2d.type, 'image/png');
+  assert.ok(png2d.size > 1000, `小さすぎる (${png2d.size} バイト)`);
+
+  // 3D が隠れているときは取れないと言う（嘘の絵を返さない）
+  assert.equal(await page.evaluate(() => window.minicadApi.capture('3d').then((b) => b)), null,
+    '隠れている 3D のキャプチャが返った');
+
+  await page.keyboard.press('F3');
+  await sleep(500);
+  const png3d = await page.evaluate(async () => {
+    const blob = await window.minicadApi.capture();
+    return blob ? blob.size : 0;
+  });
+  assert.ok(png3d > 1000, '3D のキャプチャが取れない');
+
+  // カメラ引数はホストに出して、戻せる
+  const cam = await page.evaluate(() => window.minicadApi.getCamera());
+  assert.ok(Number.isFinite(cam.eye.x) && Number.isFinite(cam.eye.z), 'カメラ位置が数でない');
+  assert.ok(cam.fovDeg > 0 && cam.fovDeg <= 90, `画角が ${cam.fovDeg}`);
+
+  await page.evaluate((c) => window.minicadApi.setCamera({ ...c, fovDeg: 35 }), cam);
+  await sleep(300);
+  const camBack = await page.evaluate(() => window.minicadApi.getCamera());
+  assert.ok(Math.abs(camBack.fovDeg - 35) < 1e-6, `画角が戻らない (${camBack.fovDeg})`);
+  assert.ok(Math.abs(camBack.eye.x - cam.eye.x) < 1, 'カメラ位置が往復で動いた');
+
+  await page.keyboard.press('F3');
+  await sleep(300);
+  console.log('✔ 絵を PNG で出せて、カメラ引数を往復できる');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

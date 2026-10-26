@@ -30,6 +30,8 @@ export interface PanelContext {
   setMode(mode: Mode): void;
   /** ツールを選ぶ。作図のツールなら 2D に戻してから切り替える */
   selectTool(id: ToolId): void;
+  /** いま見えている絵を PNG にする */
+  capture(view?: '2d' | '3d'): Promise<Blob | null>;
 }
 
 export interface Panel {

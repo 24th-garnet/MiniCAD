@@ -1,7 +1,20 @@
 import { sceneBounds } from '../core/entity.ts';
 import { activeLevel, levelOf, wallHeightOf } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
-import { defaultCamera, dolly, frameAll, orbit, pan, projectPoint, viewProjection, type Camera3D, type View } from './camera.ts';
+import {
+  applyCameraParams,
+  cameraParams,
+  defaultCamera,
+  dolly,
+  frameAll,
+  orbit,
+  pan,
+  projectPoint,
+  viewProjection,
+  type Camera3D,
+  type CameraParams,
+  type View,
+} from './camera.ts';
 import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D } from './interact.ts';
 import { type Face3 } from './mesh.ts';
 import { MeshCache } from './meshCache.ts';
@@ -98,6 +111,28 @@ export class Viewer3D {
 
   isVisible(): boolean {
     return this.visible;
+  }
+
+  /**
+   * いま見えている絵を PNG にする。**保存はホスト。**
+   *
+   * 裏バッファをそのまま出すので、画面に出ているのと同じ画素数になる。
+   * 描き終わるのを待ってから取る——`requestAnimationFrame` で描いているので、
+   * 直前の編集がまだ乗っていないことがある。
+   */
+  async capture(): Promise<Blob | null> {
+    this.draw();
+    return new Promise((resolve) => this.canvas.toBlob((b) => resolve(b), 'image/png'));
+  }
+
+  /** カメラの引数。ウォークスルーと AI パースへはこの形で渡す */
+  get cameraParams(): CameraParams {
+    return cameraParams(this.camera);
+  }
+
+  setCameraParams(p: Partial<CameraParams>): void {
+    applyCameraParams(this.camera, p);
+    this.requestRender();
   }
 
   /** コメントのバッジを叩いたときの通知。`App` が差し込む */

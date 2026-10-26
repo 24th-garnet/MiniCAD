@@ -185,6 +185,19 @@ export class FileActions implements Panel {
         },
         '実寸で印刷する（ブラウザから PDF として保存もできます）',
       )),
+      when(canDownload, button(
+        'キャプチャ',
+        () => {
+          void ctx.capture().then((blob) => {
+            if (!blob) {
+              window.alert('いま見えている絵がありません。');
+              return;
+            }
+            triggerDownload(blob, ctx.view.shows3d ? 'madori-3d.png' : 'madori.png');
+          });
+        },
+        'いま見えている絵を PNG で保存する',
+      )),
       button('全体表示', () => ctx.editor.zoomToFit(), '図面全体を表示 (0)'),
       button('用紙に合わせる', () => ctx.editor.zoomToSheet(), '用紙全体が見えるように表示'),
       fileInput,

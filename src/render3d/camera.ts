@@ -164,6 +164,60 @@ export function frameAll(cam: Camera3D, bounds: Bounds | null, wallHeight: numbe
   cam.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, (radius * 1.6) / Math.tan(cam.fovY / 2)));
 }
 
+/**
+ * カメラを外から読み書きするための形。
+ *
+ * **ワイヤーの「AI パース」の欄そのもの** ——カメラ位置（Eye）・ターゲット
+ * 位置（Look-at）・画角。MiniCAD が出すのはここまでで、レンダリングは
+ * しない（実行時依存ゼロと正面衝突する）。ウォークスルーも同じ形で渡す。
+ *
+ * **ロール（傾き）は持たない。** 上向きはいつも +z で、カメラが傾くことが
+ * 無いので、ワイヤーの言う「カメラを水平に保つ補正」は既に満たしている。
+ * **「2 点透視（垂直補正）」は持っていない** ——縦線を常に垂直に保つには
+ * 投影の中心をずらした錐台が要り、`screenRay` と当たり判定も一緒に
+ * 作り直すことになる。
+ */
+export interface CameraParams {
+  /** カメラ位置 (mm) */
+  eye: Vec3;
+  /** 注視点 (mm) */
+  target: Vec3;
+  /** 垂直画角（度）。0〜90 */
+  fovDeg: number;
+  mode: 'perspective' | 'ortho';
+}
+
+export function cameraParams(cam: Camera3D): CameraParams {
+  return {
+    eye: cameraEye(cam),
+    target: { ...cam.target },
+    fovDeg: (cam.fovY * 180) / Math.PI,
+    mode: cam.mode,
+  };
+}
+
+/**
+ * 外から来た値をカメラに当てる。
+ *
+ * 軌道カメラなので、眼と注視点から距離・方位角・仰角に直す。
+ * 真上・真下は `lookAt` が NaN になるので、`PITCH_LIMIT` の内側に収める。
+ */
+export function applyCameraParams(cam: Camera3D, p: Partial<CameraParams>): void {
+  if (p.target) cam.target = { ...p.target };
+  if (p.fovDeg !== undefined && Number.isFinite(p.fovDeg)) {
+    const deg = Math.min(90, Math.max(1, p.fovDeg));
+    cam.fovY = (deg * Math.PI) / 180;
+  }
+  if (p.mode) cam.mode = p.mode;
+  if (p.eye) {
+    const d = sub3(p.eye, cam.target);
+    const flat = Math.hypot(d.x, d.y);
+    cam.distance = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, Math.hypot(flat, d.z)));
+    cam.yaw = Math.atan2(d.y, d.x);
+    cam.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, Math.atan2(d.z, flat)));
+  }
+}
+
 export const cameraRight = (cam: Camera3D): Vec3 => cameraBasis(cam).right;
 
 export { scale3 };

@@ -81,6 +81,7 @@ export class App {
       mode: this.currentMode,
       setMode: (mode) => this.setMode(mode),
       selectTool: (id) => this.selectTool(id),
+      capture: (view) => this.capture(view),
     };
 
     const bindings = defaultBindings();
@@ -166,6 +167,22 @@ export class App {
 
   get mode(): Mode {
     return this.currentMode;
+  }
+
+  /**
+   * いま見えている絵を PNG にする。**保存はホスト。**
+   *
+   * どちらのビューかを省略したときは、3D が見えていれば 3D。分割では
+   * 「いま見ている方」が決まらないので、3D を優先する（絵として渡すなら
+   * そちらを期待されるはず、という判断）。
+   */
+  async capture(view?: '2d' | '3d'): Promise<Blob | null> {
+    const which = view ?? (this.view.shows3d ? '3d' : '2d');
+    if (which === '3d') {
+      if (!this.view.shows3d) return null; // 隠れている 3D は描かれていない
+      return this.viewer3d.capture();
+    }
+    return new Promise((resolve) => this.editor.canvas.toBlob((b) => resolve(b), 'image/png'));
   }
 
   /** コメントを差し替える。**図面には触らない**ので `commit` を通さない */

@@ -4,6 +4,7 @@ import type { SceneFile } from './io/scene.ts';
 import type { MeasuresFile } from './io/measures.ts';
 import type { BlockDef } from './core/block.ts';
 import type { Mode } from './ui/mode.ts';
+import type { CameraParams } from './render3d/camera.ts';
 
 /**
  * ホストとの境界。[docs/host.md](../docs/host.md) が決めた契約の型。
@@ -72,6 +73,17 @@ export interface MiniCad {
   setMode(mode: Mode): void;
   /** コメントのアンカーを差し替える。図面には保存されない */
   setComments(list: CommentAnchor[]): void;
+  /**
+   * いま見えている絵を PNG にする。**保存はホスト。**
+   * `view` を省略すると、出ているビュー（3D が見えていれば 3D）
+   */
+  capture(view?: '2d' | '3d'): Promise<Blob | null>;
+  /**
+   * カメラの引数。**ウォークスルーと AI パースへはこの形で渡す。**
+   * レンダリングは MiniCAD の仕事ではない（実行時依存ゼロと正面衝突する）
+   */
+  getCamera(): CameraParams;
+  setCamera(params: Partial<CameraParams>): void;
   /** 片付ける。DOM からも window からも自分の痕跡を消す */
   destroy(): void;
 }
