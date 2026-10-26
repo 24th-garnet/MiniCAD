@@ -1,5 +1,8 @@
+import { pointInPolygon, vec, type Vec } from '../core/geometry.ts';
+import type { EntityRef } from '../core/types.ts';
 import { aspectOf, cameraBasis, type Camera3D } from './camera.ts';
-import { add3, normalize3, scale3, vec3, type Vec3 } from './mat4.ts';
+import type { Face3 } from './mesh.ts';
+import { add3, dot3, normalize3, scale3, sub3, vec3, type Vec3 } from './mat4.ts';
 
 /**
  * 画面の点からワールドのレイを作る。3D で拾う／動かすの入口。
@@ -51,3 +54,95 @@ export function screenRay(cam: Camera3D, x: number, y: number, width: number, he
 
 /** レイ上の点 */
 export const rayPointAt = (ray: Ray3, t: number): Vec3 => add3(ray.origin, scale3(ray.direction, t));
+
+// --- 面との交差 -------------------------------------------------------------
+
+/** レイが当たった面と、視点からの距離 */
+export interface RayHit {
+  /** 当たった面の出どころ。床は null */
+  ref: EntityRef | null;
+  /** 視点からの距離 (mm) */
+  t: number;
+  point: Vec3;
+  face: Face3;
+}
+
+/** 平面と平行、とみなす閾値 */
+const EPS = 1e-9;
+
+/**
+ * レイと面の交点までの距離。当たらなければ null。
+ *
+ * **三角形分割はしない。** 床は `room.innerPolygon` で、L 字やコの字になる。
+ * 頂点 0 からの扇状分割は**凹多角形では単純に誤り**で、L 字の凹んだ側が
+ * 当たってしまう。`pointInPolygon`（交差数）は任意の単純多角形で厳密に効く。
+ * README の「三角形分割を書いていません」とも揃う。
+ *
+ * **背面は当たらない。** `normal · direction > 0` が背面で、これは `paint` の
+ * `isBackFacing` と同じ判定（平行投影では完全に同じ式、透視では重心ではなく
+ * 実際に当たった点で見ているぶん、むしろ正確）。
+ * **見えている通りに拾える**ことが要るので、描く側と同じ規則を使う。
+ */
+export function rayFace(ray: Ray3, face: Face3, near: number): number | null {
+  const denom = dot3(face.normal, ray.direction);
+  if (!face.doubleSided && denom > -EPS) return null; // 背面、または平行
+  if (Math.abs(denom) < EPS) return null; // 両面でも、平行なら当たらない
+
+  const t = dot3(face.normal, sub3(face.points[0], ray.origin)) / denom;
+  if (t <= near) return null; // 視点の後ろ、または near より手前
+
+  const hit = rayPointAt(ray, t);
+  // 法線の最も大きい成分の軸を落として 2D にする。
+  // 落とすと巻き方向が反転しうるが、`pointInPolygon` は向きに依らない
+  const n = face.normal;
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  const drop = az >= ax && az >= ay ? 2 : ay >= ax ? 1 : 0;
+  const flat = (p: Vec3): Vec =>
+    drop === 2 ? vec(p.x, p.y) : drop === 1 ? vec(p.x, p.z) : vec(p.y, p.z);
+
+  return pointInPolygon(flat(hit), face.points.map(flat)) ? t : null;
+}
+
+/**
+ * 当たった面を手前から順に。
+ *
+ * **手前かどうかは実際の距離で決める。`BUCKET_ORDER` は見ない。**
+ * バケットの順は*描く*ための便法で、層をまたぐ深さを意図的に無視している。
+ * 拾う側が本物の深さを使っても食い違わないのは、唯一食い違う構図
+ * （床が壁を貫く）を `innerPolygon` が排除しているから。
+ */
+export function rayHits(ray: Ray3, mesh: Face3[], near: number): RayHit[] {
+  const hits: RayHit[] = [];
+  for (const face of mesh) {
+    const t = rayFace(ray, face, near);
+    if (t === null) continue;
+    hits.push({ ref: face.ref, t, point: rayPointAt(ray, t), face });
+  }
+  return hits.sort((a, b) => a.t - b.t);
+}
+
+/**
+ * いちばん手前の 1 枚。`accept` が false を返す面は読み飛ばして奥を見る。
+ *
+ * 画層をロックしたものはメッシュには載っている（`buildMesh` が落とすのは
+ * 非表示だけ）ので、選べるかどうかの判断は呼ぶ側が `accept` で渡す。
+ * ここにシーンの知識を持ち込まない。
+ */
+export function pickRay(
+  ray: Ray3,
+  mesh: Face3[],
+  near: number,
+  accept?: (ref: EntityRef | null) => boolean,
+): RayHit | null {
+  let best: RayHit | null = null;
+  for (const face of mesh) {
+    if (accept && !accept(face.ref)) continue;
+    const t = rayFace(ray, face, near);
+    if (t === null) continue;
+    if (best && t >= best.t) continue;
+    best = { ref: face.ref, t, point: rayPointAt(ray, t), face };
+  }
+  return best;
+}

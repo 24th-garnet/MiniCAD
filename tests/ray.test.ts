@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultCamera, viewProjection, type Camera3D } from '../src/render3d/camera.ts';
-import { screenRay, rayPointAt } from '../src/render3d/ray.ts';
+import { screenRay, rayPointAt, rayFace, rayHits, pickRay, type Ray3 } from '../src/render3d/ray.ts';
+import { buildMesh, type Face3 } from '../src/render3d/mesh.ts';
+import { detectRooms } from '../src/core/rooms.ts';
+import { sampleScene } from '../src/io/sample.ts';
+import type { EntityRef } from '../src/core/types.ts';
 import { sub3, transformPoint, vec3, type Vec3 } from '../src/render3d/mat4.ts';
 
 const W = 1440;
@@ -130,4 +134,135 @@ test('真上から見下ろしても NaN にならない', () => {
   const r = screenRay(cam, W / 2, H / 2, W, H);
   assert.ok(Number.isFinite(r.direction.x) && Number.isFinite(r.direction.z));
   assert.ok(distanceToRay(cam, W / 2, H / 2, cam.target) < 1e-6);
+});
+
+// --- 面との交差 -------------------------------------------------------------
+
+/** 上向きの床 1 枚を手で組む */
+function floorFace(poly: { x: number; y: number }[], z = 0, ref: EntityRef | null = null): Face3 {
+  return {
+    points: poly.map((p) => vec3(p.x, p.y, z)),
+    normal: vec3(0, 0, 1),
+    color: '#fff',
+    bucket: 'floor',
+    doubleSided: true,
+    ref,
+    levelId: 'lv-1',
+  };
+}
+
+/** 真下を向いたレイ */
+const down = (x: number, y: number, z = 10_000): Ray3 => ({
+  origin: vec3(x, y, z),
+  direction: vec3(0, 0, -1),
+});
+
+test('多角形の内側に当たり、外側には当たらない', () => {
+  const f = floorFace([{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 0, y: 3000 }]);
+  assert.ok(rayFace(down(2000, 1500), f, 1) !== null, '内側で当たらない');
+  assert.equal(rayFace(down(5000, 1500), f, 1), null, '外側で当たった');
+});
+
+test('コの字の床の凹んだ側では当たらない', () => {
+  // **扇状分割だとここが当たる。** 床は room.innerPolygon で L 字やコの字に
+  // なるので、凹多角形を正しく扱えないと「見えていない床を掴む」ことになる。
+  //
+  // (2500, 2000) は部屋の外（コの字の切り欠きの中）だが、頂点 0 からの
+  // 扇状分割では三角形の内側に入ってしまう。この 1 点が
+  // 「三角形分割を書かない」という判断を守っている。
+  const U = floorFace([
+    { x: 0, y: 0 },
+    { x: 4000, y: 0 },
+    { x: 4000, y: 1000 },
+    { x: 1000, y: 1000 },
+    { x: 1000, y: 3000 },
+    { x: 4000, y: 3000 },
+    { x: 4000, y: 4000 },
+    { x: 0, y: 4000 },
+  ]);
+  assert.ok(rayFace(down(500, 2000), U, 1) !== null, 'コの字の背で当たらない');
+  assert.ok(rayFace(down(3000, 500), U, 1) !== null, 'コの字の腕で当たらない');
+  assert.equal(rayFace(down(2500, 2000), U, 1), null, '切り欠きの中で当たった');
+});
+
+test('交点までの距離が正しい', () => {
+  const f = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }], 500);
+  const t = rayFace({ origin: vec3(500, 500, 2500), direction: vec3(0, 0, -1) }, f, 1);
+  assert.ok(t !== null);
+  assert.ok(Math.abs(t - 2000) < 1e-9, `距離が ${t}`);
+});
+
+test('面と平行なレイは当たらない', () => {
+  const f = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }]);
+  assert.equal(rayFace({ origin: vec3(500, 500, 100), direction: vec3(1, 0, 0) }, f, 1), null);
+});
+
+test('視点の後ろの面は当たらない', () => {
+  const f = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }]);
+  // 上を向いたレイ。床は後ろにある
+  assert.equal(rayFace({ origin: vec3(500, 500, 100), direction: vec3(0, 0, 1) }, f, 1), null);
+});
+
+test('背面は当たらない', () => {
+  // 下から上向きの床（両面でない）
+  const f = { ...floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }]) };
+  delete (f as { doubleSided?: boolean }).doubleSided;
+  assert.equal(rayFace({ origin: vec3(500, 500, -100), direction: vec3(0, 0, 1) }, f, 1), null);
+});
+
+test('両面の床は下からも当たる', () => {
+  const f = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }]);
+  assert.ok(rayFace({ origin: vec3(500, 500, -100), direction: vec3(0, 0, 1) }, f, 1) !== null);
+});
+
+test('層の順ではなく実際に手前の面が返る', () => {
+  // 家具（上）と床（下）。BUCKET_ORDER では床が先に描かれるが、拾うのは手前
+  const low = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }], 0,
+    { type: 'wall', id: 'low' });
+  const high = { ...floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }], 700,
+    { type: 'blockInstance', id: 'high' }), bucket: 'furniture' as const };
+  const hit = pickRay(down(500, 500), [low, high], 1);
+  assert.equal(hit?.ref?.id, 'high', '奥の面を拾っている');
+});
+
+test('accept が false を返す面は読み飛ばして奥を拾う', () => {
+  // ロックした画層のものは選べないが、その奥のものは選べてほしい
+  const low = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }], 0,
+    { type: 'wall', id: 'low' });
+  const high = floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }], 700,
+    { type: 'wall', id: 'locked' });
+  const hit = pickRay(down(500, 500), [low, high], 1, (ref) => ref?.id !== 'locked');
+  assert.equal(hit?.ref?.id, 'low');
+});
+
+test('当たった面は手前から順に並ぶ', () => {
+  const faces = [0, 700, 1400].map((z) =>
+    floorFace([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }], z,
+      { type: 'wall', id: `z${z}` }),
+  );
+  const hits = rayHits(down(500, 500), faces, 1);
+  assert.deepEqual(hits.map((h) => h.ref!.id), ['z1400', 'z700', 'z0']);
+});
+
+test('縦の面も拾える（軸を落とす先が変わる）', () => {
+  // 法線が x 向きの壁。dominant axis が z 以外になる経路
+  const wall: Face3 = {
+    points: [vec3(0, 0, 0), vec3(0, 0, 2400), vec3(0, 4000, 2400), vec3(0, 4000, 0)],
+    normal: vec3(-1, 0, 0),
+    color: '#fff',
+    bucket: 'wall',
+    ref: { type: 'wall', id: 'w' },
+    levelId: 'lv-1',
+  };
+  assert.ok(rayFace({ origin: vec3(-500, 2000, 1200), direction: vec3(1, 0, 0) }, wall, 1) !== null);
+  assert.equal(rayFace({ origin: vec3(-500, 9000, 1200), direction: vec3(1, 0, 0) }, wall, 1), null,
+    '面の外で当たった');
+});
+
+test('サンプル間取りを真上から拾うと床か家具に当たる', () => {
+  const scene = sampleScene();
+  const mesh = buildMesh(scene, detectRooms(scene));
+  const hit = pickRay({ origin: vec3(2300, 3000, 50_000), direction: vec3(0, 0, -1) }, mesh, 50);
+  assert.ok(hit, 'LDK の真上から拾えない');
+  assert.ok(['floor', 'furniture'].includes(hit.face.bucket), `当たったのは ${hit.face.bucket}`);
 });
