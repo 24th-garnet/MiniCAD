@@ -1489,6 +1489,55 @@ async function run() {
   assert.ok(tenkaiSvg.includes('A 面'), '面の名前が出ていない');
   assert.ok(tenkaiSvg.includes('未計測'), '但し書きが消えている');
   console.log('✔ 展開図を書き出せる');
+
+  // --- 断面図 ---
+  // **切断線は選んだ線を使う。** ツールを増やしていない
+  page.once('dialog', (d) => d.accept());
+  await page.click('button[title="選んだ線で切った断面を SVG で書き出す"]');
+  await sleep(250);
+
+  // 壁を横切る線を引いて選ぶ
+  await page.keyboard.press('v');
+  await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+  await sleep(250);
+  const cutLine = await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    const xs = Object.values(s.nodes).map((n) => n.x);
+    const ys = Object.values(s.nodes).map((n) => n.y);
+    const y = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const id = 'cut-line';
+    ed.store.commit(() => {
+      s.shapes[id] = {
+        id, shape: 'line', layerId: 'shape', levelId: s.activeLevelId,
+        attrs: { groupId: null, color: null, materialRef: null, takeoff: null, symbolId: null, symbolVersion: null },
+        a: { x: Math.min(...xs) - 500, y }, b: { x: Math.max(...xs) + 500, y },
+      };
+    });
+    ed.store.setSelection([{ type: 'shape', id }]);
+    return id;
+  });
+  await sleep(300);
+
+  const [danmen] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.click('button[title="選んだ線で切った断面を SVG で書き出す"]'),
+  ]);
+  const danmenSvg = await readFile(await danmen.path(), 'utf8');
+  const danmenError = await page.evaluate((source) => {
+    const err = new DOMParser().parseFromString(source, 'image/svg+xml').querySelector('parsererror');
+    return err ? err.textContent : null;
+  }, danmenSvg);
+  assert.equal(danmenError, null, `断面図の SVG が壊れている: ${danmenError}`);
+  assert.ok(danmenSvg.includes('class="cut"'), '切り口が無い');
+  assert.ok(danmenSvg.includes('描いていません'), '但し書きが無い');
+
+  await page.evaluate((id) => {
+    const ed = window.minicad.editorInstance;
+    ed.store.commit(() => void delete ed.store.scene.shapes[id]);
+  }, cutLine);
+  await sleep(200);
+  console.log('✔ 選んだ線で断面図を書き出せる');
   await page.keyboard.press('F3');
   await sleep(300);
 

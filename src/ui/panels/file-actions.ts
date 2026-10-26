@@ -1,6 +1,7 @@
 import { emptyScene } from '../../core/types.ts';
 import { downloadDxf, exportLossReport } from '../../io/dxf.ts';
 import { sceneToDxf3d } from '../../io/dxf3d.ts';
+import { sectionAlong, sectionToSvg } from '../../io/section.ts';
 import { measuresToJson, sceneToMeasures } from '../../io/measures.ts';
 import { elevationToSvg, roomElevationsToSvg, sceneToElevations, sceneToRoomElevations } from '../../io/elevation.ts';
 import { clearLocal, deserialize, downloadJson, triggerDownload } from '../../io/scene.ts';
@@ -137,6 +138,27 @@ export class FileActions implements Panel {
           triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'rimen.svg');
         },
         '開口のある壁の立面を SVG で書き出す',
+      )),
+      when(canDownload, button(
+        '断面',
+        () => {
+          const scene = ctx.editor.store.scene;
+          // **切断線は選んだ線を使う。** ツールを増やさない
+          const sel = ctx.editor.store.selection.filter((r) => r.type === 'shape');
+          const line = sel.length === 1 ? scene.shapes[sel[0].id] : null;
+          if (!line || line.shape !== 'line') {
+            window.alert('切断線にする線を 1 本選んでください。\n\n線ツール（L）で引いて、選択してから押します。');
+            return;
+          }
+          const got = sectionAlong(scene, line.a, line.b);
+          if (!got) {
+            window.alert('その線は壁を横切っていません。');
+            return;
+          }
+          const svg = sectionToSvg(got, scene.standard.scale);
+          triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'danmen.svg');
+        },
+        '選んだ線で切った断面を SVG で書き出す',
       )),
       when(canDownload, button(
         '展開',
