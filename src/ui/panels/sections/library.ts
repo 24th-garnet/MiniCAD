@@ -55,10 +55,13 @@ export class LibrarySection implements Section {
         + 'ブロック定義には壁と建具を入れられないため、別の仕組み（実体への展開）が要ります。',
       ]));
     }
-    const materials = ctx.catalogs.materials?.length ?? 0;
-    if (materials > 0) {
+    const materials = ctx.catalogs.materials ?? [];
+    if (materials.length > 0) {
+      const textured = materials.filter((m) => m.texture).length;
       out.push(el('p', { class: 'empty-note' }, [
-        `素材カタログを ${materials} 件受け取っていますが、まだ誰も読んでいません。`,
+        `素材 ${materials.length} 件。選んだものに当てるには、`
+        + '図面で選んでからプロパティの「素材」で指定します。'
+        + (textured > 0 ? `うち ${textured} 件はテクスチャを持っていますが、まだ使っていません。` : ''),
       ]));
     }
     return out;
