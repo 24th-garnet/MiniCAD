@@ -1,4 +1,5 @@
 import type { EntityRef, Scene } from './core/types.ts';
+import type { CommentAnchor } from './core/annotation.ts';
 import type { SceneFile } from './io/scene.ts';
 import type { MeasuresFile } from './io/measures.ts';
 import type { BlockDef } from './core/block.ts';
@@ -33,6 +34,21 @@ export interface HostCallbacks {
   catalogs?: HostCatalogs;
 
   /**
+   * コメントのアンカー。**本文はホストが持つ。**
+   * MiniCAD は点を描き、当たり判定をし、クリックを返すだけ
+   */
+  comments?: CommentAnchor[];
+
+  /** コメントのバッジを叩いた。ホストが自分のポップアップを開く */
+  onCommentOpen?(id: string): void;
+
+  /**
+   * 新しいコメントを置いた。**まだ本文は無い。**
+   * ホストが本文を聞いて、`setComments` で確定した一覧を返す
+   */
+  onCommentPlace?(anchor: CommentAnchor): void;
+
+  /**
    * 図面が変わった。**保存するかどうかはホストが決める。**
    *
    * 呼ばれるのは図面が本当に変わったときだけで、選択やホバーでは呼ばれない。
@@ -54,6 +70,8 @@ export interface MiniCad {
   getMeasures(planId?: string): MeasuresFile;
   readonly mode: Mode;
   setMode(mode: Mode): void;
+  /** コメントのアンカーを差し替える。図面には保存されない */
+  setComments(list: CommentAnchor[]): void;
   /** 片付ける。DOM からも window からも自分の痕跡を消す */
   destroy(): void;
 }

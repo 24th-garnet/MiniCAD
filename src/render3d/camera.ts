@@ -1,4 +1,4 @@
-import type { Bounds } from '../core/geometry.ts';
+import type { Bounds, Vec } from '../core/geometry.ts';
 import {
   cross3,
   mat4LookAt,
@@ -8,6 +8,7 @@ import {
   normalize3,
   scale3,
   sub3,
+  transformPoint,
   vec3,
   type Mat4,
   type Vec3,
@@ -96,6 +97,23 @@ export interface View {
   /** 注視方向の単位ベクトル。平行投影の背面判定に使う */
   forward: Vec3;
   near: number;
+}
+
+/**
+ * ワールドの点を画面の CSS px へ。**カメラの後ろなら null。**
+ *
+ * `paint` が面に対してやっていることを 1 点ぶんだけ切り出したもの。
+ * バッジのように「面ではないが 3D に置いてあるもの」を出すのに要る。
+ */
+export function projectPoint(view: View, p: Vec3, width: number, height: number): Vec | null {
+  const c = transformPoint(view.view, p);
+  // near より手前は出さない。w ≈ 0 で座標が ±∞ に飛ぶ
+  if (-c.z < view.near) return null;
+  const q = transformPoint(view.projection, { x: c.x, y: c.y, z: c.z });
+  if (!(Math.abs(q.w) > 1e-9)) return null;
+  const x = ((q.x / q.w) * 0.5 + 0.5) * width;
+  const y = (0.5 - (q.y / q.w) * 0.5) * height;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
 export function viewProjection(cam: Camera3D, width: number, height: number): View {

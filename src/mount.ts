@@ -38,6 +38,7 @@ export function mount(container: HTMLElement, options: MountOptions = {}): MiniC
       return app.mode;
     },
     setMode: (mode) => app.setMode(mode),
+    setComments: (list) => app.setComments(list),
     destroy: () => app.destroy(),
   };
 

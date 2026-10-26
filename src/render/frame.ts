@@ -4,6 +4,7 @@ import type { LineType } from '../core/standard.ts';
 import { PX_PER_MM, paperToScreenPx } from '../core/standard.ts';
 import type { Settings } from '../core/store.ts';
 import type { EntityRef, Room, Scene } from '../core/types.ts';
+import type { CommentAnchor } from '../core/annotation.ts';
 import { Viewport } from './viewport.ts';
 
 /** 1回の描画に必要なものをまとめたもの。描画関数は状態を持たない */
@@ -18,6 +19,11 @@ export interface Frame {
   hover: EntityRef | null;
   /** 直近の solve で満たせなかった拘束の id。赤く出す。見た目だけの情報なので省略可 */
   violated?: Set<string>;
+  /**
+   * コメントのアンカー。**シーンには入らない。**
+   * ホストから渡されるもので、図面を保存しても付いてこない
+   */
+  comments?: CommentAnchor[];
 }
 
 export const refKey = (ref: EntityRef): string => `${ref.type}:${ref.id}`;

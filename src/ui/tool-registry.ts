@@ -1,4 +1,5 @@
 import { BlockInsertTool } from '../tools/block-insert.ts';
+import { CommentTool } from '../tools/comment.ts';
 import { DimensionTool } from '../tools/dimension.ts';
 import { FixtureTool } from '../tools/fixture.ts';
 import { MeasureTool } from '../tools/measure.ts';
@@ -43,11 +44,20 @@ export interface ToolEntry {
   modes: readonly Mode[];
   /** 図面を書き換えるツールか。閲覧のみのときは出さない */
   edits: boolean;
+  /**
+   * `edit` 以外に要る権限。いまはコメントだけ。
+   *
+   * `edits` が `can.edit` を表しているのと同じ形。`keyof Capabilities` に
+   * 一般化すると `edits` を書き換えることになるので、要るものだけ足す
+   */
+  needs?: 'comment';
 }
 
 export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   select: { make: () => new SelectTool(), glyph: '↖', modes: BOTH_MODES, edits: false },
-  measure: { make: () => new MeasureTool(), glyph: '↔', modes: BOTH_MODES, edits: false },
+  // 計測は Phase 5 から図面に残るので、閲覧のみでは出さない。
+  // 出すと `Store.readOnly` に弾かれて、測っても何も残らない
+  measure: { make: () => new MeasureTool(), glyph: '↔', modes: BOTH_MODES, edits: true },
   copy: { make: () => new TransformTool('copy', 'copy', '複写', 'Y'), glyph: '⧉', modes: BOTH_MODES, edits: true },
   rotate: { make: () => new TransformTool('rotate', 'rotate', '回転', 'R'), glyph: '↻', modes: BOTH_MODES, edits: true },
   mirror: { make: () => new TransformTool('mirror', 'mirror', '鏡像', 'X'), glyph: '⇄', modes: BOTH_MODES, edits: true },
@@ -67,6 +77,8 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   text: { make: () => new ShapeTool('text', 'text', '文字', 'T'), glyph: 'A', modes: BOTH_MODES, edits: true },
   dimension: { make: () => new DimensionTool(), glyph: '↦', modes: BOTH_MODES, edits: true },
   room: { make: () => new RoomTool(), glyph: 'あ', modes: BOTH_MODES, edits: true },
+  // **コメントは図面を変えない。** 閲覧のみでも置ける（権限は `comment` が決める）
+  comment: { make: () => new CommentTool(), glyph: '💬', modes: BOTH_MODES, edits: false, needs: 'comment' },
 };
 
 /** そのモードとできることで出すツールを順に作る。並びは表のキーの順 */
@@ -74,5 +86,6 @@ export function buildTools(mode: Mode, can: Capabilities): Tool[] {
   return Object.values(TOOL_REGISTRY)
     .filter((entry) => entry.modes.includes(mode))
     .filter((entry) => can.edit || !entry.edits)
+    .filter((entry) => !entry.needs || can[entry.needs])
     .map((entry) => entry.make());
 }

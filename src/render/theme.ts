@@ -38,6 +38,8 @@ export const theme = {
   door3d: '#b7a98f',
   glass3d: 'rgba(125, 175, 220, 0.42)',
   edge3d: 'rgba(63, 63, 70, 0.35)',
+  /** コメントのバッジ。図面のどの色とも被らない色にする */
+  commentBadge: '#e0812a',
 } as const;
 
 export const FONT_FAMILY = 'system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif';

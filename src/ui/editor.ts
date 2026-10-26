@@ -1,3 +1,4 @@
+import type { CommentAnchor } from '../core/annotation.ts';
 import { dist, sub, vec, type Vec } from '../core/geometry.ts';
 import { sceneBounds } from '../core/entity.ts';
 import { sheetGeometry } from '../core/sheet.ts';
@@ -35,6 +36,15 @@ export class Editor {
 
   /** ツールがスナップ対象の絞り込みを指定する場所 */
   snapContext: SnapContext = {};
+
+  /**
+   * コメントのアンカー。**シーンには入らない。**
+   *
+   * 本文・作成者・日時・リプライ・解決状態はホストの持ち物で、MiniCAD が
+   * 持つのは座標と不透明なバッジだけ。図面を保存しても付いてこないので、
+   * `Store` ではなくここに置く。
+   */
+  comments: CommentAnchor[] = [];
 
   private resizeObserver: ResizeObserver | null = null;
 
@@ -196,6 +206,7 @@ export class Editor {
       selected,
       hover: this.hover,
       violated: new Set(this.store.lastSolve?.violated ?? []),
+      comments: this.comments,
     };
     render(frame, (f) => this.tool.drawOverlay?.(this, f));
   }

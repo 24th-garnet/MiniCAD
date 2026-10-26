@@ -20,6 +20,8 @@ import { ViewTabs } from './panels/view-tabs.ts';
 import { Viewer3D } from '../render3d/viewer.ts';
 import { ViewState, type ViewMode } from './view-state.ts';
 import { buildShell } from './shell.ts';
+import { CommentTool } from '../tools/comment.ts';
+import type { CommentAnchor } from '../core/annotation.ts';
 
 /**
  * 画面の配線だけを持つ。描画の中身は各パネルにある。
@@ -122,6 +124,18 @@ export class App {
     // 座標表示はポインタが動くたびに更新したいので、全体の再描画とは別経路にする
     shell.canvas.addEventListener('pointermove', () => this.statusBar.refreshReadout(this.ctx));
 
+    // コメントはホストの持ち物。図面には入らないので `Store` を通さない
+    this.editor.comments = host.comments ?? [];
+    this.viewer3d.onCommentOpen = (id) => host.onCommentOpen?.(id);
+    const commentTool = this.editor.allTools().find((t) => t.id === 'comment');
+    if (commentTool instanceof CommentTool) {
+      commentTool.onOpen = (id) => host.onCommentOpen?.(id);
+      commentTool.onPlace = (anchor) => {
+        host.onCommentPlace?.(anchor);
+        this.refresh();
+      };
+    }
+
     // 素材の表示色はホストのカタログから。MiniCAD は意味を読まない
     this.viewer3d.setMaterialColors(
       new Map(
@@ -152,6 +166,14 @@ export class App {
 
   get mode(): Mode {
     return this.currentMode;
+  }
+
+  /** コメントを差し替える。**図面には触らない**ので `commit` を通さない */
+  setComments(list: CommentAnchor[]): void {
+    this.editor.comments = [...list];
+    this.editor.requestRender();
+    this.viewer3d.requestRender();
+    this.refresh();
   }
 
   /**

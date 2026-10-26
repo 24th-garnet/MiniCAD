@@ -23,7 +23,8 @@ export type ToolId =
   | 'text'
   | 'dimension'
   | 'room'
-  | 'fixture';
+  | 'fixture'
+  | 'comment';
 
 export interface PointerInfo {
   screen: Vec;

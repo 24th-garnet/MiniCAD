@@ -1626,7 +1626,8 @@ async function run() {
   await sleep(500);
 
   const viewOnly = await state();
-  assert.deepEqual(viewOnly.toolbar, ['select', 'measure'], `道具が残っている: ${viewOnly.toolbar}`);
+  // 計測は図面に残るので閲覧のみでは出ない。コメントは図面を変えないので出る
+  assert.deepEqual(viewOnly.toolbar, ['select', 'comment'], `道具が残っている: ${viewOnly.toolbar}`);
   assert.equal(await page.locator('.read-only-badge').count(), 1, '閲覧のみと書いていない');
   // **書き出しは別の権限。** 閲覧のみでも持ち帰れる場合がある
   assert.equal(await page.locator('.file-actions button:text-is("DXF")').count(), 1,
@@ -1777,6 +1778,69 @@ async function run() {
   await page.keyboard.press('F3');
   await sleep(300);
   console.log('✔ 素材はホストの識別子のまま運ばれ、3D の着色だけが表示ヒントを読む');
+
+  // --- コメント ---
+  // **本文はホストが持つ。** MiniCAD は点を描き、当たり判定をし、クリックを返すだけ
+  await page.evaluate((f) => {
+    window.minicadApi.destroy();
+    window.__placed = [];
+    window.__opened = [];
+    window.minicadApi = window.mountMiniCad(document.getElementById('app'), {
+      scene: f,
+      comments: [
+        { id: 'c1', at: { x: 1000, y: 1000, z: 0 }, ref: null, levelId: 'lv-1', badge: { n: 2 } },
+      ],
+      onCommentPlace: (a) => window.__placed.push(a),
+      onCommentOpen: (id) => window.__opened.push(id),
+    });
+  }, hostFile);
+  await sleep(600);
+  await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+  await sleep(300);
+
+  // 置いたコメントは図面には入らない
+  const kept = await page.evaluate(() => ({
+    inScene: 'comments' in window.minicadApi.getScene().scene,
+    held: window.minicad.editorInstance.comments.length,
+  }));
+  assert.equal(kept.inScene, false, 'コメントが図面に入っている');
+  assert.equal(kept.held, 1, 'ホストから渡したコメントが入っていない');
+
+  // バッジを叩くと開く通知が飛ぶ
+  const badgeAt = async (wx, wy) => {
+    const p = await at(wx, wy);
+    await page.mouse.click(p.x, p.y);
+  };
+  await page.keyboard.press('j');
+  await sleep(250);
+  assert.equal((await state()).tool, 'comment', 'コメントツールに移っていない');
+  await badgeAt(1000, 1000);
+  await sleep(250);
+  assert.deepEqual(await page.evaluate(() => window.__opened), ['c1'], '開く通知が来ない');
+
+  // 何も無いところを叩くと新しく置かれ、ホストに知らせる
+  const beforeComments = await page.evaluate(() => window.minicad.editorInstance.comments.length);
+  await badgeAt(3000, 3000);
+  await sleep(300);
+  const newComment = await page.evaluate(() => ({
+    placed: window.__placed.length,
+    held: window.minicad.editorInstance.comments.length,
+    last: window.__placed[window.__placed.length - 1],
+  }));
+  assert.equal(newComment.placed, 1, '置いた通知が来ない');
+  assert.equal(newComment.held, beforeComments + 1, '置いたバッジが画面に出ていない');
+  assert.equal(newComment.last.badge, null, 'まだ本文が無いのにバッジが入っている');
+  assert.ok(Math.abs(newComment.last.at.x - 3000) < 60, `置いた位置が違う (${newComment.last.at.x})`);
+
+  // **図面は変わらない。** undo の対象にもならない
+  assert.equal((await state()).walls, Object.keys(hostFile.scene.walls).length, 'コメントで図面が変わった');
+
+  // ホストが一覧を差し替えられる
+  await page.evaluate(() => window.minicadApi.setComments([]));
+  await sleep(250);
+  assert.equal(await page.evaluate(() => window.minicad.editorInstance.comments.length), 0,
+    'ホストから消せない');
+  console.log('✔ コメントはアンカーだけを持ち、図面には入らない');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

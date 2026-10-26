@@ -68,6 +68,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawRoomLabels(frame);
   drawNodes(frame);
   drawConstraints(frame);
+  drawComments(frame);
   ctx.setLineDash([]);
   overlay?.(frame);
   ctx.restore();
@@ -402,6 +403,40 @@ function drawMeasurements(frame: Frame): void {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, c.x, c.y - 14.5);
   }
+  ctx.restore();
+}
+
+// --- コメント ---
+
+/** バッジの半径（画面の px）。ズームに依らない */
+export const COMMENT_BADGE_R = 11;
+
+/**
+ * コメントのバッジ。**本文は描かない。**
+ *
+ * MiniCAD が持つのはアンカーだけなので、出せるのは番号と位置まで。
+ * 中身はホストが自分のポップアップで出す。
+ */
+function drawComments(frame: Frame): void {
+  const { ctx, vp, comments } = frame;
+  if (!comments || comments.length === 0) return;
+
+  ctx.save();
+  ctx.font = fontOf(11);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  comments.forEach((c, i) => {
+    const p = vp.toScreen(vec(c.at.x, c.at.y));
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, COMMENT_BADGE_R, 0, Math.PI * 2);
+    ctx.fillStyle = theme.commentBadge;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(String(i + 1), p.x, p.y + 0.5);
+  });
   ctx.restore();
 }
 

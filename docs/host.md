@@ -5,7 +5,7 @@
 
 > **入口は実装されている。** [`src/mount.ts`](../src/mount.ts) の `mount()` と
 > [`src/host.ts`](../src/host.ts) の型がこの文書の契約そのもの。
-> カタログとできることの指定（`Capabilities`）はまだ受け取れない。下の「まだ無いもの」を参照。
+> 足りないものは下の「まだ無いもの」に全部書いてある。
 
 ## 入口
 
@@ -17,14 +17,18 @@ const cad = mount(document.getElementById('editor')!, {
   mode: 'normal',                        // 省略すると通常モード
   capabilities: { edit: false },         // 省略すると全部できる
   catalogs: { library, materials },      // 省略すると図面が持つものだけ
+  comments: anchors,                     // 本文はホストが持つ。これは点だけ
   onChange: (file) => void save(file),   // 図面が本当に変わったときだけ
   onSelectionChange: (refs) => show(refs),
+  onCommentOpen: (id) => openThread(id), // バッジを叩いた
+  onCommentPlace: (a) => askBody(a),     // 新しく置いた。まだ本文が無い
 });
 
 cad.getScene();          // SceneFile。保存はホスト
 cad.setScene(file);      // 差し替え。deserialize を通るので整合性検査が走る
 cad.getMeasures('p-1');  // mdr-measures-1
 cad.setMode('pro');
+cad.setComments(anchors);  // 一覧を差し替える。図面には保存されない
 cad.destroy();           // DOM からも window からも痕跡を消す
 ```
 
@@ -196,7 +200,8 @@ interface Capabilities {
 - **素材のテクスチャ。** カタログの `color` は 3D の着色に使いますが、`texture` は読んでいません
 - **建具の「積算対象外」。** 壁と家具では効きますが、建具では効きません
   （拾い側が `openings[]` を壁面積の控除にも使っているため）
-- **コメントと計測の保存。** 計測は今その場限りで、保存されない
+- **3D でのコメントの配置。** 3D ではバッジを叩いて開けますが、置けるのは 2D からだけです
+  （3D では面の上の点を取る必要があり、`Select3D` の持ち物になります）
 - **画層ごとの縮尺と透過。** 縮尺は図面に 1 つ、透過は持っていない
 - **階を切り替える画面。** データは複数階を持てますが、作業中の階を変える UI がまだありません
 

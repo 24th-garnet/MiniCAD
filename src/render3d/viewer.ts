@@ -1,11 +1,16 @@
 import { sceneBounds } from '../core/entity.ts';
 import { activeLevel, levelOf, wallHeightOf } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
-import { defaultCamera, dolly, frameAll, orbit, pan, type Camera3D } from './camera.ts';
+import { defaultCamera, dolly, frameAll, orbit, pan, projectPoint, viewProjection, type Camera3D, type View } from './camera.ts';
 import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D } from './interact.ts';
 import { type Face3 } from './mesh.ts';
 import { MeshCache } from './meshCache.ts';
 import { paint } from './paint.ts';
+import { COMMENT_BADGE_R } from '../render/renderer.ts';
+import { theme } from '../render/theme.ts';
+import type { CommentAnchor } from '../core/annotation.ts';
+import { vec3 } from './mat4.ts';
+import type { Vec } from '../core/geometry.ts';
 import { screenRay } from './ray.ts';
 
 /**
@@ -95,6 +100,9 @@ export class Viewer3D {
     return this.visible;
   }
 
+  /** コメントのバッジを叩いたときの通知。`App` が差し込む */
+  onCommentOpen: ((id: string) => void) | null = null;
+
   /** ホストのカタログから表示色を取り込む。渡されなければ既定の 5 色のまま */
   setMaterialColors(colors: ReadonlyMap<string, string>): void {
     this.materials = colors;
@@ -176,6 +184,59 @@ export class Viewer3D {
       dpr: this.dpr,
       tint: highlightOf(this.editor, this.materials),
     });
+    this.drawComments();
+  }
+
+  /**
+   * コメントのバッジ。**面ではないので `paint` の後に重ねる。**
+   *
+   * z は階の床からの高さ。平面で置いたものは床の上に出るので、
+   * 2D と 3D で同じ点を指していることが見て分かる。
+   */
+  private drawComments(): void {
+    const comments = this.editor.comments;
+    if (comments.length === 0) return;
+    const view = viewProjection(this.camera, this.width, this.height);
+    const c2 = this.ctx;
+
+    // `paint` は裏バッファの画素で描くので DPR 込み。バッジは CSS px で
+    // 描きたい（ズームに依らず同じ大きさ）ので、ここで尺度を入れ直す
+    c2.save();
+    c2.scale(this.dpr, this.dpr);
+    c2.font = '11px system-ui, sans-serif';
+    c2.textAlign = 'center';
+    c2.textBaseline = 'middle';
+    comments.forEach((c, i) => {
+      const p = this.commentScreen(c, view);
+      if (!p) return;
+      c2.beginPath();
+      c2.arc(p.x, p.y, COMMENT_BADGE_R, 0, Math.PI * 2);
+      c2.fillStyle = theme.commentBadge;
+      c2.fill();
+      c2.strokeStyle = '#fff';
+      c2.lineWidth = 1.5;
+      c2.stroke();
+      c2.fillStyle = '#fff';
+      c2.fillText(String(i + 1), p.x, p.y + 0.5);
+    });
+    c2.restore();
+  }
+
+  private commentScreen(c: CommentAnchor, view: View): Vec | null {
+    const level = levelOf(this.editor.store.scene, c.levelId);
+    return projectPoint(view, vec3(c.at.x, c.at.y, level.floorZ + c.at.z), this.width, this.height);
+  }
+
+  /** 画面の点に当たるバッジ。3D でもクリックで開ける */
+  commentAt(x: number, y: number): CommentAnchor | null {
+    const view = viewProjection(this.camera, this.width, this.height);
+    // 後から置いたものが上に来るので逆順に見る
+    for (let i = this.editor.comments.length - 1; i >= 0; i--) {
+      const c = this.editor.comments[i];
+      const p = this.commentScreen(c, view);
+      if (p && Math.hypot(p.x - x, p.y - y) <= COMMENT_BADGE_R) return c;
+    }
+    return null;
   }
 
   /** いまの状態の説明。ステータスバーが 3D のときに読む */
@@ -273,6 +334,15 @@ export class Viewer3D {
       // 中ボタンと Shift+左はいつでもカメラ
       if (e.button === 1 || e.shiftKey) {
         this.dragging = 'pan';
+        return;
+      }
+
+      // **バッジがいちばん手前。** 図面の上に重ねた印なので、下の面より先に拾う
+      const badge = this.commentAt(e.clientX - canvas.getBoundingClientRect().left,
+        e.clientY - canvas.getBoundingClientRect().top);
+      if (badge) {
+        this.dragging = null;
+        this.onCommentOpen?.(badge.id);
         return;
       }
 

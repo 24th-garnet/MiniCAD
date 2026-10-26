@@ -72,6 +72,31 @@ test('閲覧のみでは図面を書き換えるツールが出ない', () => {
   // 保証は `Store.readOnly` が掛ける（`tests/store.test.ts`）
   for (const mode of MODES) {
     const ids = buildTools(mode, VIEW_ONLY).map((t) => t.id);
-    assert.deepEqual(ids, ['select', 'measure'], `${mode} で出るものが違う: ${ids}`);
+    for (const id of ids) {
+      assert.equal(TOOL_REGISTRY[id].edits, false, `${id} は図面を書き換えるのに閲覧のみで出ている`);
+    }
+    assert.ok(ids.includes('select'), `${mode} に選択ツールが無い`);
   }
+});
+
+test('残るものを作るツールは「書き換える」と言っている', () => {
+  // **ここが腐りやすい。** 計測は Phase 5 で `commit` を呼ぶようになったが、
+  // 表は「書き換えない」のままだった。出したまま `Store.readOnly` に弾かれると、
+  // 測っても何も残らない行き止まりになる
+  for (const [id, entry] of Object.entries(TOOL_REGISTRY)) {
+    if (!entry.edits) {
+      assert.ok(
+        ['select', 'comment'].includes(id),
+        `${id} が「書き換えない」と言っている。本当に Store を触らないか確かめること`,
+      );
+    }
+  }
+});
+
+test('コメントは comment の権限で出し分ける', () => {
+  const noComment = { ...ALL, comment: false };
+  assert.ok(buildTools('normal', ALL).some((t) => t.id === 'comment'));
+  assert.ok(!buildTools('normal', noComment).some((t) => t.id === 'comment'));
+  // **編集できなくてもコメントは置ける。** 図面を変えないので
+  assert.ok(buildTools('normal', VIEW_ONLY).some((t) => t.id === 'comment'));
 });
