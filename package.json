@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:e2e": "node tests/e2e/smoke.mjs"
   },
   "devDependencies": {
