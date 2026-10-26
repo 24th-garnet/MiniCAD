@@ -15,6 +15,7 @@ import { mount } from 'minicad/mount';
 const cad = mount(document.getElementById('editor')!, {
   scene: await loadFromServer(),        // SceneFile か Scene。省略すると空から
   mode: 'normal',                        // 省略すると通常モード
+  capabilities: { edit: false },         // 省略すると全部できる
   onChange: (file) => void save(file),   // 図面が本当に変わったときだけ
   onSelectionChange: (refs) => show(refs),
 });
@@ -142,6 +143,17 @@ interface Capabilities {
 **権限の判断はホストがする。** MiniCAD は真偽値を受け取って UI を出し分けるだけで、
 「支店長権限」のような語彙は知らない。
 
+**`edit: false` の保証は画面ではなく `Store` が持つ。** 道具やボタンを消すのは
+行き止まりを減らすためで、保証にはならない——インスペクタの入力欄も、ドラッグも、
+ショートカットも、それぞれ別の経路で書きに来る。`commit` / `commitFrom` /
+`undo` / `redo` は図面を書き換える経路の全部なので、そこで 1 回止めれば漏れない。
+表示の設定（スナップ・グリッド）は図面の中身ではないので止めない。
+
+**`edit` と `download` は別。** ワイヤーでもダウンロードは有料アカウントの権利で、
+閲覧しかできない人が持ち帰れることも、編集できる人が持ち帰れないこともある。
+
+`comment` は**まだ何にも効かない**。コメント自体がないため。
+
 ## MiniCAD が返すもの
 
 | | |
@@ -173,7 +185,6 @@ interface Capabilities {
 実装されていないものを、実装されていないと書く。
 
 - **カタログを渡す口。** ライブラリも素材も、まだホストから受け取れない
-- **できることの指定（`Capabilities`）。** 閲覧のみ・書き出し禁止がまだ無い
 - **スタイルの隔離。** `style.css` には `html, body` と `*` への指定が残っていて、
   ホストのページにも効いてしまう
 - **汎用ソリッドの作図**（直方体・円筒・押し出し・プッシュ/プル・ブーリアン）。

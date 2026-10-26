@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTools, TOOL_REGISTRY } from '../src/ui/tool-registry.ts';
 import { MODES } from '../src/ui/mode.ts';
+import { defaultCapabilities } from '../src/host.ts';
+
+const ALL = defaultCapabilities();
+const VIEW_ONLY = { ...ALL, edit: false };
 import type { ToolId } from '../src/tools/tool.ts';
 
 test('表のキーとツール自身の id が一致する', () => {
@@ -15,7 +19,7 @@ test('表のキーとツール自身の id が一致する', () => {
 
 test('ツールバーの並びは表のキーの順', () => {
   // プロモードは今のところ全部出る。並びが表の順であることを見ている
-  const ids = buildTools('pro').map((t) => t.id);
+  const ids = buildTools('pro', ALL).map((t) => t.id);
   assert.deepEqual(ids, Object.keys(TOOL_REGISTRY) as ToolId[]);
   assert.equal(new Set(ids).size, ids.length, '同じツールが二度出ている');
 });
@@ -23,18 +27,18 @@ test('ツールバーの並びは表のキーの順', () => {
 test('どのモードでも選択ツールは出る', () => {
   // 消えると `Editor.setTools` の逃げ先が無くなる
   for (const mode of MODES) {
-    assert.ok(buildTools(mode).some((t) => t.id === 'select'), `${mode} に選択ツールが無い`);
+    assert.ok(buildTools(mode, ALL).some((t) => t.id === 'select'), `${mode} に選択ツールが無い`);
   }
 });
 
 test('通常モードはプロモードの部分集合', () => {
   // **プロは通常を狭めない。** ワイヤーは字義どおりならプロから壁を外すが、
   // 代わりに入るはずの汎用ソリッドがまだ無いので、外すと空のモードになる
-  const pro = new Set(buildTools('pro').map((t) => t.id));
-  for (const tool of buildTools('normal')) {
+  const pro = new Set(buildTools('pro', ALL).map((t) => t.id));
+  for (const tool of buildTools('normal', ALL)) {
     assert.ok(pro.has(tool.id), `${tool.id} が通常にだけある`);
   }
-  assert.ok(buildTools('normal').length < pro.size, '通常とプロで何も変わらない');
+  assert.ok(buildTools('normal', ALL).length < pro.size, '通常とプロで何も変わらない');
 });
 
 test('どのモードにも属さないツールが無い', () => {
@@ -46,7 +50,7 @@ test('どのモードにも属さないツールが無い', () => {
 test('ショートカットが重なっていない', () => {
   // 重なると後ろのツールに切り替えられなくなる。今まで誰も見ていなかった
   const seen = new Map<string, string>();
-  for (const tool of buildTools('pro')) {
+  for (const tool of buildTools('pro', ALL)) {
     const key = tool.shortcut.toLowerCase();
     const other = seen.get(key);
     assert.equal(other, undefined, `${key} が ${other} と ${tool.id} で重なっている`);
@@ -60,5 +64,14 @@ test('グリフと表示名が全部入っている', () => {
     const tool = entry.make();
     assert.ok(tool.label.length > 0, `${id} の表示名が空`);
     assert.ok(tool.cursor.length > 0, `${id} のカーソルが空`);
+  }
+});
+
+test('閲覧のみでは図面を書き換えるツールが出ない', () => {
+  // **画面から消すのは行き止まりを減らすためで、保証ではない。**
+  // 保証は `Store.readOnly` が掛ける（`tests/store.test.ts`）
+  for (const mode of MODES) {
+    const ids = buildTools(mode, VIEW_ONLY).map((t) => t.id);
+    assert.deepEqual(ids, ['select', 'measure'], `${mode} で出るものが違う: ${ids}`);
   }
 });

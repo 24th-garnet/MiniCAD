@@ -38,17 +38,20 @@ export class LayersSection implements Section {
 
     for (const layer of layers) out.push(layerRow(layer, ctx));
 
-    out.push(
-      el(
-        'button',
-        {
-          class: 'wide',
-          type: 'button',
-          onclick: () => ctx.edit(() => void addLayer(scene.layers)),
-        },
-        ['＋ 画層を追加'],
-      ),
-    );
+    // 画層は図面の一部で、表示の切り替えも保存される。閲覧のみでは触らせない
+    if (ctx.can.edit) {
+      out.push(
+        el(
+          'button',
+          {
+            class: 'wide',
+            type: 'button',
+            onclick: () => ctx.edit(() => void addLayer(scene.layers)),
+          },
+          ['＋ 画層を追加'],
+        ),
+      );
+    }
     return out;
   }
 }
@@ -56,9 +59,12 @@ export class LayersSection implements Section {
 function layerRow(layer: Layer, ctx: PanelContext): HTMLElement {
   const scene = ctx.editor.store.scene;
   const edit = ctx.edit;
+  const canEdit = ctx.can.edit;
   const builtin = isBuiltinLayer(layer.id);
 
-  const visible = el('input', { class: 'layer-visible', type: 'checkbox', checked: layer.visible, title: '表示' });
+  const visible = el('input', {
+    class: 'layer-visible', type: 'checkbox', checked: layer.visible, title: '表示', disabled: !canEdit,
+  });
   visible.addEventListener('change', () => edit(() => void (layer.visible = visible.checked)));
 
   const locked = el('input', {
@@ -66,6 +72,7 @@ function layerRow(layer: Layer, ctx: PanelContext): HTMLElement {
     type: 'checkbox',
     checked: layer.locked,
     title: 'ロック（選択できなくする）',
+    disabled: !canEdit,
   });
   locked.addEventListener('change', () => edit(() => void (layer.locked = locked.checked)));
 
@@ -77,6 +84,7 @@ function layerRow(layer: Layer, ctx: PanelContext): HTMLElement {
     type: 'text',
     value: layer.name,
     title: builtin ? `${layer.name}（組み込みの画層）` : layer.name,
+    disabled: !canEdit,
   });
   const commitName = () => {
     if (!renameLayer(scene.layers, layer.id, name.value)) {
@@ -113,8 +121,8 @@ function layerRow(layer: Layer, ctx: PanelContext): HTMLElement {
     (v) => edit(() => setLayerColor(scene.layers, layer.id, Number(v))),
   );
 
-  const controls: HTMLElement[] = [roleSelect, typeSelect, colorSelect];
-  if (!builtin) {
+  const controls: HTMLElement[] = canEdit ? [roleSelect, typeSelect, colorSelect] : [];
+  if (!builtin && canEdit) {
     controls.push(
       el(
         'button',

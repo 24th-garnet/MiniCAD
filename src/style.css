@@ -94,6 +94,14 @@ body {
   color: #a8a7a2;
 }
 
+.read-only-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #5a4a1e;
+  color: #f0dca8;
+}
+
 .mode-switch button {
   font: inherit;
   font-size: 12px;

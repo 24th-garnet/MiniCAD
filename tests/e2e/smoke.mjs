@@ -1393,6 +1393,56 @@ async function run() {
   });
   assert.equal(again.roots, 1, '二重に組み上がっている');
   console.log('✔ 同じ箱にもう一度組み直せる');
+
+  // --- 閲覧のみ ---
+  await page.evaluate((f) => {
+    window.minicadApi.destroy();
+    const el = document.getElementById('app');
+    window.minicadApi = window.mountMiniCad(el, { scene: f, capabilities: { edit: false } });
+  }, hostFile);
+  await sleep(500);
+
+  const viewOnly = await state();
+  assert.deepEqual(viewOnly.toolbar, ['select', 'measure'], `道具が残っている: ${viewOnly.toolbar}`);
+  assert.equal(await page.locator('.read-only-badge').count(), 1, '閲覧のみと書いていない');
+  // **書き出しは別の権限。** 閲覧のみでも持ち帰れる場合がある
+  assert.equal(await page.locator('.file-actions button:text-is("DXF")').count(), 1,
+    '閲覧のみで書き出しまで消えている');
+  assert.equal(await page.locator('.file-actions button:text-is("開く")').count(), 0,
+    '図面を差し替えるボタンが残っている');
+  assert.equal(await page.locator('.layer-row input.layer-name:not([disabled])').count(), 0,
+    '画層名を直せてしまう');
+
+  // **保証は Store。** 画面に無い経路からも書けないこと
+  const blocked = await page.evaluate(() => {
+    const store = window.minicad.editorInstance.store;
+    const before = JSON.stringify(store.scene);
+    const version = store.sceneVersion;
+    store.commit(() => void (store.scene.walls[Object.keys(store.scene.walls)[0]].thickness = 999));
+    store.undo();
+    return { same: JSON.stringify(store.scene) === before, version, after: store.sceneVersion };
+  });
+  assert.ok(blocked.same, '閲覧のみなのに図面が変わった');
+  assert.equal(blocked.after, blocked.version, '閲覧のみなのに版が上がった');
+
+  // キーボードからも変わらない
+  await page.keyboard.press('w');
+  await sleep(150);
+  assert.equal((await state()).tool, 'select', '隠した壁ツールがキーで選べる');
+  console.log('✔ 閲覧のみでは道具が消え、どの経路からも図面が変わらない');
+
+  await page.evaluate((f) => {
+    window.minicadApi.destroy();
+    window.minicadApi = window.mountMiniCad(document.getElementById('app'), {
+      scene: f,
+      capabilities: { download: false },
+    });
+  }, hostFile);
+  await sleep(500);
+  assert.equal(await page.locator('.file-actions button:text-is("DXF")').count(), 0,
+    '書き出しを止めたのにボタンが残っている');
+  assert.ok((await state()).toolbar.includes('wall'), '書き出しだけ止めたのに道具が消えた');
+  console.log('✔ 書き出しの可否は編集の可否と別に効く');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

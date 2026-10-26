@@ -16,6 +16,10 @@ export class FileActions implements Panel {
   build(ctx: PanelContext): void {
     const button = (label: string, onClick: () => void, title?: string) =>
       el('button', { type: 'button', onclick: onClick, title: title ?? label }, [label]);
+    // 出さないものは `null` にして最後に落とす。`el` は null を無視する
+    const when = (ok: boolean, node: HTMLElement) => (ok ? node : null);
+    const canEdit = ctx.can.edit;
+    const canDownload = ctx.can.download;
 
     const fileInput = el('input', { type: 'file', accept: '.json,.dxf,application/json' });
     fileInput.style.display = 'none';
@@ -38,26 +42,27 @@ export class FileActions implements Panel {
     });
 
     this.host.append(
-      button('新規', () => {
+      ...[
+      when(canEdit, button('新規', () => {
         if (!window.confirm('現在の間取りを破棄して新規作成しますか？')) return;
         clearLocal();
         ctx.loadScene(emptyScene());
-      }),
-      button('サンプル', () => {
+      })),
+      when(canEdit, button('サンプル', () => {
         if (!window.confirm('現在の間取りを破棄してサンプルを読み込みますか？')) return;
         ctx.loadScene(sampleScene());
-      }),
-      button('開く', () => fileInput.click(), 'JSON / DXF を読み込む'),
-      button('保存', () => downloadJson(ctx.editor.store.scene), 'JSON で保存 (Cmd/Ctrl+S)'),
-      button(
+      })),
+      when(canEdit, button('開く', () => fileInput.click(), 'JSON / DXF を読み込む')),
+      when(canDownload, button('保存', () => downloadJson(ctx.editor.store.scene), 'JSON で保存 (Cmd/Ctrl+S)')),
+      when(canDownload, button(
         'SVG',
         () => {
           const svg = sceneToSvg(ctx.editor.store.scene, ctx.editor.rooms, ctx.editor.store.settings);
           triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'madori.svg');
         },
         'SVG で書き出す',
-      ),
-      button(
+      )),
+      when(canDownload, button(
         'DXF',
         () => {
           const store = ctx.editor.store;
@@ -74,8 +79,8 @@ export class FileActions implements Panel {
           }
         },
         'DXF (R12) で書き出す — 他の CAD で開けます',
-      ),
-      button(
+      )),
+      when(canDownload, button(
         '数量',
         () => {
           const store = ctx.editor.store;
@@ -92,8 +97,8 @@ export class FileActions implements Panel {
           triggerDownload(blob, `${planId}.measures.json`);
         },
         '実測 JSON を書き出す — 数量拾いへ渡します',
-      ),
-      button(
+      )),
+      when(canDownload, button(
         '立面',
         () => {
           const scene = ctx.editor.store.scene;
@@ -109,8 +114,8 @@ export class FileActions implements Panel {
           triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'rimen.svg');
         },
         '開口のある壁の立面を SVG で書き出す',
-      ),
-      button(
+      )),
+      when(canDownload, button(
         '印刷',
         () => {
           const scene = ctx.editor.store.scene;
@@ -120,10 +125,11 @@ export class FileActions implements Panel {
           }
         },
         '実寸で印刷する（ブラウザから PDF として保存もできます）',
-      ),
+      )),
       button('全体表示', () => ctx.editor.zoomToFit(), '図面全体を表示 (0)'),
       button('用紙に合わせる', () => ctx.editor.zoomToSheet(), '用紙全体が見えるように表示'),
       fileInput,
+      ].filter((node) => node !== null),
     );
   }
 

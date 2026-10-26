@@ -75,6 +75,19 @@ export class Store {
   private inCommit = false;
 
   /**
+   * 閲覧のみ。ホストが `capabilities.edit: false` を渡したとき立つ。
+   *
+   * **画面で道具を隠すだけにはしない。** 隠すのは行き止まりを減らすためで、
+   * 保証にはならない——インスペクタの入力欄も、ドラッグも、ショートカットも、
+   * それぞれ別の経路で書きに来る。`commit` / `commitFrom` / `undo` / `redo` は
+   * **図面を書き換える経路の全部**なので、ここで 1 回止めれば漏れない。
+   *
+   * `update` は止めない。スナップやグリッドのような表示の設定で、
+   * 図面の中身ではないため。
+   */
+  readOnly = false;
+
+  /**
    * シーンの版。**シーンが実際に変わったときだけ上がる。**
    *
    * `emit()` は選択や表示設定の変更でも飛ぶ。派生データ（部屋の検出・3D の
@@ -112,6 +125,7 @@ export class Store {
 
   /** 履歴に残る変更。fn が false を返したら変更なしとして履歴を積まない */
   commit(fn: () => void | boolean): void {
+    if (this.readOnly) return;
     if (this.inCommit) {
       fn();
       return;
@@ -162,6 +176,13 @@ export class Store {
    * before には操作開始前のシーンを渡す。
    */
   commitFrom(before: Scene): void {
+    if (this.readOnly) {
+      // 途中まで書き換わっているので、開始時の形に戻す
+      this.scene = before;
+      this.version += 1;
+      this.emit();
+      return;
+    }
     this.applyConstraints(this.takePins());
     this.undoStack.push(before);
     if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
@@ -186,6 +207,7 @@ export class Store {
   }
 
   undo(): void {
+    if (this.readOnly) return;
     const prev = this.undoStack.pop();
     if (!prev) return;
     this.redoStack.push(structuredClone(this.scene));
@@ -196,6 +218,7 @@ export class Store {
   }
 
   redo(): void {
+    if (this.readOnly) return;
     const next = this.redoStack.pop();
     if (!next) return;
     this.undoStack.push(structuredClone(this.scene));

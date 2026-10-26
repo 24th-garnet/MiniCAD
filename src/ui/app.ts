@@ -9,7 +9,7 @@ import type { Panel, PanelContext } from './panel.ts';
 import { buildSections } from './section-registry.ts';
 import { buildTools } from './tool-registry.ts';
 import { DEFAULT_MODE, type Mode } from './mode.ts';
-import type { HostCallbacks } from '../host.ts';
+import { defaultCapabilities, type Capabilities, type HostCallbacks } from '../host.ts';
 import { FileActions } from './panels/file-actions.ts';
 import { Inspector } from './panels/inspector.ts';
 import { OptionsBar } from './panels/options-bar.ts';
@@ -39,6 +39,7 @@ export class App {
   private readonly bindings: Binding[];
   private currentMode: Mode;
   private readonly host: HostCallbacks;
+  private readonly can: Capabilities;
   private readonly shellRoot: HTMLElement;
   private readonly teardown = new AbortController();
   private lastNotifiedVersion: number;
@@ -46,6 +47,7 @@ export class App {
 
   constructor(container: HTMLElement, host: HostCallbacks = {}) {
     this.host = host;
+    this.can = { ...defaultCapabilities(), ...host.capabilities };
     this.currentMode = host.mode ?? DEFAULT_MODE;
     // 骨組みは自分で組む。埋め込まれるとき、MiniCAD は入る箱しか貰えない
     const shell = buildShell(container);
@@ -57,7 +59,10 @@ export class App {
     this.view = new ViewState((mode) => this.applyView(mode));
 
     // 何を出すかはレジストリが決める。ここは並べるだけ
-    for (const tool of buildTools(this.currentMode)) this.editor.registerTool(tool);
+    for (const tool of buildTools(this.currentMode, this.can)) this.editor.registerTool(tool);
+    // **保証は Store で掛ける。** 道具を隠すのは行き止まりを減らすためで、
+    // インスペクタもドラッグもショートカットも別の経路で書きに来る
+    this.editor.store.readOnly = !this.can.edit;
 
     this.ctx = {
       editor: this.editor,
@@ -67,6 +72,7 @@ export class App {
       deleteSelection: () => this.deleteSelection(),
       loadScene: (scene) => this.loadScene(scene),
       view: this.view,
+      can: this.can,
       mode: this.currentMode,
       setMode: (mode) => this.setMode(mode),
       selectTool: (id) => this.selectTool(id),
@@ -92,7 +98,8 @@ export class App {
     const commandInput = new CommandInput(shell.numeric, shell.numericInput, shell.numericLabel);
     this.statusBar = new StatusBar(shell.statusHint, shell.statusReadout, this.viewer3d);
 
-    this.inspector = new Inspector(shell.inspector, buildSections({ bindings }, this.currentMode));
+    this.inspector = new Inspector(shell.inspector, buildSections({ bindings }, this.currentMode, this.can));
+    if (!this.can.edit) shell.root.classList.add('read-only');
     this.panels = [
       toolbar,
       modeSwitch,
@@ -146,9 +153,9 @@ export class App {
     if (this.currentMode === mode) return;
     this.currentMode = mode;
     this.ctx.mode = mode;
-    this.editor.setTools(buildTools(mode));
+    this.editor.setTools(buildTools(mode, this.can));
     this.toolbar.build(this.ctx);
-    this.inspector.setSections(buildSections({ bindings: this.bindings }, mode));
+    this.inspector.setSections(buildSections({ bindings: this.bindings }, mode, this.can));
     this.refresh();
   }
 

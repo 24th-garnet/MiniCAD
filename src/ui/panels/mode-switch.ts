@@ -13,6 +13,10 @@ export class ModeSwitch implements Panel {
 
   refresh(ctx: PanelContext): void {
     clear(this.host);
+    // 閲覧のみであることは、押せないボタンから察させず、書いて出す
+    if (!ctx.can.edit) {
+      this.host.append(el('span', { class: 'read-only-badge' }, ['閲覧のみ']));
+    }
     this.host.append(el('span', { class: 'mode-label' }, ['編集モード']));
     for (const mode of MODES) {
       this.host.append(

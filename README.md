@@ -235,6 +235,12 @@ const cad = mount(document.getElementById('editor')!, {
 });
 ```
 
+`capabilities: { edit: false }` を渡すと閲覧のみになります。**その保証は画面ではなく
+[src/core/store.ts](src/core/store.ts) が持ちます** — 道具やボタンを消すのは行き止まりを
+減らすためで、インスペクタの入力欄もドラッグもショートカットも別の経路で書きに来るからです。
+図面を書き換える経路（`commit` / `commitFrom` / `undo` / `redo`）は 1 箇所なので、
+そこで止めれば漏れません。
+
 契約は [docs/host.md](docs/host.md)。**何をホストが持ち、何を MiniCAD が持たないか**を
 先に決めてあります（認証・案件・保存・版管理・コメントの通信・ライブラリのマスタ・
 写実レンダリング・単価と金額は、すべてホスト側）。

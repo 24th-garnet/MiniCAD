@@ -25,6 +25,9 @@ export interface HostCallbacks {
   /** 通常モードかプロモードか。省略すると通常モード */
   mode?: Mode;
 
+  /** できること。省略すると全部できる */
+  capabilities?: Partial<Capabilities>;
+
   /**
    * 図面が変わった。**保存するかどうかはホストが決める。**
    *
@@ -49,4 +52,22 @@ export interface MiniCad {
   setMode(mode: Mode): void;
   /** 片付ける。DOM からも window からも自分の痕跡を消す */
   destroy(): void;
+}
+
+/**
+ * ホストが許すこと。**権限の判断はホストがする。**
+ * MiniCAD は真偽値を受け取って出し分けるだけで、「支店長権限」のような
+ * 語彙は知らない。
+ */
+export interface Capabilities {
+  /** false なら閲覧のみ。図面を書き換える経路が `Store` で全部止まる */
+  edit: boolean;
+  /** 書き出しのボタンを出すか */
+  download: boolean;
+  /** コメントを付けられるか。**まだ何にも効かない**（コメント自体が無い） */
+  comment: boolean;
+}
+
+export function defaultCapabilities(): Capabilities {
+  return { edit: true, download: true, comment: true };
 }
