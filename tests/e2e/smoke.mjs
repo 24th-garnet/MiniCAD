@@ -1471,6 +1471,24 @@ async function run() {
   assert.ok(maxZ > 2000, `いちばん高い点が ${maxZ}`);
   await sleep(300);
   console.log(`✔ 3D を DXF で書き出せる（最高 ${maxZ}mm）`);
+
+  // --- 展開図 ---
+  const [tenkai] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.click('button[title="部屋ごとの展開図を SVG で書き出す"]'),
+  ]);
+  const tenkaiSvg = await readFile(await tenkai.path(), 'utf8');
+  assert.equal(tenkaiSvg.match(/<svg/g)?.length, 1, 'svg が 1 枚ではない');
+  // 構文の検査はブラウザの中でやる（Node に DOMParser は無い）
+  const tenkaiError = await page.evaluate((source) => {
+    const err = new DOMParser().parseFromString(source, 'image/svg+xml').querySelector('parsererror');
+    return err ? err.textContent : null;
+  }, tenkaiSvg);
+  assert.equal(tenkaiError, null, `展開図の SVG が壊れている: ${tenkaiError}`);
+  assert.ok(tenkaiSvg.includes('LDK'), '部屋名が出ていない');
+  assert.ok(tenkaiSvg.includes('A 面'), '面の名前が出ていない');
+  assert.ok(tenkaiSvg.includes('未計測'), '但し書きが消えている');
+  console.log('✔ 展開図を書き出せる');
   await page.keyboard.press('F3');
   await sleep(300);
 

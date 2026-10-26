@@ -2,7 +2,7 @@ import { emptyScene } from '../../core/types.ts';
 import { downloadDxf, exportLossReport } from '../../io/dxf.ts';
 import { sceneToDxf3d } from '../../io/dxf3d.ts';
 import { measuresToJson, sceneToMeasures } from '../../io/measures.ts';
-import { elevationToSvg, sceneToElevations } from '../../io/elevation.ts';
+import { elevationToSvg, roomElevationsToSvg, sceneToElevations, sceneToRoomElevations } from '../../io/elevation.ts';
 import { clearLocal, deserialize, downloadJson, triggerDownload } from '../../io/scene.ts';
 import { sampleScene } from '../../io/sample.ts';
 import { sceneToSvg } from '../../io/svg.ts';
@@ -137,6 +137,20 @@ export class FileActions implements Panel {
           triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'rimen.svg');
         },
         '開口のある壁の立面を SVG で書き出す',
+      )),
+      when(canDownload, button(
+        '展開',
+        () => {
+          const scene = ctx.editor.store.scene;
+          const got = sceneToRoomElevations(scene, ctx.editor.rooms);
+          if (got.length === 0) {
+            window.alert('壁で閉じた部屋がありません。展開図を起こせません。');
+            return;
+          }
+          const svg = roomElevationsToSvg(got, { scale: scene.standard.scale, dimensions: true });
+          triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'tenkai.svg');
+        },
+        '部屋ごとの展開図を SVG で書き出す',
       )),
       when(canDownload, button(
         '印刷',
