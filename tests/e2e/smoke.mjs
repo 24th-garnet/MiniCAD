@@ -1057,6 +1057,75 @@ async function run() {
   await sleep(300);
   console.log('✔ 3D で空を叩くと選択が解ける');
 
+  // --- 3D でドラッグして動かす ---
+  await page.keyboard.press('F3');
+  await sleep(400);
+
+  // 何かを掴めるところを探す
+  let grabbed = null;
+  for (const [dx, dy] of [[0, 40], [60, 40], [-60, 40], [0, 100], [120, 0], [-120, 0]]) {
+    await page.mouse.click(mid.x + dx, mid.y + dy);
+    await sleep(180);
+    if ((await state()).selection > 0) { grabbed = { x: mid.x + dx, y: mid.y + dy }; break; }
+  }
+  assert.ok(grabbed, '3D で掴めるものが見つからない');
+
+  const beforeDrag = await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    return {
+      nodes: Object.values(s.nodes).map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`).join('|'),
+      insts: Object.values(s.instances).map((i) => `${i.x.toFixed(1)},${i.y.toFixed(1)}`).join('|'),
+      openings: Object.values(s.openings).map((o) => o.offset.toFixed(1)).join('|'),
+    };
+  });
+
+  await page.mouse.move(grabbed.x, grabbed.y);
+  await page.mouse.down();
+  await page.mouse.move(grabbed.x + 90, grabbed.y + 50, { steps: 8 });
+  await page.mouse.up();
+  await sleep(300);
+
+  const afterDrag = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    return {
+      nodes: Object.values(s.nodes).map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`).join('|'),
+      insts: Object.values(s.instances).map((i) => `${i.x.toFixed(1)},${i.y.toFixed(1)}`).join('|'),
+      openings: Object.values(s.openings).map((o) => o.offset.toFixed(1)).join('|'),
+    };
+  });
+  const changed =
+    afterDrag.nodes !== beforeDrag.nodes ||
+    afterDrag.insts !== beforeDrag.insts ||
+    afterDrag.openings !== beforeDrag.openings;
+  assert.ok(changed, '3D でドラッグしても何も動かない');
+  console.log('✔ 3D のドラッグで動かせる');
+
+  // 2D に戻して、動いた結果が見えていること
+  await page.keyboard.press('F3');
+  await sleep(300);
+  const in2dAfter = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    return Object.values(s.nodes).map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`).join('|')
+      + '/' + Object.values(s.instances).map((i) => `${i.x.toFixed(1)},${i.y.toFixed(1)}`).join('|');
+  });
+  assert.equal(in2dAfter, `${afterDrag.nodes}/${afterDrag.insts}`, '2D と 3D でモデルが食い違う');
+  console.log('✔ 3D で動かした結果が 2D に出ている');
+
+  // undo 1 回で戻る＝ commitFrom を 1 回だけ通っている
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  const afterUndo = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    return {
+      nodes: Object.values(s.nodes).map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`).join('|'),
+      insts: Object.values(s.instances).map((i) => `${i.x.toFixed(1)},${i.y.toFixed(1)}`).join('|'),
+      openings: Object.values(s.openings).map((o) => o.offset.toFixed(1)).join('|'),
+    };
+  });
+  assert.deepEqual(afterUndo, beforeDrag, '3D のドラッグが undo 1 回で戻らない');
+  console.log('✔ 3D のドラッグを undo 1回で取り消せる');
+
   // --- 1 フレームの内訳を測って残す ---
   await page.keyboard.press('F3');
   await sleep(400);

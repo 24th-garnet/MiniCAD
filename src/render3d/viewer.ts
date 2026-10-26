@@ -209,11 +209,28 @@ export class Viewer3D {
       this.last = { x: e.clientX, y: e.clientY };
       this.downAt = { x: e.clientX, y: e.clientY };
       this.moved = false;
-      this.dragging = e.button === 1 || e.shiftKey ? 'pan' : 'orbit';
+
+      // 中ボタンと Shift+左はいつでもカメラ
+      if (e.button === 1 || e.shiftKey) {
+        this.dragging = 'pan';
+        return;
+      }
+
+      // **掴んだものがあれば動かす、無ければ回す。**
+      // 「何も無いところをドラッグ＝回転」は 3D の基本操作なので残す
+      const p = this.pointer(e);
+      if (p.hit?.ref) {
+        this.dragging = null;
+        this.select.onPointerDown(this.editor, p);
+        return;
+      }
+      this.dragging = 'orbit';
+      this.select.onPointerDown(this.editor, p);
     });
 
     canvas.addEventListener('pointermove', (e) => {
       if (!this.dragging) {
+        // 選択中のものを掴んでいるか、ただのホバーか。Select3D が決める
         this.select.onPointerMove(this.editor, this.pointer(e));
         this.requestRender();
         return;
@@ -236,20 +253,33 @@ export class Viewer3D {
 
     canvas.addEventListener('pointerup', (e) => {
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-      const wasOrbit = this.dragging === 'orbit';
       this.dragging = null;
-      // 動かさずに離した素の左＝クリック
-      if (wasOrbit && !this.moved && e.button === 0 && !e.shiftKey) {
-        this.select.onPointerDown(this.editor, this.pointer(e));
-      }
       this.moved = false;
+      this.select.onPointerUp(this.editor);
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       this.dragging = null;
       this.moved = false;
+      this.select.cancel(this.editor);
     });
+
+    // **Esc は捕捉段で取る。** `installKeymap` は window の keydown を見ていて、
+    // 3D のドラッグ中でも選択解除が先に走ってしまう。ここで止める
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (!this.visible || !this.select.isActive()) return;
+        if (e.key !== 'Escape') return;
+        if (this.select.cancel(this.editor)) {
+          e.stopPropagation();
+          e.preventDefault();
+          this.requestRender();
+        }
+      },
+      { capture: true },
+    );
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     canvas.addEventListener(

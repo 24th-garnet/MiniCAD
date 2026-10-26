@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultCamera, viewProjection, type Camera3D } from '../src/render3d/camera.ts';
-import { screenRay, rayPointAt, rayFace, rayHits, pickRay, type Ray3 } from '../src/render3d/ray.ts';
+import { screenRay, rayPointAt, rayFace, rayHits, pickRay, rayPlane, rayAxis, type Ray3 } from '../src/render3d/ray.ts';
 import { buildMesh, type Face3 } from '../src/render3d/mesh.ts';
 import { detectRooms } from '../src/core/rooms.ts';
 import { sampleScene } from '../src/io/sample.ts';
 import type { EntityRef } from '../src/core/types.ts';
-import { sub3, transformPoint, vec3, type Vec3 } from '../src/render3d/mat4.ts';
+import { normalize3, sub3, transformPoint, vec3, type Vec3 } from '../src/render3d/mat4.ts';
 
 const W = 1440;
 const H = 900;
@@ -265,4 +265,73 @@ test('サンプル間取りを真上から拾うと床か家具に当たる', ()
   const hit = pickRay({ origin: vec3(2300, 3000, 50_000), direction: vec3(0, 0, -1) }, mesh, 50);
   assert.ok(hit, 'LDK の真上から拾えない');
   assert.ok(['floor', 'furniture'].includes(hit.face.bucket), `当たったのは ${hit.face.bucket}`);
+});
+
+// --- ドラッグの面と軸 -------------------------------------------------------
+
+test('掴んだ点を通る水平面との交点が取れる', () => {
+  const cam = perspective();
+  const grab = vec3(2000, 1500, 700);
+  const plane = { origin: grab, normal: vec3(0, 0, 1) };
+  const s = toScreen(cam, grab);
+  assert.ok(s);
+  const at = rayPlane(screenRay(cam, s.x, s.y, W, H), plane);
+  assert.ok(at, '交点が取れない');
+  assert.ok(dist(at, grab) < 1e-6, `掴んだ点から ${dist(at, grab).toFixed(6)}mm ずれた`);
+});
+
+test('掴んだ点はカーソルの下に留まる', () => {
+  // **ドラッグの手触りそのもの。** 画面を動かした先で交点を取り直すと、
+  // その点がちょうどカーソルの下に来る
+  const cam = perspective();
+  const grab = vec3(2000, 1500, 700);
+  const plane = { origin: grab, normal: vec3(0, 0, 1) };
+  const from = toScreen(cam, grab)!;
+
+  for (const [dx, dy] of [[120, 0], [0, 90], [-200, 140], [60, -70]]) {
+    const at = rayPlane(screenRay(cam, from.x + dx, from.y + dy, W, H), plane);
+    assert.ok(at, 'カーソル先で交点が取れない');
+    // 動かした先の点を投影し直すと、カーソルの位置に戻る
+    const back = toScreen(cam, at)!;
+    assert.ok(Math.hypot(back.x - (from.x + dx), back.y - (from.y + dy)) < 1e-6,
+      `カーソルの下に留まっていない (${dx},${dy})`);
+    assert.ok(Math.abs(at.z - grab.z) < 1e-9, '面から外れた');
+  }
+});
+
+test('視線が面と平行に近いと交点を返さない', () => {
+  // 交点は ±∞ に飛ぶ。null を返して直前の変位を保つのが正しい
+  const ray: Ray3 = { origin: vec3(0, 0, 1000), direction: vec3(1, 0, 0) };
+  assert.equal(rayPlane(ray, { origin: vec3(0, 0, 0), normal: vec3(0, 0, 1) }), null);
+
+  // わずかに傾いただけでもまだ返さない（既定はおよそ 3 度）
+  const almost: Ray3 = { origin: vec3(0, 0, 1000), direction: normalize3(vec3(1, 0, -0.02)) };
+  assert.equal(rayPlane(almost, { origin: vec3(0, 0, 0), normal: vec3(0, 0, 1) }), null);
+
+  // 十分に傾けば返す
+  const ok: Ray3 = { origin: vec3(0, 0, 1000), direction: normalize3(vec3(1, 0, -1)) };
+  assert.ok(rayPlane(ok, { origin: vec3(0, 0, 0), normal: vec3(0, 0, 1) }) !== null);
+});
+
+test('鉛直面との交点が取れる（建具を壁に沿わせる）', () => {
+  // 壁が x 方向に伸びているとき、法線は y 方向
+  const grab = vec3(2000, 0, 1000);
+  const plane = { origin: grab, normal: vec3(0, 1, 0) };
+  const ray: Ray3 = { origin: vec3(2500, 3000, 1200), direction: normalize3(vec3(-0.2, -1, -0.1)) };
+  const at = rayPlane(ray, plane);
+  assert.ok(at);
+  assert.ok(Math.abs(at.y) < 1e-9, '壁の面から外れた');
+});
+
+test('レイと直線の最接近点が取れる', () => {
+  // 壁の上端を上下に動かすときに使う
+  const ray: Ray3 = { origin: vec3(1000, 1000, 500), direction: normalize3(vec3(-1, -1, 0)) };
+  const t = rayAxis(ray, vec3(0, 0, 0), vec3(0, 0, 1));
+  assert.ok(t !== null);
+  assert.ok(Math.abs(t - 500) < 1e-6, `高さが ${t}`);
+});
+
+test('レイが軸と平行なら最接近点を返さない', () => {
+  const ray: Ray3 = { origin: vec3(100, 0, 0), direction: vec3(0, 0, 1) };
+  assert.equal(rayAxis(ray, vec3(0, 0, 0), vec3(0, 0, 1)), null);
 });

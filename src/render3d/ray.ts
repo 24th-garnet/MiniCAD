@@ -146,3 +146,46 @@ export function pickRay(
   }
   return best;
 }
+
+// --- ドラッグの面と軸 -------------------------------------------------------
+
+export interface Plane3 {
+  origin: Vec3;
+  normal: Vec3;
+}
+
+/**
+ * レイと平面の交点。**擦れ角では null を返す。**
+ *
+ * 視線が面と平行に近いと交点は ±∞ に飛ぶ。そのまま変位にすると、
+ * カメラを水平に寝かせた瞬間に掴んだものが画面の外へ飛んでいく。
+ * null を返して**直前の変位を保つ**のが正直な振る舞い。
+ *
+ * `minCos` は既定で 0.05（およそ 3 度）。
+ */
+export function rayPlane(ray: Ray3, plane: Plane3, minCos = 0.05): Vec3 | null {
+  const denom = dot3(plane.normal, ray.direction);
+  if (Math.abs(denom) < minCos) return null;
+  const t = dot3(plane.normal, sub3(plane.origin, ray.origin)) / denom;
+  if (!Number.isFinite(t)) return null;
+  return rayPointAt(ray, t);
+}
+
+/**
+ * レイと直線の最接近点の、直線側のパラメータ。平行なら null。
+ *
+ * 壁の上端のように「1 方向にだけ動かす」操作で使う。
+ */
+export function rayAxis(ray: Ray3, origin: Vec3, axis: Vec3): number | null {
+  const d1 = ray.direction;
+  const d2 = normalize3(axis, vec3(0, 0, 1));
+  const w0 = sub3(ray.origin, origin);
+  const b = dot3(d1, d2);
+  const denom = 1 - b * b;
+  if (Math.abs(denom) < 1e-9) return null; // 平行
+  const d = dot3(d1, w0);
+  const e = dot3(d2, w0);
+  // 2 直線の最接近点（a = c = 1 に正規化済み）。符号を取り違えると上下が反転する
+  const t = (e - b * d) / denom;
+  return Number.isFinite(t) ? t : null;
+}
