@@ -207,6 +207,21 @@ export function deserialize(raw: unknown): Scene {
     if (got) scene.assemblies[id] = got;
   }
 
+  for (const [id, st] of Object.entries(table<Record<string, unknown>>('stamps'))) {
+    // 置き先のシンボルが無い箇所は捨てる。押し直しようがない
+    if (typeof st?.assemblyId !== 'string' || !scene.assemblies[st.assemblyId]) continue;
+    if (typeof st.x !== 'number' || typeof st.y !== 'number') continue;
+    scene.stamps[id] = {
+      id,
+      assemblyId: st.assemblyId,
+      version: Math.max(1, Math.round(numberOr(st.version, 1))),
+      x: st.x,
+      y: st.y,
+      angle: numberOr(st.angle, 0),
+      levelId: levelOr(st.levelId),
+    };
+  }
+
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('measurements'))) {
     const a = readPoint3(raw?.a);
     const b = readPoint3(raw?.b);

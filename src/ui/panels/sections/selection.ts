@@ -6,7 +6,7 @@ import { checkboxField, el, numberField, optionalNumberField, readonlyField, sel
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
 import { attrsOf } from '../../../core/material.ts';
-import { defineAssembly } from '../../../core/assembly.ts';
+import { defineAssembly, restampAssembly, restampReport, updateAssembly } from '../../../core/assembly.ts';
 import { measuredDistance } from '../../../core/annotation.ts';
 import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
@@ -33,6 +33,7 @@ export class SelectionSection implements Section {
         layerField(ctx),
         blockifyButton(ctx),
         symbolifyButton(ctx),
+        ...symbolUpdateButtons(ctx),
       );
       out.push(
         el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除']),
@@ -40,7 +41,14 @@ export class SelectionSection implements Section {
       return out;
     }
 
-    out.push(...fieldsFor(ctx, sel[0]), ...attrFields(ctx, sel), layerField(ctx), blockifyButton(ctx), symbolifyButton(ctx));
+    out.push(
+      ...fieldsFor(ctx, sel[0]),
+      ...attrFields(ctx, sel),
+      layerField(ctx),
+      blockifyButton(ctx),
+      symbolifyButton(ctx),
+      ...symbolUpdateButtons(ctx),
+    );
     out.push(
       el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除 (Delete)']),
     );
@@ -440,6 +448,66 @@ function uniqueSymbolName(scene: Scene, base: string): string {
     if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
   }
   return `${base} ${Date.now()}`;
+}
+
+/**
+ * 選んだものが 1 つのシンボルから置かれたものなら、更新と押し直しを出す。
+ *
+ * **押し直す前に必ず何が置き換わるかを出す。** 差分を当てるのではなく
+ * 消して置き直すので、手で直したところは失われる。黙って捨てない。
+ */
+function symbolUpdateButtons(ctx: PanelContext): (HTMLElement | null)[] {
+  const scene = ctx.editor.store.scene;
+  const sel = ctx.editor.store.selection;
+  const ids = new Set(
+    sel.map((r) => attrsOf(scene, r)?.symbolId).filter((v): v is string => typeof v === 'string'),
+  );
+  if (ids.size !== 1) return [];
+  const symbolId = [...ids][0];
+  const assembly = scene.assemblies[symbolId];
+  if (!assembly) return [];
+
+  const report = restampReport(scene, symbolId);
+  return [
+    el('h3', { class: 'attr-head' }, [`シンボル「${assembly.name}」v${assembly.version}`]),
+    el('button', {
+      class: 'wide',
+      type: 'button',
+      title: 'いま選んでいる形を、このシンボルの新しい版にする',
+      onclick: () => {
+        let ok = false;
+        ctx.edit(() => {
+          ok = updateAssembly(scene, symbolId, sel);
+          return ok;
+        });
+        if (!ok) window.alert('この選択からはシンボルを作り直せません（壁か構造を選んでください）。');
+      },
+    }, ['この形で更新する']),
+    report.stamps.length === 0
+      ? el('p', { class: 'empty-note' }, [
+          report.upToDate > 0
+            ? `置いてある ${report.upToDate} 箇所はすべて最新です。`
+            : 'まだどこにも置かれていません。',
+        ])
+      : el('button', {
+          class: 'wide danger',
+          type: 'button',
+          title: '古い版で置かれている箇所を、いまの版で置き直す',
+          onclick: () => {
+            // **先に報告する。** 消して置き直すので、手で直したところは失われる
+            const ok = window.confirm(
+              `古い版の ${report.stamps.length} 箇所を置き直します。\n`
+              + `実体 ${report.entities} 個が消えて、いまの版で置き直されます。\n\n`
+              + '**それらに加えた編集は失われます。**\n'
+              + (report.upToDate > 0 ? `（最新の ${report.upToDate} 箇所は触りません）\n` : '')
+              + '\n取り消したいときは undo 1 回で戻せます。',
+            );
+            if (!ok) return;
+            ctx.edit(() => restampAssembly(scene, symbolId) > 0);
+            ctx.editor.store.clearSelection();
+          },
+        }, [`古い ${report.stamps.length} 箇所を押し直す`]),
+  ];
 }
 
 function blockifyButton(ctx: PanelContext): HTMLElement | null {

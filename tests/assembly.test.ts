@@ -151,3 +151,105 @@ test('行き場のない壁を持つシンボルは読み込みで落ちる', ()
   };
   assert.deepEqual(Object.keys(deserialize(raw).assemblies), []);
 });
+
+test('置いた箇所を覚えていて、押し直しの前に何が変わるか言える', async () => {
+  const { restampReport, restampAssembly, updateAssembly } = await import('../src/core/assembly.ts');
+
+  const { scene, refs } = roomScene();
+  const a = defineAssembly(scene, refs, '2LDK')!;
+  const target = emptyScene();
+  target.assemblies[a.id] = a;
+  stampAssembly(target, a, vec(0, 0), 0, target.activeLevelId);
+  stampAssembly(target, a, vec(10000, 0), 0, target.activeLevelId);
+
+  assert.equal(Object.keys(target.stamps).length, 2, '置いた箇所が覚えられていない');
+
+  // まだ全部最新なので、押し直すものは無い
+  const fresh = restampReport(target, a.id);
+  assert.equal(fresh.stamps.length, 0);
+  assert.equal(fresh.upToDate, 2);
+  assert.equal(restampAssembly(target, a.id), 0, '最新なのに押し直した');
+
+  // 1 箇所目を編集して、その形を新しい版にする
+  const first = Object.values(target.stamps)[0];
+  const mine = Object.values(target.walls).filter((w) => w.attrs.groupId === first.id);
+  for (const w of mine) w.thickness = 200;
+  assert.ok(updateAssembly(target, a.id, mine.map((w) => ({ type: 'wall' as const, id: w.id }))));
+  assert.equal(target.assemblies[a.id].version, 2);
+
+  // **押し直す前に、何箇所・何個が置き換わるか言える**
+  const report = restampReport(target, a.id);
+  assert.equal(report.stamps.length, 2, '両方とも古い版のまま');
+  assert.ok(report.entities > 0);
+});
+
+test('押し直すと古い版の箇所がいまの版になる', async () => {
+  const { restampAssembly, updateAssembly, restampReport } = await import('../src/core/assembly.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+
+  const { scene, refs } = roomScene();
+  const a = defineAssembly(scene, refs, '2LDK')!;
+  const target = emptyScene();
+  target.assemblies[a.id] = a;
+  stampAssembly(target, a, vec(0, 0), 0, target.activeLevelId);
+  stampAssembly(target, a, vec(10000, 0), 0, target.activeLevelId);
+
+  const first = Object.values(target.stamps)[0];
+  const mine = Object.values(target.walls).filter((w) => w.attrs.groupId === first.id);
+  for (const w of mine) w.thickness = 200;
+  updateAssembly(target, a.id, mine.map((w) => ({ type: 'wall' as const, id: w.id })));
+
+  const removed = restampAssembly(target, a.id);
+  assert.ok(removed > 0);
+
+  // **全部が新しい厚みになる**
+  const thicknesses = new Set(Object.values(target.walls).map((w) => w.thickness));
+  assert.deepEqual([...thicknesses], [200], `壁厚が ${[...thicknesses]}`);
+  assert.equal(Object.keys(target.walls).length, 8, '壁の数が変わった');
+  assert.equal(detectRooms(target).length, 2, '押し直したら部屋が壊れた');
+  assert.deepEqual([...stampedVersions(target, a.id)], [2]);
+  assert.equal(restampReport(target, a.id).stamps.length, 0, '押し直したのに古いまま');
+});
+
+test('押し直しても行き場のないノードが残らない', async () => {
+  const { restampAssembly, updateAssembly } = await import('../src/core/assembly.ts');
+  const { scene, refs } = roomScene();
+  const a = defineAssembly(scene, refs, '2LDK')!;
+  const target = emptyScene();
+  target.assemblies[a.id] = a;
+  stampAssembly(target, a, vec(0, 0), 0, target.activeLevelId);
+
+  const mine = Object.values(target.walls);
+  updateAssembly(target, a.id, mine.map((w) => ({ type: 'wall' as const, id: w.id })));
+  restampAssembly(target, a.id);
+
+  const used = new Set(Object.values(target.walls).flatMap((w) => [w.a, w.b]));
+  for (const id of Object.keys(target.nodes)) {
+    assert.ok(used.has(id), `使われていないノード ${id} が残っている`);
+  }
+});
+
+test('置いた箇所が JSON の往復を生き延びる', () => {
+  const { scene, refs } = roomScene();
+  const a = defineAssembly(scene, refs, '2LDK')!;
+  const target = emptyScene();
+  target.assemblies[a.id] = a;
+  stampAssembly(target, a, vec(500, 700), 0.5, target.activeLevelId);
+
+  const back = deserialize(JSON.parse(JSON.stringify(serialize(target))));
+  const st = Object.values(back.stamps)[0];
+  assert.ok(st, '置いた箇所が消えた');
+  assert.equal(st.assemblyId, a.id);
+  assert.equal(st.x, 500);
+  assert.equal(st.angle, 0.5);
+  // 置かれた実体がその箇所を指している
+  assert.ok(Object.values(back.walls).every((w) => w.attrs.groupId === st.id));
+});
+
+test('置き先のシンボルが無い箇所は読み込みで落ちる', () => {
+  const raw = {
+    format: 'minicad', version: 11, unit: 'mm',
+    scene: { stamps: { s1: { assemblyId: 'いない', x: 0, y: 0 } } },
+  };
+  assert.deepEqual(Object.keys(deserialize(raw).stamps), []);
+});

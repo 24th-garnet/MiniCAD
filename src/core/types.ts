@@ -8,7 +8,7 @@ import type { BlockDef, BlockInstance } from './block.ts';
 import type { Constraint } from './constraints.ts';
 import type { Fixture } from './fixture.ts';
 import type { Measurement } from './annotation.ts';
-import type { Assembly } from './assembly.ts';
+import type { Assembly, Stamp } from './assembly.ts';
 import { DEFAULT_VIEW_ID, defaultViews, type DrawingView } from './view.ts';
 import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from './level.ts';
 import { builtinBlocks } from './blockPresets.ts';
@@ -187,6 +187,8 @@ export interface Scene {
    * **挿入は実体への展開（スタンプ）**なので、入れ子の座標系は作らない
    */
   assemblies: Record<Id, Assembly>;
+  /** シンボルを置いた箇所。押し直すときに据え付けを戻すために持つ */
+  stamps: Record<Id, Stamp>;
   /** 幾何拘束。対象は壁（ノードではない。constraints.ts の冒頭を参照） */
   constraints: Record<Id, Constraint>;
   /** 階。下から順に見たいときは `levelsInOrder` */
@@ -212,6 +214,7 @@ export function emptyScene(): Scene {
     blocks: builtinBlocks(),
     instances: {},
     assemblies: {},
+    stamps: {},
     constraints: {},
     levels: defaultLevels(),
     activeLevelId: DEFAULT_LEVEL_ID,

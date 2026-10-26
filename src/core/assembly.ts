@@ -28,6 +28,27 @@ import type { EntityRef } from './types.ts';
  * 「同一シンボルの一括変更」が再スタンプになること——**ローカルの編集を
  * 捨てうる**ので、何を上書きするかを先に報告してから行う。
  */
+/**
+ * シンボルを置いた 1 箇所。
+ *
+ * **押し直すために要る。** 置いた実体からは「どこに、どの向きで置いたか」を
+ * 正確には戻せない（動かされているかもしれない）。置いた時点の据え付けを
+ * そのまま覚えておけば、新しい版を同じところへ押せる。
+ *
+ * 置かれた実体は `Attrs.groupId` でここを指す。`groupId` は元から
+ * 「同じ値を持つものが 1 グループ」という欄なので、新しい意味は足していない。
+ */
+export interface Stamp {
+  id: Id;
+  assemblyId: Id;
+  /** 置いたときの版。シンボルの版より古ければ、押し直すと変わる */
+  version: number;
+  x: number;
+  y: number;
+  angle: number;
+  levelId: Id;
+}
+
 export interface Assembly {
   id: Id;
   name: string;
@@ -131,11 +152,17 @@ export function stampAssembly(
   at: Vec,
   angle: number,
   levelId: Id,
+  stampId: Id = newId('sg'),
 ): EntityRef[] {
   const body = assembly.body;
   const stamp = (p: { x: number; y: number }): Vec => add(rotate(vec(p.x, p.y), angle), at);
+  scene.stamps[stampId] = {
+    id: stampId, assemblyId: assembly.id, version: assembly.version,
+    x: at.x, y: at.y, angle, levelId,
+  };
   const mark = (attrs: Attrs): Attrs => ({
     ...attrs,
+    groupId: stampId,
     symbolId: assembly.id,
     symbolVersion: assembly.version,
   });
@@ -234,6 +261,110 @@ export function stampedVersions(scene: Scene, symbolId: Id): Set<number> {
     if (attrs?.symbolVersion !== null && attrs?.symbolVersion !== undefined) out.add(attrs.symbolVersion);
   }
   return out;
+}
+
+/**
+ * 押し直しで何が置き換わるか。**実行する前に出す。**
+ *
+ * どの実体が手で直されたかは分からない（直した印を持っていない）ので、
+ * **置き換わるもの全部**を数えて出す。「たぶん大丈夫」と言うより、
+ * 「この N 個が置き換わる」と言うほうが判断できる。
+ */
+export interface RestampReport {
+  /** 押し直す箇所 */
+  stamps: Stamp[];
+  /** 置き換わる実体の数 */
+  entities: number;
+  /** すでに新しい版で置かれていて、触らない箇所 */
+  upToDate: number;
+}
+
+export function restampReport(scene: Scene, assemblyId: Id): RestampReport {
+  const assembly = scene.assemblies[assemblyId];
+  const stamps: Stamp[] = [];
+  let upToDate = 0;
+  for (const st of Object.values(scene.stamps)) {
+    if (st.assemblyId !== assemblyId) continue;
+    if (assembly && st.version >= assembly.version) upToDate += 1;
+    else stamps.push(st);
+  }
+  const ids = new Set(stamps.map((st) => st.id));
+  const entities = entitiesInStamps(scene, ids).length;
+  return { stamps, entities, upToDate };
+}
+
+/**
+ * 古い版で置かれた箇所を、いまの版で押し直す。
+ *
+ * **消してから置く。** 差分を当てようとすると、どの実体がどれに対応するかを
+ * 決める必要があり、動かされていると当てようがない。消して置けば、結果は
+ * 必ず「いまの版をそこに置いたもの」になる。
+ *
+ * 置き換えた実体の数を返す。`restampReport` で先に報告してから呼ぶこと。
+ */
+export function restampAssembly(scene: Scene, assemblyId: Id): number {
+  const assembly = scene.assemblies[assemblyId];
+  if (!assembly) return 0;
+  const { stamps } = restampReport(scene, assemblyId);
+  if (stamps.length === 0) return 0;
+
+  const ids = new Set(stamps.map((st) => st.id));
+  const removed = entitiesInStamps(scene, ids);
+  for (const ref of removed) {
+    if (ref.type === 'wall') delete scene.walls[ref.id];
+    else if (ref.type === 'opening') delete scene.openings[ref.id];
+    else if (ref.type === 'fixture') delete scene.fixtures[ref.id];
+  }
+  // 行き場のないノードが残る。消した壁の端点なので、他に使われていなければ落とす
+  pruneUnusedNodes(scene);
+
+  for (const st of stamps) {
+    stampAssembly(scene, assembly, vec(st.x, st.y), st.angle, st.levelId, st.id);
+  }
+  return removed.length;
+}
+
+/** その箇所で置かれた実体。`groupId` が指している */
+function entitiesInStamps(scene: Scene, stampIds: Set<Id>): EntityRef[] {
+  const out: EntityRef[] = [];
+  for (const w of Object.values(scene.walls)) {
+    if (w.attrs.groupId && stampIds.has(w.attrs.groupId)) out.push({ type: 'wall', id: w.id });
+  }
+  for (const o of Object.values(scene.openings)) {
+    if (o.attrs.groupId && stampIds.has(o.attrs.groupId)) out.push({ type: 'opening', id: o.id });
+  }
+  for (const f of Object.values(scene.fixtures)) {
+    if (f.attrs.groupId && stampIds.has(f.attrs.groupId)) out.push({ type: 'fixture', id: f.id });
+  }
+  return out;
+}
+
+/** どの壁からも使われていないノードを落とす */
+function pruneUnusedNodes(scene: Scene): void {
+  const used = new Set<Id>();
+  for (const w of Object.values(scene.walls)) {
+    used.add(w.a);
+    used.add(w.b);
+  }
+  for (const id of Object.keys(scene.nodes)) {
+    if (!used.has(id)) delete scene.nodes[id];
+  }
+}
+
+/**
+ * 選んだものを、そのシンボルの新しい版にする。
+ *
+ * **押し直しの前段。** 1 箇所を普通に編集してから、その形を定義に昇格させる。
+ * 版が 1 つ上がるので、他の箇所が「古い版」になる。
+ */
+export function updateAssembly(scene: Scene, assemblyId: Id, refs: EntityRef[]): boolean {
+  const assembly = scene.assemblies[assemblyId];
+  if (!assembly) return false;
+  const made = defineAssembly(scene, refs, assembly.name);
+  if (!made) return false;
+  assembly.body = made.body;
+  assembly.version += 1;
+  return true;
 }
 
 function attrsOfRef(scene: Scene, ref: EntityRef): Attrs | null {
