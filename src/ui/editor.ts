@@ -36,6 +36,8 @@ export class Editor {
   /** ツールがスナップ対象の絞り込みを指定する場所 */
   snapContext: SnapContext = {};
 
+  private resizeObserver: ResizeObserver | null = null;
+
   private roomsCache: Room[] | null = null;
   private cachedRevision = -1;
 
@@ -212,8 +214,22 @@ export class Editor {
       if (first) this.zoomToFit();
       this.requestRender();
     };
-    new ResizeObserver(apply).observe(this.canvas);
+    this.resizeObserver = new ResizeObserver(apply);
+    this.resizeObserver.observe(this.canvas);
     apply();
+  }
+
+  /**
+   * 片付ける。埋め込み先から外されたときに呼ばれる。
+   *
+   * キャンバスに付けた listener はキャンバスごと捨てられるので触らない。
+   * **残るのは `ResizeObserver` だけ** — 観測対象が DOM から外れても
+   * 自分からは止まらない。
+   */
+  destroy(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.changeListeners.clear();
   }
 
   zoomToFit(): void {

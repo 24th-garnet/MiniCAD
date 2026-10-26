@@ -97,7 +97,12 @@ export const POINTER_HINTS: { display: string; description: string }[] = [
   { display: '[ ]', description: '家具を回転' },
 ];
 
-export function installKeymap(ctx: PanelContext, bindings: Binding[], commandInput: CommandInput): void {
+export function installKeymap(
+  ctx: PanelContext,
+  bindings: Binding[],
+  commandInput: CommandInput,
+  signal?: AbortSignal,
+): void {
   window.addEventListener('keydown', (e) => {
     if (isTextInput(e.target)) return;
     const mod = e.metaKey || e.ctrlKey;
@@ -133,5 +138,5 @@ export function installKeymap(ctx: PanelContext, bindings: Binding[], commandInp
       e.preventDefault();
       ctx.selectTool(tool.id);
     }
-  });
+  }, { signal });
 }

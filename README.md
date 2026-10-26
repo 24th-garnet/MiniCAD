@@ -222,6 +222,27 @@ OCS の正規化・`bulge` の変換・`Shape` への変換はどちらにせよ
 使っています（`tests/dxfRead.test.ts`）。ライブラリを採用すると、そのバグがそのまま自分のバグに
 なって比較対象が消えるので、検証としてはこちらのほうが強くなります。
 
+## 組み込む
+
+業務アプリ（ホスト）の中に作図エディタとして埋め込めます。
+
+```ts
+import { mount } from './src/mount.ts';
+
+const cad = mount(document.getElementById('editor')!, {
+  scene: await loadFromServer(),
+  onChange: (file) => void save(file),
+});
+```
+
+契約は [docs/host.md](docs/host.md)。**何をホストが持ち、何を MiniCAD が持たないか**を
+先に決めてあります（認証・案件・保存・版管理・コメントの通信・ライブラリのマスタ・
+写実レンダリング・単価と金額は、すべてホスト側）。
+
+**単体の立ち上げ（[src/main.ts](src/main.ts)）がこの契約の最初の利用者です。**
+図面を渡し、変わったら保存する——ホストに頼んでいることと同じことを自分でやっているので、
+契約が飾りになりません。
+
 ## 編集モード
 
 上部バーで**通常**と**プロモード**を切り替えます。**既定は通常モード**です。
@@ -306,6 +327,8 @@ src/
     interact.ts  3D のポインタ。選択・ホバー・移動・壁の高さ
     paint.ts     ペインターズ法
   tools/     ツール。Tool インターフェースを実装すれば追加できる
+  host.ts    ホストとの境界の型
+  mount.ts   埋め込みの入口
   io/        JSON / SVG / DXF / サンプル間取り
   ui/        DOM。エディタ本体、パネル、インスペクタの各区画
     shell.ts          画面の骨組み。index.html ではなくここが組む

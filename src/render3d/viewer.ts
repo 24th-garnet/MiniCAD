@@ -56,6 +56,8 @@ export class Viewer3D {
   private readonly select = new Select3D();
   private downAt = { x: 0, y: 0 };
   private moved = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private readonly teardown = new AbortController();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -164,6 +166,16 @@ export class Viewer3D {
     return this.select.status(this.editor);
   }
 
+  /**
+   * 片付ける。**window に付けた Esc の捕捉と `ResizeObserver` が残るため。**
+   * どちらもキャンバスを DOM から外しただけでは止まらない。
+   */
+  destroy(): void {
+    this.teardown.abort();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+  }
+
   /** 3D で何かを掴んでいる最中か。分割中にどちらの説明を出すかの判断に使う */
   isGrabbing(): boolean {
     return this.select.isActive();
@@ -222,7 +234,8 @@ export class Viewer3D {
       this.measure();
       this.requestRender();
     };
-    new ResizeObserver(apply).observe(this.canvas);
+    this.resizeObserver = new ResizeObserver(apply);
+    this.resizeObserver.observe(this.canvas);
   }
 
   private attachEvents(): void {
@@ -308,7 +321,7 @@ export class Viewer3D {
           this.requestRender();
         }
       },
-      { capture: true },
+      { capture: true, signal: this.teardown.signal },
     );
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 

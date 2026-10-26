@@ -1,5 +1,5 @@
 import { removeEntities } from '../core/entity.ts';
-import { saveLocal } from '../io/scene.ts';
+import { serialize } from '../io/scene.ts';
 import type { Scene } from '../core/types.ts';
 import type { ToolId } from '../tools/tool.ts';
 import { CommandInput } from './command-input.ts';
@@ -9,6 +9,7 @@ import type { Panel, PanelContext } from './panel.ts';
 import { buildSections } from './section-registry.ts';
 import { buildTools } from './tool-registry.ts';
 import { DEFAULT_MODE, type Mode } from './mode.ts';
+import type { HostCallbacks } from '../host.ts';
 import { FileActions } from './panels/file-actions.ts';
 import { Inspector } from './panels/inspector.ts';
 import { OptionsBar } from './panels/options-bar.ts';
@@ -20,8 +21,6 @@ import { Viewer3D } from '../render3d/viewer.ts';
 import { ViewState, type ViewMode } from './view-state.ts';
 import { buildShell } from './shell.ts';
 
-const AUTOSAVE_DELAY_MS = 600;
-
 /**
  * 画面の配線だけを持つ。描画の中身は各パネルにある。
  * パネルを足すときは、生成して `panels` に入れるだけで済む。
@@ -32,18 +31,25 @@ export class App {
   private readonly statusBar: StatusBar;
   private readonly viewer3d: Viewer3D;
   private readonly ctx: PanelContext;
-  private autosaveTimer: number | undefined;
 
   readonly view: ViewState;
   private readonly canvasWrap: HTMLElement;
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
   private readonly bindings: Binding[];
-  private currentMode: Mode = DEFAULT_MODE;
+  private currentMode: Mode;
+  private readonly host: HostCallbacks;
+  private readonly shellRoot: HTMLElement;
+  private readonly teardown = new AbortController();
+  private lastNotifiedVersion: number;
+  private lastNotifiedSelection = '';
 
-  constructor(host: HTMLElement) {
+  constructor(container: HTMLElement, host: HostCallbacks = {}) {
+    this.host = host;
+    this.currentMode = host.mode ?? DEFAULT_MODE;
     // 骨組みは自分で組む。埋め込まれるとき、MiniCAD は入る箱しか貰えない
-    const shell = buildShell(host);
+    const shell = buildShell(container);
+    this.shellRoot = shell.root;
     this.editor = new Editor(shell.canvas);
     this.viewer3d = new Viewer3D(shell.canvas3d, this.editor);
     this.canvasWrap = shell.canvasWrap;
@@ -101,12 +107,14 @@ export class App {
     toolbar.build(this.ctx);
     fileActions.build(this.ctx);
     commandInput.build(this.ctx);
-    installKeymap(this.ctx, bindings, commandInput);
+    installKeymap(this.ctx, bindings, commandInput, this.teardown.signal);
 
     // 座標表示はポインタが動くたびに更新したいので、全体の再描画とは別経路にする
     shell.canvas.addEventListener('pointermove', () => this.statusBar.refreshReadout(this.ctx));
 
     this.editor.onChange(() => this.refresh());
+    // 最初の通知を抑える。読み込んだ直後は、ホストが渡したものがそのまま入っている
+    this.lastNotifiedVersion = this.editor.store.sceneVersion;
     this.refresh();
   }
 
@@ -134,7 +142,7 @@ export class App {
    * キーマップもショートカット一覧も `allTools()` を見ていて自動で揃う。
    * 第 2 の codebase は作らない。差は表の `modes` 欄にしかない。
    */
-  private setMode(mode: Mode): void {
+  setMode(mode: Mode): void {
     if (this.currentMode === mode) return;
     this.currentMode = mode;
     this.ctx.mode = mode;
@@ -183,11 +191,42 @@ export class App {
 
   private refresh(): void {
     for (const panel of this.panels) panel.refresh(this.ctx);
-    this.scheduleAutosave();
+    this.notifyHost();
   }
 
-  private scheduleAutosave(): void {
-    window.clearTimeout(this.autosaveTimer);
-    this.autosaveTimer = window.setTimeout(() => saveLocal(this.editor.store.scene), AUTOSAVE_DELAY_MS);
+  /**
+   * ホストに変わったことを伝える。
+   *
+   * **`refresh()` そのものは当てにならない。** ホバーが動いただけでも走るので、
+   * そのまま流すとホストが何も変わっていない図面を保存し続ける。
+   * Phase 0 で入れた `Store.sceneVersion` は**まさにこのために**
+   * 通知から切り離してある。選択も同じで、版ではなく中身で見る。
+   */
+  private notifyHost(): void {
+    const version = this.editor.store.sceneVersion;
+    if (version !== this.lastNotifiedVersion) {
+      this.lastNotifiedVersion = version;
+      this.host.onChange?.(serialize(this.editor.store.scene));
+    }
+    const selection = this.editor.store.selection;
+    const key = selection.map((r) => `${r.type}:${r.id}`).join(',');
+    if (key !== this.lastNotifiedSelection) {
+      this.lastNotifiedSelection = key;
+      this.host.onSelectionChange?.([...selection]);
+    }
+  }
+
+  /**
+   * 片付ける。埋め込み先から外されたときにホストが呼ぶ。
+   *
+   * **外から見えないところに残るものを数えて消す。** DOM を消しただけでは
+   * `window` の keydown（キーマップと 3D の Esc）も `ResizeObserver` も止まらず、
+   * 外したはずのエディタがキーを食べ続ける。
+   */
+  destroy(): void {
+    this.teardown.abort();
+    this.editor.destroy();
+    this.viewer3d.destroy();
+    this.shellRoot.remove();
   }
 }

@@ -441,8 +441,13 @@ export function triggerDownload(blob: Blob, filename: string): void {
 const STORAGE_KEY = 'minicad.autosave.v1';
 
 export function saveLocal(scene: Scene): void {
+  saveLocalFile(serialize(scene));
+}
+
+/** 書き出し済みのものをそのまま保存する。ホストが `onChange` で受け取った形 */
+export function saveLocalFile(file: SceneFile): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serialize(scene)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(file));
   } catch {
     // 容量超過やプライベートモードでは黙って諦める
   }

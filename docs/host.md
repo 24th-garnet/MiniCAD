@@ -3,10 +3,43 @@
 3D/2D の図面を扱う業務アプリ（以下**ホスト**）に、MiniCAD を作図エディタとして
 組み込むときの契約。何をホストが渡し、何が返るかを決める。
 
-> **この文書はまだ実装されていない連携の設計。** 今の MiniCAD は
-> `src/main.ts` が `document` に直接ぶら下がる単体アプリで、`mount()` は無い。
-> 契約を先に書くのは、**何を持ち何を持たないか**が以降の設計の判断基準になるため。
-> 実装は「ビューシェルとモード」の段で入る。
+> **入口は実装されている。** [`src/mount.ts`](../src/mount.ts) の `mount()` と
+> [`src/host.ts`](../src/host.ts) の型がこの文書の契約そのもの。
+> カタログとできることの指定（`Capabilities`）はまだ受け取れない。下の「まだ無いもの」を参照。
+
+## 入口
+
+```ts
+import { mount } from 'minicad/mount';
+
+const cad = mount(document.getElementById('editor')!, {
+  scene: await loadFromServer(),        // SceneFile か Scene。省略すると空から
+  mode: 'normal',                        // 省略すると通常モード
+  onChange: (file) => void save(file),   // 図面が本当に変わったときだけ
+  onSelectionChange: (refs) => show(refs),
+});
+
+cad.getScene();          // SceneFile。保存はホスト
+cad.setScene(file);      // 差し替え。deserialize を通るので整合性検査が走る
+cad.getMeasures('p-1');  // mdr-measures-1
+cad.setMode('pro');
+cad.destroy();           // DOM からも window からも痕跡を消す
+```
+
+**渡した要素の中に骨組みが組まれる。** 高さはホストが決める（MiniCAD は
+貰った箱いっぱいに広がる）。
+
+**`onChange` は図面が変わったときだけ呼ばれる。** 選択やホバーでは呼ばれない。
+連続したドラッグの途中では呼ばれるので、まとめたいならホスト側で遅らせる
+（単体の `src/main.ts` は 600ms 遅らせて localStorage に書いている）。
+
+**`destroy()` を必ず呼ぶ。** DOM を消すだけでは `window` の keydown
+（キーマップと 3D の Esc）も `ResizeObserver` も止まらず、外したはずの
+エディタがキーを食べ続ける。
+
+**単体の立ち上げ（`src/main.ts`）がこの契約の最初の利用者。**
+図面を渡し、変わったら保存する——ホストに頼んでいることと同じことを自分でやっている。
+契約が飾りにならないように、既定の立ち上げ方そのものを契約の上に載せてある。
 
 ## 誰が何を持つか
 
@@ -139,8 +172,8 @@ interface Capabilities {
 
 実装されていないものを、実装されていないと書く。
 
-- **`mount()` そのもの。** `App` は入れ物の要素を受け取って自分で骨組みを組むようになったが、
-  ホストから渡す引数（シーン・モード・権限・カタログ・コールバック）の口がまだ無い
+- **カタログを渡す口。** ライブラリも素材も、まだホストから受け取れない
+- **できることの指定（`Capabilities`）。** 閲覧のみ・書き出し禁止がまだ無い
 - **スタイルの隔離。** `style.css` には `html, body` と `*` への指定が残っていて、
   ホストのページにも効いてしまう
 - **汎用ソリッドの作図**（直方体・円筒・押し出し・プッシュ/プル・ブーリアン）。

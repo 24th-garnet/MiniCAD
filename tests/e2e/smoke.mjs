@@ -1328,6 +1328,71 @@ async function run() {
   assert.equal(afterF3.view3d, false, '2D なのに 3D が残っている');
   assert.equal(afterF3.split, false, '2D に戻ったのに分割のクラスが残っている');
   console.log('✔ 分割から F3 で 2D に戻る');
+
+  // --- ホスト契約 ---
+  const hostFile = await page.evaluate(() => window.minicadApi.getScene());
+  assert.equal(hostFile.format, 'minicad', '書き出した形式が違う');
+  assert.ok(hostFile.version >= 9, `版が古い (${hostFile.version})`);
+  assert.ok(Object.keys(hostFile.scene.walls).length > 0, '壁が入っていない');
+
+  const hostMeasures = await page.evaluate(() => window.minicadApi.getMeasures('plan-e2e'));
+  assert.equal(hostMeasures.schema_version, 'mdr-measures-1', '実測の契約の版が違う');
+  assert.equal(hostMeasures.plan_id, 'plan-e2e');
+  assert.ok(hostMeasures.rooms.length > 0, '部屋が出ていない');
+  console.log('✔ ホストが図面と実測を取り出せる');
+
+  // 差し替えは deserialize を通る＝参照の整合性検査を通る
+  const swapped = await page.evaluate((f) => {
+    const copy = JSON.parse(JSON.stringify(f));
+    for (const id of Object.keys(copy.scene.walls)) { delete copy.scene.walls[id]; break; }
+    window.minicadApi.setScene(copy);
+    return Object.keys(window.minicadApi.getScene().scene.walls).length;
+  }, hostFile);
+  assert.equal(swapped, Object.keys(hostFile.scene.walls).length - 1, '差し替えが効いていない');
+
+  await page.evaluate((f) => window.minicadApi.setScene(f), hostFile);
+  assert.equal((await state()).walls, Object.keys(hostFile.scene.walls).length, '戻せていない');
+  console.log('✔ ホストが図面を差し替えられる');
+
+  await page.evaluate(() => window.minicadApi.setMode('normal'));
+  await sleep(250);
+  assert.equal((await state()).mode, 'normal', 'ホストからモードを変えられない');
+  assert.ok(!(await state()).toolbar.includes('trim'), 'モードが画面に効いていない');
+  console.log('✔ ホストがモードを変えられる');
+
+  // **片付け。** DOM を消すだけでは window の keydown も ResizeObserver も止まらない
+  const torn = await page.evaluate(() => {
+    const old = window.minicad;
+    const before = old.editorInstance.store.sceneVersion;
+    window.minicadApi.destroy();
+    window.__old = { old, before };
+    return {
+      left: document.getElementById('app').childElementCount,
+      canvases: document.querySelectorAll('canvas').length,
+    };
+  });
+  assert.equal(torn.left, 0, '片付けたのに DOM が残っている');
+  assert.equal(torn.canvases, 0, 'キャンバスが残っている');
+
+  // 外したあとでキーを叩いても、もう誰も聞いていない
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('w');
+  await sleep(200);
+  const quiet = await page.evaluate(() => {
+    const { old, before } = window.__old;
+    return { after: old.editorInstance.store.sceneVersion, tool: old.editorInstance.activeToolId, before };
+  });
+  assert.equal(quiet.after, quiet.before, '片付けたのにキーマップが生きている');
+  console.log('✔ 片付けると DOM も window の listener も残らない');
+
+  // 同じ箱にもう一度組める
+  const again = await page.evaluate(() => {
+    const el = document.getElementById('app');
+    window.minicadApi = window.mountMiniCad(el, {});
+    return { roots: document.querySelectorAll('.minicad').length };
+  });
+  assert.equal(again.roots, 1, '二重に組み上がっている');
+  console.log('✔ 同じ箱にもう一度組み直せる');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */
