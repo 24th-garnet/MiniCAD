@@ -16,6 +16,7 @@ const cad = mount(document.getElementById('editor')!, {
   scene: await loadFromServer(),        // SceneFile か Scene。省略すると空から
   mode: 'normal',                        // 省略すると通常モード
   capabilities: { edit: false },         // 省略すると全部できる
+  catalogs: { library, materials },      // 省略すると図面が持つものだけ
   onChange: (file) => void save(file),   // 図面が本当に変わったときだけ
   onSelectionChange: (refs) => show(refs),
 });
@@ -184,13 +185,15 @@ interface Capabilities {
 
 実装されていないものを、実装されていないと書く。
 
-- **カタログを渡す口。** ライブラリも素材も、まだホストから受け取れない
 - **スタイルの隔離。** `style.css` には `html, body` と `*` への指定が残っていて、
   ホストのページにも効いてしまう
 - **汎用ソリッドの作図**（直方体・円筒・押し出し・プッシュ/プル・ブーリアン）。
   ワイヤーのプロモードの中身にあたる。プロモードの画面に「まだ無いもの」として出している
 - **3D での作図。** 既にあるものを選んで動かすところまでは出来ていますが、新しく描くことはできません
-- **素材の表示。** 実体は `materialRef` を持てますが、**まだ誰も読んでいません**。3D の色は [`src/render/theme.ts`](../src/render/theme.ts) の定数 5 色のまま
+- **素材の表示。** カタログは受け取りますが、**まだ誰も読んでいません**。実体は
+  `materialRef` を持てますが、3D の色は [`src/render/theme.ts`](../src/render/theme.ts) の定数 5 色のまま
+- **壁を含む部品の挿入。** カタログの `scene` 欄は受け取って画面には出しますが、
+  挿せません（押せないボタンとして、挿せないと書いて出します）
 - **積算対象の指定。** 実体は `takeoff` を持てますが、実測 JSON はまだ室ごとの集計までで、面ごと・物ごとには出していない
 - **コメントと計測の保存。** 計測は今その場限りで、保存されない
 - **画層ごとの縮尺と透過。** 縮尺は図面に 1 つ、透過は持っていない

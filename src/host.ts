@@ -1,6 +1,7 @@
 import type { EntityRef, Scene } from './core/types.ts';
 import type { SceneFile } from './io/scene.ts';
 import type { MeasuresFile } from './io/measures.ts';
+import type { BlockDef } from './core/block.ts';
 import type { Mode } from './ui/mode.ts';
 
 /**
@@ -27,6 +28,9 @@ export interface HostCallbacks {
 
   /** できること。省略すると全部できる */
   capabilities?: Partial<Capabilities>;
+
+  /** 挿せる部品と素材。**マスタはホストが持つ。** 省略すると図面が持つものだけ */
+  catalogs?: HostCatalogs;
 
   /**
    * 図面が変わった。**保存するかどうかはホストが決める。**
@@ -70,4 +74,48 @@ export interface Capabilities {
 
 export function defaultCapabilities(): Capabilities {
   return { edit: true, download: true, comment: true };
+}
+
+
+/**
+ * ホストが渡すカタログ。**検索も公開もいいねも DL 数もホストの仕事**で、
+ * MiniCAD は絞り込み済みの一覧を受け取って挿すだけ。
+ */
+export interface HostCatalogs {
+  library?: LibraryItem[];
+  materials?: MaterialItem[];
+}
+
+/**
+ * 挿せる部品 1 つ。
+ *
+ * **`block` と `scene` は別の仕組み。** `BlockDef` は DXF の `INSERT` に 1:1 で
+ * 対応する本物のブロックで、**壁と建具は入れられない**（定義の中にノードグラフを
+ * 置くと挿入ごとに複製が要り、部屋検出が壊れる）。壁を含む部品（「2LDK ベース図面」
+ * のようなもの）は実体に展開して置くことになる。**まだ出来ていない。**
+ */
+export interface LibraryItem {
+  /** ホストの識別子。MiniCAD は中身を解釈しない */
+  id: string;
+  label: string;
+  /** 絞り込みはホストが済ませてから渡してもよい。見出しに使う */
+  category?: string;
+  /** 図形だけの部品 */
+  block?: BlockDef;
+  /** 壁を含む部品。**まだ挿せない**（画面には出して、挿せないと書く） */
+  scene?: SceneFile;
+}
+
+/**
+ * 素材 1 つ。**MiniCAD が持つのは不透明な `ref` と表示ヒントだけ。**
+ * 物件種別・カテゴリ・グレード（松竹梅）の分類はホストの持ち物で、
+ * MiniCAD のフィールドにはしない。分類が増えるたびに図面の形式が変わるのは割に合わない。
+ */
+export interface MaterialItem {
+  ref: string;
+  label: string;
+  /** 3D の着色に使う表示ヒント */
+  color?: string;
+  /** 同上。URL */
+  texture?: string;
 }

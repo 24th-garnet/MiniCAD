@@ -605,6 +605,46 @@ input.layer-name:focus {
   line-height: 1.5;
 }
 
+/* パーツのパレット */
+.part-group {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.part-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.part-button {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: #b9ccf8;
+}
+
+.part-button:disabled {
+  color: var(--ink-soft);
+  background: #f2f1ec;
+  cursor: not-allowed;
+}
+
 /* プロモードの「まだ無いもの」 */
 .missing-list {
   margin: 4px 0 10px;

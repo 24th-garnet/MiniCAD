@@ -1,6 +1,6 @@
 import type { Editor } from './editor.ts';
 import type { ToolId } from '../tools/tool.ts';
-import type { Capabilities } from '../host.ts';
+import type { Capabilities, HostCatalogs } from '../host.ts';
 import type { Mode } from './mode.ts';
 import type { ViewState } from './view-state.ts';
 
@@ -25,6 +25,8 @@ export interface PanelContext {
   mode: Mode;
   /** ホストが許していること。閲覧のみなら `can.edit` が false */
   readonly can: Capabilities;
+  /** ホストが渡した部品と素材の一覧 */
+  readonly catalogs: HostCatalogs;
   setMode(mode: Mode): void;
   /** ツールを選ぶ。作図のツールなら 2D に戻してから切り替える */
   selectTool(id: ToolId): void;

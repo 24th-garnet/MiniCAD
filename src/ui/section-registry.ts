@@ -5,6 +5,7 @@ import { BOTH_MODES, PRO_ONLY, type Mode } from './mode.ts';
 import { BlocksSection } from './panels/sections/blocks.ts';
 import { ConstraintsSection } from './panels/sections/constraints.ts';
 import { LayersSection } from './panels/sections/layers.ts';
+import { LibrarySection } from './panels/sections/library.ts';
 import { MissingSection } from './panels/sections/missing.ts';
 import { RoomsSection } from './panels/sections/rooms.ts';
 import { SelectionSection } from './panels/sections/selection.ts';
@@ -21,6 +22,7 @@ import { StatsSection } from './panels/sections/stats.ts';
 /** インスペクタの区画。`ToolId` と同じく閉じた union にして書き忘れを止める */
 export type SectionId =
   | 'selection'
+  | 'library'
   | 'constraints'
   | 'rooms'
   | 'standard'
@@ -47,6 +49,8 @@ export interface SectionEntry {
 
 export const SECTION_REGISTRY: Record<SectionId, SectionEntry> = {
   selection: { make: () => new SelectionSection(), modes: BOTH_MODES, edits: true },
+  // 通常モードの中心。パーツを選んで置く
+  library: { make: () => new LibrarySection(), modes: BOTH_MODES, edits: true },
   // 幾何拘束・製図規格・用紙枠は CAD 寄りの道具立て。通常モードでは出さない
   constraints: { make: () => new ConstraintsSection(), modes: PRO_ONLY, edits: true },
   rooms: { make: () => new RoomsSection(), modes: BOTH_MODES, edits: false },

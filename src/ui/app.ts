@@ -9,7 +9,7 @@ import type { Panel, PanelContext } from './panel.ts';
 import { buildSections } from './section-registry.ts';
 import { buildTools } from './tool-registry.ts';
 import { DEFAULT_MODE, type Mode } from './mode.ts';
-import { defaultCapabilities, type Capabilities, type HostCallbacks } from '../host.ts';
+import { defaultCapabilities, type Capabilities, type HostCallbacks, type HostCatalogs } from '../host.ts';
 import { FileActions } from './panels/file-actions.ts';
 import { Inspector } from './panels/inspector.ts';
 import { OptionsBar } from './panels/options-bar.ts';
@@ -40,6 +40,7 @@ export class App {
   private currentMode: Mode;
   private readonly host: HostCallbacks;
   private readonly can: Capabilities;
+  private readonly catalogs: HostCatalogs;
   private readonly shellRoot: HTMLElement;
   private readonly teardown = new AbortController();
   private lastNotifiedVersion: number;
@@ -48,6 +49,7 @@ export class App {
   constructor(container: HTMLElement, host: HostCallbacks = {}) {
     this.host = host;
     this.can = { ...defaultCapabilities(), ...host.capabilities };
+    this.catalogs = host.catalogs ?? {};
     this.currentMode = host.mode ?? DEFAULT_MODE;
     // 骨組みは自分で組む。埋め込まれるとき、MiniCAD は入る箱しか貰えない
     const shell = buildShell(container);
@@ -73,6 +75,7 @@ export class App {
       loadScene: (scene) => this.loadScene(scene),
       view: this.view,
       can: this.can,
+      catalogs: this.catalogs,
       mode: this.currentMode,
       setMode: (mode) => this.setMode(mode),
       selectTool: (id) => this.selectTool(id),

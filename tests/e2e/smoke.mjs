@@ -1443,6 +1443,58 @@ async function run() {
     '書き出しを止めたのにボタンが残っている');
   assert.ok((await state()).toolbar.includes('wall'), '書き出しだけ止めたのに道具が消えた');
   console.log('✔ 書き出しの可否は編集の可否と別に効く');
+
+  // --- ホストが渡すカタログ ---
+  await page.evaluate((f) => {
+    window.minicadApi.destroy();
+    const def = {
+      id: 'host-desk', name: 'HOST_DESK', label: 'ホストの机',
+      size: { w: 1200, h: 600 }, source: 'user',
+      shapes: {
+        s1: {
+          id: 's1', shape: 'line', layerId: 'furniture', levelId: 'lv-1',
+          a: { x: -600, y: -300 }, b: { x: 600, y: -300 },
+        },
+      },
+    };
+    window.minicadApi = window.mountMiniCad(document.getElementById('app'), {
+      scene: f,
+      catalogs: {
+        library: [
+          { id: 'host-desk', label: 'ホストの机', category: 'オフィス', block: def },
+          { id: 'base-2ldk', label: '2LDK ベース図面', category: 'ベース図面', scene: f },
+        ],
+        materials: [{ ref: 'm-1', label: 'タイルカーペット', color: '#8a8a7a' }],
+      },
+    });
+  }, hostFile);
+  await sleep(500);
+
+  const parts = page.locator('.part-button');
+  assert.equal(await parts.count(), 2, 'カタログがパレットに出ていない');
+  assert.equal(await page.locator('.part-button:disabled').count(), 1,
+    '壁を含む部品が挿せるように見えている');
+
+  const beforeInsert = await state();
+  await page.locator('.part-button:not(:disabled)').first().click();
+  await sleep(250);
+  assert.equal((await state()).tool, 'block', 'ブロックツールに移っていない');
+
+  // 置ける。**新しい挿入の経路ではなく、既存のツールがそのまま効いている**
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await sleep(250);
+  const placed = await state();
+  assert.equal(placed.instances, beforeInsert.instances + 1, 'ホストの部品が置けない');
+  assert.ok(placed.blockLabels.includes('ホストの机'), '定義が図面に入っていない');
+
+  // undo 1 回で置いたものが戻る。足した定義は残る（使っていない定義は
+  // ブロックの区画から消せる）
+  await page.keyboard.press('Control+z');
+  await sleep(250);
+  const afterInsertUndo = await state();
+  assert.equal(afterInsertUndo.instances, beforeInsert.instances, 'undo で戻らない');
+  assert.ok(afterInsertUndo.blockLabels.includes('ホストの机'), '定義まで消えている');
+  console.log('✔ ホストのカタログから部品を置ける');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */
