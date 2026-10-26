@@ -8,6 +8,7 @@ import type { BlockDef, BlockInstance } from './block.ts';
 import type { Constraint } from './constraints.ts';
 import type { Fixture } from './fixture.ts';
 import type { Measurement } from './annotation.ts';
+import { DEFAULT_VIEW_ID, defaultViews, type DrawingView } from './view.ts';
 import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from './level.ts';
 import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
@@ -165,6 +166,13 @@ export interface Scene {
   measurements: Record<Id, Measurement>;
   /** 画層。DXF の LAYER テーブルに対応する */
   layers: Record<LayerId, Layer>;
+  /**
+   * 図面ビュー。**画層ではなく紙空間のビューポート**で、画層の見え方と
+   * 縮尺の組を覚えている。切り替えると `layers` と `standard.scale` に当たる
+   */
+  views: Record<Id, DrawingView>;
+  /** 作業中のビュー */
+  activeViewId: Id;
   /** 線群・尺度・文字高さなどの製図規格。図面の属性なのでシーンと一緒に保存する */
   standard: DrawingStandard;
   /** 用紙枠と表題欄。これも図面の属性 */
@@ -191,6 +199,8 @@ export function emptyScene(): Scene {
     fixtures: {},
     measurements: {},
     layers: defaultLayers(),
+    views: defaultViews(jisStandard().scale),
+    activeViewId: DEFAULT_VIEW_ID,
     standard: jisStandard(),
     sheet: defaultSheet(),
     blocks: builtinBlocks(),

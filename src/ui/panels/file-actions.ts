@@ -1,5 +1,5 @@
 import { emptyScene } from '../../core/types.ts';
-import { downloadDxf } from '../../io/dxf.ts';
+import { downloadDxf, exportLossReport } from '../../io/dxf.ts';
 import { measuresToJson, sceneToMeasures } from '../../io/measures.ts';
 import { elevationToSvg, sceneToElevations } from '../../io/elevation.ts';
 import { clearLocal, deserialize, downloadJson, triggerDownload } from '../../io/scene.ts';
@@ -57,8 +57,12 @@ export class FileActions implements Panel {
       when(canDownload, button(
         'SVG',
         () => {
-          const svg = sceneToSvg(ctx.editor.store.scene, ctx.editor.rooms, ctx.editor.store.settings);
+          const scene = ctx.editor.store.scene;
+          const svg = sceneToSvg(scene, ctx.editor.rooms, ctx.editor.store.settings);
           triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), 'madori.svg');
+          // DXF と同じ報告。落ちるものは同じ
+          const notes = exportLossReport(scene);
+          if (notes.length > 0) window.alert(notes.join('\n\n'));
         },
         'SVG で書き出す',
       )),
@@ -71,12 +75,15 @@ export class FileActions implements Panel {
             trueDimension: store.settings.dxfTrueDimension,
             shiftJis: store.settings.dxfShiftJis,
           });
-          // **黙って ? に落とさない。** 室名が化けたまま渡るのが一番困る
+          // **黙って落とさない。** 化けた室名や消えた透過が、受け取った側に
+          // 理由の分からない違いとして出るのが一番困る
+          const notes = exportLossReport(store.scene);
           if (dropped.length > 0) {
             const chars = [...new Set(dropped)].join('');
-            window.alert(`Shift-JIS に無い文字が ${dropped.length} 字ありました。`
+            notes.unshift(`Shift-JIS に無い文字が ${dropped.length} 字ありました。`
               + `「?」になっています: ${chars}`);
           }
+          if (notes.length > 0) window.alert(notes.join('\n\n'));
         },
         'DXF (R12) で書き出す — 他の CAD で開けます',
       )),

@@ -374,6 +374,32 @@ function escapeUnicode(s: string): string {
  *
  * 収まらなかった字は `?` になるので、**黙って落とさずに数を返す**。
  */
+/**
+ * 書き出しで落ちるものを数える。
+ *
+ * **持っていないものは、持っていないと書く。** 透過は R12 の LAYER に
+ * 無く、R2004+ のグループコード 440 が要る。黙って落とすと、受け取った側が
+ * 「透かしたはずの図面が透けていない」理由を追えない。
+ * Shift-JIS の欠字報告と同じ扱い。
+ */
+export function exportLossReport(scene: Scene): string[] {
+  const out: string[] = [];
+  const faded = Object.values(scene.layers).filter((l) => l.visible && l.opacity < 1);
+  if (faded.length > 0) {
+    out.push(
+      `透過を落としました（DXF R12 にも SVG の書き出しにも乗せていません）: `
+      + faded.map((l) => `${l.name} ${Math.round(l.opacity * 100)}%`).join(' / '),
+    );
+  }
+  if (Object.keys(scene.views).length > 1) {
+    out.push(
+      `図面は ${Object.keys(scene.views).length} 枚ありますが、`
+      + `書き出したのは作業中の 1 枚だけです。`,
+    );
+  }
+  return out;
+}
+
 export function downloadDxf(
   scene: Scene,
   rooms: Room[],

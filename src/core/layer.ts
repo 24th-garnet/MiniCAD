@@ -32,6 +32,14 @@ export interface Layer {
   locked: boolean;
   /** 印刷・書き出しに含めるか */
   printable: boolean;
+  /**
+   * 不透明度 0〜1。1 が不透明。
+   *
+   * **図面ビュー（`core/view.ts`）が当てる値で、DXF には出せない。**
+   * R12 の LAYER に透過は無く、R2004+ のグループコード 440 が要る。
+   * 書き出しでは落ちるので、落としたと報告する。
+   */
+  opacity: number;
 }
 
 /** 既定の画層。id は保存ファイル中で安定させたいので固定のスラッグにしてある */
@@ -62,6 +70,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.opening,
@@ -74,6 +83,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.furniture,
@@ -86,6 +96,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.dimension,
@@ -98,6 +109,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.roomName,
@@ -110,6 +122,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.shape,
@@ -122,6 +135,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.sheet,
@@ -134,6 +148,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.axis,
@@ -146,6 +161,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: true,
+      opacity: 1,
     },
     {
       id: LAYER_IDS.draft,
@@ -158,6 +174,7 @@ export function defaultLayers(): Record<LayerId, Layer> {
       visible: true,
       locked: false,
       printable: false,
+      opacity: 1,
     },
   ];
   return Object.fromEntries(list.map((l) => [l.id, l]));
@@ -229,6 +246,7 @@ export function addLayer(layers: Record<LayerId, Layer>, init: Partial<Layer> = 
     aci: init.aci ?? 7,
     weightRole: init.weightRole ?? 'thin',
     lineWeightOverride: init.lineWeightOverride ?? null,
+    opacity: init.opacity ?? 1,
     lineType: init.lineType ?? 'continuous',
     visible: init.visible ?? true,
     locked: init.locked ?? false,

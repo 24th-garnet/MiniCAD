@@ -17,6 +17,7 @@ import { readShape } from './shapeRead.ts';
 import { FIXTURE_SPECS, isFixtureKind } from '../core/fixture.ts';
 import { isBayShape, type Bay } from '../core/bay.ts';
 import { readPoint3 } from '../core/annotation.ts';
+import { clampOpacity, DEFAULT_VIEW_ID, defaultViews, type DrawingView, type LayerViewState } from '../core/view.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
 import { defaultAttrs, isTakeoffMode, type Attrs } from '../core/attrs.ts';
@@ -35,7 +36,7 @@ import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../co
  * `levelId` の無い実体は**既定の階に乗せる**だけで済む。
  * `DEFAULT_LEVEL_ID` が固定値なのはこのため。
  */
-export const FILE_VERSION = 10;
+export const FILE_VERSION = 11;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -74,6 +75,7 @@ export function deserialize(raw: unknown): Scene {
   scene.layers = readLayers(table<Record<string, unknown>>('layers'));
   scene.standard = readStandard(payload.standard);
   scene.sheet = readSheet(payload.sheet);
+  readViews(scene, payload);
   readLevels(scene, payload);
   const layerOr = (v: unknown, fallback: LayerId): LayerId =>
     typeof v === 'string' && scene.layers[v] ? v : fallback;
@@ -233,6 +235,50 @@ export function deserialize(raw: unknown): Scene {
 }
 
 /**
+ * 図面ビューの読み取り。
+ *
+ * **欄が無ければ 1 つだけ作る。** 古いファイルには views が無く、
+ * そのときの縮尺が作業中のビューの縮尺になる。
+ */
+function readViews(scene: Scene, payload: Record<string, unknown>): void {
+  const raw = typeof payload.views === 'object' && payload.views !== null
+    ? (payload.views as Record<string, unknown>)
+    : {};
+  const views: Record<Id, DrawingView> = {};
+  for (const [id, v] of Object.entries(raw)) {
+    if (typeof v !== 'object' || v === null) continue;
+    const o = v as Record<string, unknown>;
+    const states: Record<string, LayerViewState> = {};
+    const rawStates = typeof o.layerStates === 'object' && o.layerStates !== null
+      ? (o.layerStates as Record<string, unknown>)
+      : {};
+    for (const [layerId, st] of Object.entries(rawStates)) {
+      // 知らない画層の欄は捨てる。当てる先が無い
+      if (!scene.layers[layerId] || typeof st !== 'object' || st === null) continue;
+      const t = st as Record<string, unknown>;
+      states[layerId] = { visible: t.visible !== false, opacity: clampOpacity(t.opacity) };
+    }
+    views[id] = {
+      id,
+      name: typeof o.name === 'string' ? o.name : '図面',
+      scale: numberOr(o.scale, scene.standard.scale) || scene.standard.scale,
+      layerStates: states,
+    };
+  }
+
+  if (Object.keys(views).length === 0) {
+    scene.views = defaultViews(scene.standard.scale);
+    scene.activeViewId = DEFAULT_VIEW_ID;
+    return;
+  }
+  scene.views = views;
+  scene.activeViewId =
+    typeof payload.activeViewId === 'string' && views[payload.activeViewId]
+      ? payload.activeViewId
+      : Object.keys(views)[0];
+}
+
+/**
  * 出窓・ニッチの読み取り。出が 0 なら無いものと同じなので null に落とす。
  * **種別を増やしていない**ので、古いファイルは欄が無く、そのまま null になる
  */
@@ -349,6 +395,7 @@ function readLayers(raw: Record<string, Record<string, unknown>>): Record<LayerI
       visible: l.visible !== false,
       locked: l.locked === true,
       printable: l.printable !== false,
+      opacity: clampOpacity(l.opacity),
     };
   }
   return layers;

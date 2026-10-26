@@ -70,6 +70,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawConstraints(frame);
   drawComments(frame);
   ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
   overlay?.(frame);
   ctx.restore();
 }
@@ -204,8 +205,11 @@ function drawWalls(frame: Frame): void {
       fillQuad(wallQuad(scene, wall), theme.paper);
       continue;
     }
-    // 塗らない設定でも、下の部屋塗りを隠すために紙の色で埋める
+    // 紙の色で埋めるぶんは不透明のまま。透かすのは画層の中身であって、
+    // 下の部屋塗りを隠す下地ではない
+    ctx.globalAlpha = fill ? layer.opacity : 1;
     fillQuad(wallQuad(scene, wall), fill ? (accent ?? layer.color) : theme.paper);
+    ctx.globalAlpha = 1;
   }
 
   // 開口部を紙の色で抜く

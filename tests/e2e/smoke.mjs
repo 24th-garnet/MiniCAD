@@ -115,6 +115,11 @@ async function run() {
           wallFill: s.standard.wallFill,
         },
         layerRows: document.querySelectorAll('.layer-row').length,
+        viewRows: document.querySelectorAll('.view-row').length,
+        activeView: s.activeViewId,
+        scale: s.standard.scale,
+        wallVisible: s.layers['wall'].visible,
+        wallOpacity: s.layers['wall'].opacity,
         view3d: !document.getElementById('canvas3d').hidden,
         viewMode: window.minicad.view.mode,
         mode: window.minicad.mode,
@@ -1841,6 +1846,67 @@ async function run() {
   assert.equal(await page.evaluate(() => window.minicad.editorInstance.comments.length), 0,
     'ホストから消せない');
   console.log('✔ コメントはアンカーだけを持ち、図面には入らない');
+
+  // --- 図面ビュー ---
+  // **画層ではなく紙空間のビューポート。** 画層の見え方と縮尺の組を覚える
+  await page.evaluate((f) => {
+    window.minicadApi.destroy();
+    window.minicadApi = window.mountMiniCad(document.getElementById('app'), { scene: f, mode: 'pro' });
+  }, hostFile);
+  await sleep(600);
+
+  const oneView = await state();
+  assert.equal(oneView.viewRows, 1, '最初から図面が 2 枚ある');
+  // 前の手順で縮尺が動いているので、絶対値ではなく元に戻るかを見る
+  const baseScale = oneView.scale;
+  const otherScale = baseScale === 50 ? 100 : 50;
+
+  // いまの状態を 2 枚目として覚える
+  await page.locator('button', { hasText: 'いまの状態を図面として覚える' }).first().click();
+  await sleep(300);
+  const twoViews = await state();
+  assert.equal(twoViews.viewRows, 2, '2 枚目が増えていない');
+  assert.notEqual(twoViews.activeView, oneView.activeView, '2 枚目が作業中になっていない');
+
+  // 2 枚目で画層を消し、縮尺を変え、透過を入れる
+  await page.evaluate((other) => {
+    window.__otherScale = other;
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    ed.store.commit(() => {
+      s.layers.wall.visible = false;
+      s.layers.wall.opacity = 0.4;
+      s.standard.scale = window.__otherScale;
+      s.views[s.activeViewId].scale = window.__otherScale;
+      s.views[s.activeViewId].layerStates = Object.fromEntries(
+        Object.values(s.layers).map((l) => [l.id, { visible: l.visible, opacity: l.opacity }]),
+      );
+    });
+  }, otherScale);
+  await sleep(300);
+
+  // 1 枚目に戻すと、元の状態が当たる
+  const firstRadio = page.locator('.view-row').first().locator('input.view-active');
+  await firstRadio.check();
+  await sleep(350);
+  const back1 = await state();
+  assert.equal(back1.activeView, oneView.activeView, '1 枚目に戻っていない');
+  assert.equal(back1.wallVisible, true, '壁が消えたまま');
+  assert.equal(back1.wallOpacity, 1, '透過が残っている');
+  assert.equal(back1.scale, baseScale, '縮尺が戻っていない');
+
+  // もう一度 2 枚目へ
+  await page.locator('.view-row').nth(1).locator('input.view-active').check();
+  await sleep(350);
+  const back2 = await state();
+  assert.equal(back2.wallVisible, false, '2 枚目の状態が当たっていない');
+  assert.equal(back2.wallOpacity, 0.4);
+  assert.equal(back2.scale, otherScale);
+
+  // 往復しても残る
+  const saved = await page.evaluate(() => window.minicadApi.getScene());
+  assert.equal(Object.keys(saved.scene.views).length, 2, '図面が保存されていない');
+  console.log('✔ 図面を切り替えると画層の見え方と縮尺がまとめて入れ替わる');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

@@ -605,6 +605,67 @@ input.layer-name:focus {
   line-height: 1.5;
 }
 
+/* 図面ビュー */
+.view-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.view-row {
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+
+.view-row.active {
+  border-color: #b9ccf8;
+  background: var(--accent-soft);
+}
+
+.view-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-head input.view-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.view-row.active input.view-name {
+  background: #fff;
+  border-color: var(--panel-border);
+}
+
+.view-scale {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.view-delete {
+  flex: 0 0 auto;
+  padding: 0 6px;
+}
+
+.view-opacity {
+  margin-top: 4px;
+}
+
+.view-opacity .field input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* インスペクタの小見出し */
 .attr-head {
   margin: 10px 0 4px;

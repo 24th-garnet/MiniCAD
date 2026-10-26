@@ -64,6 +64,9 @@ export function applyLayer(
   overrideLineType?: LineType,
 ): void {
   const { ctx } = frame;
+  // **不透明度は画層が持つ（図面ビューが当てた値）。** ここが描画の唯一の
+  // 入口なので、1 行で全部の線と記号に効く
+  ctx.globalAlpha = layer.opacity;
   ctx.strokeStyle = overrideColor ?? layer.color;
   ctx.lineWidth = strokePx(frame, layer);
   ctx.setLineDash(

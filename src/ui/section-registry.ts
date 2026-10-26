@@ -14,6 +14,7 @@ import { SheetSection } from './panels/sections/sheet.ts';
 import { ShortcutsSection } from './panels/sections/shortcuts.ts';
 import { StandardSection } from './panels/sections/standard.ts';
 import { StatsSection } from './panels/sections/stats.ts';
+import { ViewsSection } from './panels/sections/views.ts';
 
 /**
  * インスペクタに何の区画を出すかの表。考え方は `tool-registry.ts` と同じで、
@@ -27,6 +28,7 @@ export type SectionId =
   | 'rooms'
   | 'standard'
   | 'sheet'
+  | 'views'
   | 'layers'
   | 'blocks'
   | 'settings'
@@ -56,6 +58,8 @@ export const SECTION_REGISTRY: Record<SectionId, SectionEntry> = {
   rooms: { make: () => new RoomsSection(), modes: BOTH_MODES, edits: false },
   standard: { make: () => new StandardSection(), modes: PRO_ONLY, edits: true },
   sheet: { make: () => new SheetSection(), modes: PRO_ONLY, edits: true },
+  // 図面ビューは画層の上に乗るので、画層より先に出す
+  views: { make: () => new ViewsSection(), modes: BOTH_MODES, edits: true },
   layers: { make: () => new LayersSection(), modes: BOTH_MODES, edits: false },
   blocks: { make: () => new BlocksSection(), modes: BOTH_MODES, edits: true },
   settings: { make: () => new SettingsSection(), modes: BOTH_MODES, edits: false },

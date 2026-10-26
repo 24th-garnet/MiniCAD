@@ -10,6 +10,7 @@ import {
 } from '../../../core/layer.ts';
 import { LINE_TYPE_LABELS, type LineType, type WeightRole } from '../../../core/standard.ts';
 import { el, selectField } from '../../dom.ts';
+import { captureView } from '../../../core/view.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
 const WEIGHT_ROLES: { value: WeightRole; label: string }[] = [
@@ -65,7 +66,12 @@ function layerRow(layer: Layer, ctx: PanelContext): HTMLElement {
   const visible = el('input', {
     class: 'layer-visible', type: 'checkbox', checked: layer.visible, title: '表示', disabled: !canEdit,
   });
-  visible.addEventListener('change', () => edit(() => void (layer.visible = visible.checked)));
+  // **作業中の図面に控える。** 控えないと、図面を切り替えて戻ったときに
+  // 切り替える前の状態が当たって、いま触ったことが消える
+  visible.addEventListener('change', () => edit(() => {
+    layer.visible = visible.checked;
+    captureView(scene);
+  }));
 
   const locked = el('input', {
     class: 'layer-locked',
