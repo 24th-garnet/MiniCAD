@@ -17,6 +17,7 @@ import { readShape } from './shapeRead.ts';
 import { FIXTURE_SPECS, isFixtureKind } from '../core/fixture.ts';
 import { isBayShape, type Bay } from '../core/bay.ts';
 import { readPoint3 } from '../core/annotation.ts';
+import { emptyBody, isEmptyBody, type Assembly } from '../core/assembly.ts';
 import { clampOpacity, DEFAULT_VIEW_ID, defaultViews, type DrawingView, type LayerViewState } from '../core/view.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
@@ -201,6 +202,11 @@ export function deserialize(raw: unknown): Scene {
     };
   }
 
+  for (const [id, raw] of Object.entries(table<Record<string, unknown>>('assemblies'))) {
+    const got = readAssembly(id, raw, layerOr);
+    if (got) scene.assemblies[id] = got;
+  }
+
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('measurements'))) {
     const a = readPoint3(raw?.a);
     const b = readPoint3(raw?.b);
@@ -232,6 +238,89 @@ export function deserialize(raw: unknown): Scene {
     };
   }
   return scene;
+}
+
+/**
+ * シンボルの読み取り。
+ *
+ * **中身は実体と同じ形**（ローカル座標の壁・ノード・建具・構造）なので、
+ * 読み方も同じ作法。壁の両端が中身のノードを指していないものは捨てる——
+ * 置いた瞬間に行き場のない壁になる。
+ */
+function readAssembly(
+  id: Id,
+  raw: unknown,
+  layerOr: (v: unknown, fallback: LayerId) => LayerId,
+): Assembly | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const a = raw as Record<string, unknown>;
+  const rawBody = typeof a.body === 'object' && a.body !== null ? (a.body as Record<string, unknown>) : {};
+  const tbl = (key: string): Record<string, Record<string, unknown>> => {
+    const v = rawBody[key];
+    return typeof v === 'object' && v !== null ? (v as Record<string, Record<string, unknown>>) : {};
+  };
+  const body = emptyBody();
+
+  for (const [nid, n] of Object.entries(tbl('nodes'))) {
+    if (typeof n?.x !== 'number' || typeof n?.y !== 'number') continue;
+    body.nodes[nid] = { x: n.x, y: n.y };
+  }
+  for (const [wid, w] of Object.entries(tbl('walls'))) {
+    if (typeof w?.a !== 'string' || typeof w?.b !== 'string') continue;
+    if (!body.nodes[w.a] || !body.nodes[w.b]) continue;
+    body.walls[wid] = {
+      id: wid, a: w.a, b: w.b,
+      thickness: numberOr(w.thickness, 120),
+      height: finiteOrNull(w.height),
+      base: Math.max(0, numberOr(w.base, 0)),
+      layerId: layerOr(w.layerId, LAYER_IDS.wall),
+      attrs: readAttrs(w.attrs),
+    };
+  }
+  for (const [oid, o] of Object.entries(tbl('openings'))) {
+    if (typeof o?.wallId !== 'string' || !body.walls[o.wallId]) continue;
+    if (!isOpeningKind(o.kind)) continue;
+    body.openings[oid] = {
+      id: oid, wallId: o.wallId,
+      offset: numberOr(o.offset, 0),
+      width: numberOr(o.width, 800),
+      kind: o.kind,
+      flipX: o.flipX === true,
+      flipY: o.flipY === true,
+      sillHeight: finiteOrNull(o.sillHeight),
+      bay: readBay(o.bay),
+      designation: typeof o.designation === 'string' ? o.designation.trim() : '',
+      leaves: Math.max(1, Math.round(numberOr(o.leaves, 2))),
+      height: finiteOrNull(o.height),
+      layerId: layerOr(o.layerId, LAYER_IDS.opening),
+      attrs: readAttrs(o.attrs),
+    };
+  }
+  for (const [fid, f] of Object.entries(tbl('fixtures'))) {
+    if (!isFixtureKind(f?.kind)) continue;
+    if (typeof f.x !== 'number' || typeof f.y !== 'number') continue;
+    const spec = FIXTURE_SPECS[f.kind];
+    const size = (typeof f.size === 'object' && f.size !== null ? f.size : {}) as Record<string, unknown>;
+    const w = Math.max(1, numberOr(size.w, spec.defaultSize.w));
+    body.fixtures[fid] = {
+      id: fid, kind: f.kind, x: f.x, y: f.y,
+      angle: numberOr(f.angle, 0),
+      size: { w, h: f.kind === 'roundColumn' ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+      base: typeof f.base === 'number' ? f.base : null,
+      height: typeof f.height === 'number' ? f.height : null,
+      label: typeof f.label === 'string' ? f.label : spec.defaultLabel,
+      layerId: layerOr(f.layerId, spec.defaultLayer),
+      attrs: readAttrs(f.attrs),
+    };
+  }
+
+  if (isEmptyBody(body)) return null;
+  return {
+    id,
+    name: typeof a.name === 'string' ? a.name : 'シンボル',
+    version: Math.max(1, Math.round(numberOr(a.version, 1))),
+    body,
+  };
 }
 
 /**
@@ -445,6 +534,11 @@ function readAttrs(raw: unknown): Attrs {
     materialRef: str(a.materialRef),
     takeoff: isTakeoffMode(a.takeoff) ? a.takeoff : null,
     symbolId: str(a.symbolId),
+    // 版は id があるときだけ意味を持つ。id なしの版は捨てる
+    symbolVersion:
+      str(a.symbolId) !== null && typeof a.symbolVersion === 'number' && Number.isFinite(a.symbolVersion)
+        ? a.symbolVersion
+        : null,
   };
 }
 

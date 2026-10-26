@@ -1,4 +1,5 @@
 import { BlockInsertTool } from '../tools/block-insert.ts';
+import { AssemblyTool } from '../tools/assembly.ts';
 import { CommentTool } from '../tools/comment.ts';
 import { DimensionTool } from '../tools/dimension.ts';
 import { FixtureTool } from '../tools/fixture.ts';
@@ -71,6 +72,8 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   door: { make: () => new OpeningTool('door', 'door', 'ドア', 'D'), glyph: '⌒', modes: BOTH_MODES, edits: true },
   window: { make: () => new OpeningTool('window', 'window', '窓', 'S'), glyph: '▤', modes: BOTH_MODES, edits: true },
   block: { make: () => new BlockInsertTool(), glyph: '▦', modes: BOTH_MODES, edits: true },
+  // シンボルは置いた瞬間に実体へ展開される（スタンプ）
+  assembly: { make: () => new AssemblyTool(), glyph: '⊞', modes: BOTH_MODES, edits: true },
   line: { make: () => new ShapeTool('line', 'line', '線', 'L'), glyph: '／', modes: BOTH_MODES, edits: true },
   arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), glyph: '○', modes: BOTH_MODES, edits: true },
   point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), glyph: '・', modes: PRO_ONLY, edits: true },

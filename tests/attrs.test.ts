@@ -15,6 +15,7 @@ const FILLED: Attrs = {
   materialRef: 'host-material-42',
   takeoff: 'excluded',
   symbolId: 'sym-7',
+  symbolVersion: 3,
 };
 
 test('既定の属性はすべて null', () => {
@@ -25,6 +26,7 @@ test('既定の属性はすべて null', () => {
     materialRef: null,
     takeoff: null,
     symbolId: null,
+    symbolVersion: null,
   });
   assert.equal(hasAttrs(a), false);
 });
@@ -103,4 +105,17 @@ test('ブロックを分解すると挿入側の属性が図形に移る', () =>
   for (const id of ids) {
     assert.deepEqual(scene.shapes[id].attrs, FILLED, '分解した図形に属性が移っていない');
   }
+});
+
+test('シンボルの版は id があるときだけ残る', () => {
+  // 版だけあって id が無いものは、どのシンボルの版か決まらない
+  const scene = sampleScene();
+  const wallId = Object.keys(scene.walls)[0];
+  scene.walls[wallId].attrs = { ...FILLED, symbolId: null, symbolVersion: 5 };
+  const back = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
+  assert.equal(back.walls[wallId].attrs.symbolVersion, null);
+
+  scene.walls[wallId].attrs = { ...FILLED, symbolId: 'sym-1', symbolVersion: 5 };
+  const kept = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
+  assert.equal(kept.walls[wallId].attrs.symbolVersion, 5);
 });

@@ -5,6 +5,9 @@ import { OpeningTool } from '../../../tools/opening.ts';
 import type { Bay } from '../../../core/bay.ts';
 import type { OpeningKind } from '../../../core/types.ts';
 import { OPENING_SYMBOLS } from '../../../core/opening.ts';
+import { assemblyFromScene } from '../../../core/assembly.ts';
+import { AssemblyTool } from '../../../tools/assembly.ts';
+import { deserialize } from '../../../io/scene.ts';
 import { el } from '../../dom.ts';
 import type { PanelContext, Section } from '../../panel.ts';
 import type { LibraryItem } from '../../../host.ts';
@@ -47,12 +50,11 @@ export class LibrarySection implements Section {
       out.push(grid);
     }
 
-    // **持っていないものは、持っていないと書く**
     const stamps = items.filter((i) => !i.block && i.scene).length;
     if (stamps > 0) {
-      out.push(el('p', { class: 'warn-note' }, [
-        `壁を含む部品が ${stamps} 件ありますが、まだ挿せません。`
-        + 'ブロック定義には壁と建具を入れられないため、別の仕組み（実体への展開）が要ります。',
+      out.push(el('p', { class: 'empty-note' }, [
+        `壁を含む部品が ${stamps} 件あります。置くと壁や建具そのものになります`
+        + '（入れ子にはなりません）。',
       ]));
     }
     const materials = ctx.catalogs.materials ?? [];
@@ -140,11 +142,19 @@ function currentKind(ctx: PanelContext): FixtureKind | null {
 function partButton(item: LibraryItem, ctx: PanelContext): HTMLElement {
   const def = item.block;
   if (!def) {
+    // **壁を含む部品はシンボルとして置く。** 置いた瞬間に実体へ展開されるので、
+    // 部屋検出も DXF も無改造で効く
+    if (!item.scene) {
+      return el('button', {
+        class: 'part-button', type: 'button', disabled: true,
+        title: '中身がありません',
+      }, [item.label]);
+    }
     return el('button', {
       class: 'part-button',
       type: 'button',
-      disabled: true,
-      title: '壁を含む部品はまだ挿せません',
+      title: `${item.label}（置くと壁や建具そのものになります）`,
+      onclick: () => insertAssembly(ctx, item),
     }, [item.label]);
   }
   return el('button', {
@@ -170,6 +180,28 @@ function insert(ctx: PanelContext, blockId: string, item: LibraryItem): void {
   ctx.selectTool('block');
   const tool = ctx.editor.tool;
   if (tool instanceof BlockInsertTool) tool.blockId = blockId;
+  ctx.editor.canvas.focus();
+  ctx.refresh();
+}
+
+/**
+ * 壁を含む部品を置けるようにする。**図面にシンボルとして取り込んでから**
+ * シンボルツールに渡す。新しい挿入の経路は作らない。
+ */
+function insertAssembly(ctx: PanelContext, item: LibraryItem): void {
+  const scene = ctx.editor.store.scene;
+  const id = `host-${item.id}`;
+  if (!scene.assemblies[id]) {
+    const made = assemblyFromScene(deserialize(item.scene!), id, item.label);
+    if (!made) {
+      window.alert('この部品には壁も構造も入っていません。');
+      return;
+    }
+    ctx.edit(() => void (scene.assemblies[id] = made));
+  }
+  ctx.selectTool('assembly');
+  const tool = ctx.editor.tool;
+  if (tool instanceof AssemblyTool) tool.assemblyId = id;
   ctx.editor.canvas.focus();
   ctx.refresh();
 }

@@ -24,6 +24,7 @@ export type ToolId =
   | 'dimension'
   | 'room'
   | 'fixture'
+  | 'assembly'
   | 'comment';
 
 export interface PointerInfo {

@@ -26,6 +26,13 @@ export interface Attrs {
   takeoff: TakeoffMode | null;
   /** 由来のシンボル。null ならどのシンボルにも属さない */
   symbolId: Id | null;
+  /**
+   * 置いたときのシンボルの版。
+   *
+   * **一括変更はこの差で決まる。** 古い版で置かれたものだけを押し直せる。
+   * `symbolId` が null なら意味を持たないので null
+   */
+  symbolVersion: number | null;
 }
 
 /**
@@ -49,6 +56,7 @@ export const defaultAttrs = (): Attrs => ({
   materialRef: null,
   takeoff: null,
   symbolId: null,
+  symbolVersion: null,
 });
 
 /** 1 つでも指定されているか。インスペクタの見出しを出すかの判断に使う */

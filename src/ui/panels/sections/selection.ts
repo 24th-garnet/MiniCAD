@@ -1,11 +1,12 @@
 import { toDeg, toRad } from '../../../core/geometry.ts';
 import { wallLength } from '../../../core/ops.ts';
-import { isOpeningKind, OPENING_KINDS, type EntityRef } from '../../../core/types.ts';
+import { isOpeningKind, OPENING_KINDS, type EntityRef, type Scene } from '../../../core/types.ts';
 import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
 import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
 import { attrsOf } from '../../../core/material.ts';
+import { defineAssembly } from '../../../core/assembly.ts';
 import { measuredDistance } from '../../../core/annotation.ts';
 import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
@@ -31,6 +32,7 @@ export class SelectionSection implements Section {
         ...attrFields(ctx, sel),
         layerField(ctx),
         blockifyButton(ctx),
+        symbolifyButton(ctx),
       );
       out.push(
         el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除']),
@@ -38,7 +40,7 @@ export class SelectionSection implements Section {
       return out;
     }
 
-    out.push(...fieldsFor(ctx, sel[0]), ...attrFields(ctx, sel), layerField(ctx), blockifyButton(ctx));
+    out.push(...fieldsFor(ctx, sel[0]), ...attrFields(ctx, sel), layerField(ctx), blockifyButton(ctx), symbolifyButton(ctx));
     out.push(
       el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除 (Delete)']),
     );
@@ -394,6 +396,52 @@ function uniqueBlockLabel(scene: PanelContext['editor']['store']['scene'], base:
  * 選んだ図形をブロックにする。
  * 対象は汎用図形だけ。壁や建具はノードのグラフを定義に持ち込むことになるので入れない。
  */
+/**
+ * 選んだものをシンボルにする。**壁を含められるのがブロックとの違い。**
+ *
+ * ブロック（`BlockDef`）は DXF の `INSERT` に 1:1 で対応するので図形しか
+ * 持てない。壁を含めるには実体への展開（スタンプ）が要る。
+ */
+function symbolifyButton(ctx: PanelContext): HTMLElement | null {
+  const scene = ctx.editor.store.scene;
+  const sel = ctx.editor.store.selection;
+  // 壁か構造が入っていなければ、ブロックで足りる
+  const worth = sel.some((r) => r.type === 'wall' || r.type === 'fixture');
+  if (!worth) return null;
+
+  return el('button', {
+    class: 'wide',
+    type: 'button',
+    title: '選んだ壁・建具・構造を名前付きのシンボルにする',
+    onclick: () => {
+      const name = uniqueSymbolName(scene, 'シンボル');
+      let created: string | null = null;
+      ctx.edit(() => {
+        const made = defineAssembly(scene, sel, name);
+        if (!made) return false;
+        scene.assemblies[made.id] = made;
+        created = made.id;
+        return true;
+      });
+      if (created) {
+        window.alert(
+          `「${name}」を作りました。\nシンボルツール（I）で置けます。`
+          + '\n\n置いたものは壁や建具そのものになります（入れ子にはなりません）。',
+        );
+      }
+    },
+  }, ['シンボルにする']);
+}
+
+function uniqueSymbolName(scene: Scene, base: string): string {
+  const taken = new Set(Object.values(scene.assemblies).map((a) => a.name));
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 1000; i++) {
+    if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
+  }
+  return `${base} ${Date.now()}`;
+}
+
 function blockifyButton(ctx: PanelContext): HTMLElement | null {
   const scene = ctx.editor.store.scene;
   const shapeIds = ctx.editor.store.selection.filter((r) => r.type === 'shape').map((r) => r.id);

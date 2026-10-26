@@ -1702,8 +1702,9 @@ async function run() {
   // 構造のボタンは組み込みなので、ホストのカタログだけを数える
   const parts = page.locator('.part-button:not([data-fixture]):not([data-opening])');
   assert.equal(await parts.count(), 2, 'カタログがパレットに出ていない');
-  assert.equal(await page.locator('.part-button:disabled').count(), 1,
-    '壁を含む部品が挿せるように見えている');
+  // **壁を含む部品も挿せる（シンボルとしてスタンプする）**
+  assert.equal(await page.locator('.part-button:disabled').count(), 0,
+    '挿せるはずの部品が押せない');
 
   const beforeInsert = await state();
   await page.locator('.part-button:not([data-fixture]):not([data-opening]):not(:disabled)').first().click();
@@ -1725,6 +1726,43 @@ async function run() {
   assert.equal(afterInsertUndo.instances, beforeInsert.instances, 'undo で戻らない');
   assert.ok(afterInsertUndo.blockLabels.includes('ホストの机'), '定義まで消えている');
   console.log('✔ ホストのカタログから部品を置ける');
+
+  // --- シンボル（壁を含む部品） ---
+  // **置いた瞬間に実体へ展開される。** 部屋検出も無改造で効く
+  const beforeStamp = await state();
+  await page.locator('.part-button[title*="2LDK"]').first().click();
+  await sleep(300);
+  assert.equal((await state()).tool, 'assembly', 'シンボルツールに移っていない');
+
+  // 既存の図面と重ならない、画面に入っている場所を選ぶ
+  await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+  await sleep(250);
+  const spotFor = await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const vp = ed.viewport;
+    const w = vp.toWorld({ x: vp.width * 0.12, y: vp.height * 0.88 });
+    return [w.x, w.y];
+  });
+  await clickWorld(spotFor[0], spotFor[1]);
+  await sleep(400);
+
+  const stamped = await state();
+  assert.ok(stamped.walls > beforeStamp.walls, `壁が増えていない (${stamped.walls})`);
+  assert.ok(stamped.rooms.length > beforeStamp.rooms.length, '置いた壁が部屋になっていない');
+
+  // 置いたものは由来を覚えている
+  const marked = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const withSymbol = Object.values(s.walls).filter((w) => w.attrs.symbolId);
+    return { count: withSymbol.length, version: withSymbol[0]?.attrs.symbolVersion };
+  });
+  assert.ok(marked.count > 0, '由来が書かれていない');
+  assert.equal(marked.version, 1);
+
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal((await state()).walls, beforeStamp.walls, 'undo で戻らない');
+  console.log('✔ 壁を含む部品をシンボルとして置ける（実体に展開される）');
 
   // --- 素材 ---
   // **3D の着色はホストが渡した表示ヒントを読むだけ。** 意味は読まない
