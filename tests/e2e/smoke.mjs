@@ -1021,6 +1021,41 @@ async function run() {
   assert.equal(back.selection, before3d.selection, 'カメラ操作で選択が変わった');
   assert.deepEqual(back.rooms, before3d.rooms);
   console.log('✔ 3D のカメラ操作に副作用がない');
+
+  // --- 3D でクリックして選ぶ ---
+  await page.keyboard.press('F3');
+  await sleep(400);
+
+  // 画面の中央付近を少しずつずらしながら、何かに当たるまで叩く。
+  // ドラッグにならないよう、押して動かさずに離す
+  let picked = null;
+  for (const [dx, dy] of [[0, 40], [60, 40], [-60, 40], [0, 100], [120, 0], [-120, 0]]) {
+    await page.mouse.click(mid.x + dx, mid.y + dy);
+    await sleep(200);
+    const st = await state();
+    if (st.selection > 0) { picked = st; break; }
+  }
+  assert.ok(picked, '3D でクリックしても何も選べない');
+  assert.equal(picked.walls, before3d.walls, '3D のクリックでシーンが変わった');
+  console.log('✔ 3D でクリックして選べる');
+
+  // 2D に戻しても同じものが選ばれたまま＝同じモデルを指している
+  await page.keyboard.press('F3');
+  await sleep(300);
+  const in2d = await state();
+  assert.equal(in2d.view3d, false);
+  assert.equal(in2d.selection, picked.selection, '2D に戻ると選択が消える');
+  console.log('✔ 3D で選んだものが 2D でも選ばれている');
+
+  // 空（床）を叩くと選択が解ける
+  await page.keyboard.press('F3');
+  await sleep(300);
+  await page.mouse.click(canvas3d.x + 20, canvas3d.y + 20);
+  await sleep(250);
+  assert.equal((await state()).selection, 0, '空を叩いても選択が残る');
+  await page.keyboard.press('F3');
+  await sleep(300);
+  console.log('✔ 3D で空を叩くと選択が解ける');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

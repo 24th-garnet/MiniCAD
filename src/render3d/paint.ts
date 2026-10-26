@@ -3,6 +3,7 @@ import { lambert, shade } from './shading.ts';
 import { BUCKET_ORDER, type Face3 } from './mesh.ts';
 import { viewProjection, type Camera3D } from './camera.ts';
 import { theme } from '../render/theme.ts';
+import type { EntityRef } from '../core/types.ts';
 
 /**
  * 面を奥から手前へ塗る（ペインターズ法）。
@@ -19,6 +20,11 @@ import { theme } from '../render/theme.ts';
  * `clip` / `setTransform` / `scale` / グラデーションは使わない（テストの
  * Canvas スタブに無く、使うとテストが 3D のバグを捕まえられなくなる）。
  * 画面の倍率 (DPR) も `setTransform` ではなく座標に直接掛ける。
+ * 強調表示（`PaintOptions.tint`）も**色の文字列を差し替えるだけ**なので、
+ * この約束は変わらない。
+ *
+ * **塗るのはペインターズ法、拾うのは本物の深さ**（`ray.ts`）。2 つの深度規則が
+ * 並ぶが食い違わないのは、床を内法で作って壁と交差させていないから。
  */
 
 export interface PaintOptions {
@@ -26,6 +32,13 @@ export interface PaintOptions {
   showEdges?: boolean;
   /** 画面の倍率。座標に直接掛ける */
   dpr?: number;
+  /**
+   * 面の色の差し替え。null を返せば元の色のまま。
+   *
+   * **色の文字列を返すだけ**にしてある。`ctx` に頼むことは変わらないので、
+   * 「多角形の fill と stroke しか使わない」という上の約束は生きたまま。
+   */
+  tint?: (ref: EntityRef | null) => string | null;
 }
 
 interface DrawFace {
@@ -53,6 +66,8 @@ export function paint(
 
   const view = viewProjection(cam, width, height);
   const faces: DrawFace[] = [];
+
+  const tint = options.tint;
 
   for (const face of mesh) {
     if (!face.doubleSided && isBackFacing(face, view.eye, view.forward, cam.mode)) continue;
@@ -86,7 +101,7 @@ export function paint(
       points,
       depth: depth / clipped.length,
       bucket: BUCKET_ORDER.indexOf(face.bucket),
-      color: shade(face.color, lambert(face.normal)),
+      color: shade(tint?.(face.ref) ?? face.color, lambert(face.normal)),
     });
   }
 

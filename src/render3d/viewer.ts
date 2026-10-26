@@ -2,8 +2,10 @@ import { sceneBounds } from '../core/entity.ts';
 import { activeLevel } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
 import { defaultCamera, dolly, frameAll, orbit, pan, type Camera3D } from './camera.ts';
+import { highlightOf, pickEntity, Select3D, type Pointer3D } from './interact.ts';
 import { buildMesh, type Face3 } from './mesh.ts';
 import { paint } from './paint.ts';
+import { screenRay } from './ray.ts';
 
 /**
  * 3D ビュー。2D とは**別のキャンバス**に描く。
@@ -15,7 +17,17 @@ import { paint } from './paint.ts';
  *
  * メッシュはシーンの版で持ち、カメラを動かしても作り直さない。
  * `buildMesh` が `Camera3D` を引数に取らないので、取り違えはコンパイルで止まる。
+ *
+ * **ポインタはカメラと選択に振り分ける。** 素の左ドラッグは今まで通り回転で、
+ * 動かさずに離したときだけクリックとして `Select3D` に回す。
+ * 「ドラッグで回す」は 3D の基本操作なので、修飾キー送りにはしない。
  */
+/** 拾うときの near。`camera.ts` の NEAR と揃える */
+const NEAR_PICK = 50;
+
+/** これ以内の動きはクリック扱い。2D の `SelectTool` と同じ考え方 */
+const CLICK_SLOP = 4;
+
 export class Viewer3D {
   readonly camera: Camera3D = defaultCamera();
   showEdges = false;
@@ -31,6 +43,9 @@ export class Viewer3D {
   private shownOnce = false;
   private dragging: 'orbit' | 'pan' | null = null;
   private last = { x: 0, y: 0 };
+  private readonly select = new Select3D();
+  private downAt = { x: 0, y: 0 };
+  private moved = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -92,7 +107,34 @@ export class Viewer3D {
     paint(this.ctx, this.camera, this.mesh, this.width, this.height, {
       showEdges: this.showEdges,
       dpr: this.dpr,
+      tint: highlightOf(this.editor),
     });
+  }
+
+  /** いまの状態の説明。ステータスバーが 3D のときに読む */
+  status(): string {
+    return this.select.status(this.editor);
+  }
+
+  /**
+   * ポインタの位置から 3D のポインタ情報を作る。
+   *
+   * **CSS ピクセルで渡す。** `paint` は座標に DPR を掛けるが、
+   * `getBoundingClientRect()` 由来の値は掛ける前のもの。
+   */
+  private pointer(e: PointerEvent): Pointer3D {
+    const rect = this.canvas.getBoundingClientRect();
+    const screen = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const ray = screenRay(this.camera, screen.x, screen.y, this.width, this.height);
+    return {
+      screen,
+      ray,
+      hit: pickEntity(this.editor, ray, this.mesh, NEAR_PICK),
+      shift: e.shiftKey,
+      alt: e.altKey,
+      meta: e.metaKey || e.ctrlKey,
+      button: e.button,
+    };
   }
 
   private measure(): void {
@@ -118,16 +160,28 @@ export class Viewer3D {
     const canvas = this.canvas;
     canvas.style.touchAction = 'none';
 
+    // **カメラか選択かは、動かしたかどうかで決める。**
+    // 素の左ドラッグは今まで通り回転。動かさずに離したときだけ選択に回る。
+    // 「ドラッグで回す」は 3D の基本操作なので、修飾キー送りにはしない。
     canvas.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 && e.button !== 1) return;
-      this.dragging = e.button === 1 || e.shiftKey ? 'pan' : 'orbit';
-      this.last = { x: e.clientX, y: e.clientY };
-      canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      this.last = { x: e.clientX, y: e.clientY };
+      this.downAt = { x: e.clientX, y: e.clientY };
+      this.moved = false;
+      this.dragging = e.button === 1 || e.shiftKey ? 'pan' : 'orbit';
     });
 
     canvas.addEventListener('pointermove', (e) => {
-      if (!this.dragging) return;
+      if (!this.dragging) {
+        this.select.onPointerMove(this.editor, this.pointer(e));
+        this.requestRender();
+        return;
+      }
+      if (!this.moved && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > CLICK_SLOP) {
+        this.moved = true;
+      }
       const dx = e.clientX - this.last.x;
       const dy = e.clientY - this.last.y;
       this.last = { x: e.clientX, y: e.clientY };
@@ -136,12 +190,27 @@ export class Viewer3D {
       this.requestRender();
     });
 
-    const end = (e: PointerEvent) => {
+    canvas.addEventListener('pointerleave', () => {
+      this.select.onPointerLeave(this.editor);
+      this.requestRender();
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      const wasOrbit = this.dragging === 'orbit';
+      this.dragging = null;
+      // 動かさずに離した素の左＝クリック
+      if (wasOrbit && !this.moved && e.button === 0 && !e.shiftKey) {
+        this.select.onPointerDown(this.editor, this.pointer(e));
+      }
+      this.moved = false;
+    });
+
+    canvas.addEventListener('pointercancel', (e) => {
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       this.dragging = null;
-    };
-    canvas.addEventListener('pointerup', end);
-    canvas.addEventListener('pointercancel', end);
+      this.moved = false;
+    });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     canvas.addEventListener(
