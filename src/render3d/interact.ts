@@ -1,5 +1,6 @@
 import { isSelectable } from '../core/entity.ts';
 import { levelOf, wallHeightOf } from '../core/level.ts';
+import { attrsOf } from '../core/material.ts';
 import { vec, type Vec } from '../core/geometry.ts';
 import { mergeNodesAt } from '../core/ops.ts';
 import {
@@ -314,14 +315,24 @@ export function pickEntity(editor: Editor, ray: Ray3, mesh: Face3[], near: numbe
  * **色の文字列を返すだけ**なので、`paint` が `ctx` に頼むことは変わらない
  * （多角形の fill と stroke だけ）。テストの Canvas スタブはオラクルのまま。
  */
-export function highlightOf(editor: Editor): (ref: EntityRef | null) => string | null {
+export function highlightOf(
+  editor: Editor,
+  materials?: ReadonlyMap<string, string>,
+): (ref: EntityRef | null) => string | null {
   const selected = new Set(editor.store.selection.map((r) => `${r.type}:${r.id}`));
   const hover = editor.hover;
+  const scene = editor.store.scene;
   return (ref) => {
     if (!ref) return null;
+    // **選択とホバーが素材より強い。** いま触っているものが分からなくなる方が困る
     if (selected.has(`${ref.type}:${ref.id}`)) return SELECTED;
     if (sameRef(ref, hover)) return HOVER;
-    return null;
+    if (!materials) return null;
+    // 色の上書きが素材より強い。作図者が直に指した色なので
+    const attrs = attrsOf(scene, ref);
+    if (attrs?.color) return attrs.color;
+    const key = attrs?.materialRef;
+    return key ? (materials.get(key) ?? null) : null;
   };
 }
 

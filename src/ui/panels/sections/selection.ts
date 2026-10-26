@@ -5,6 +5,8 @@ import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
 import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
+import { attrsOf } from '../../../core/material.ts';
+import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
 import { FIXTURE_SPECS, type Fixture } from '../../../core/fixture.ts';
 import { levelOf } from '../../../core/level.ts';
@@ -23,14 +25,19 @@ export class SelectionSection implements Section {
       return out;
     }
     if (sel.length > 1) {
-      out.push(readonlyField('選択数', `${sel.length} 個`), layerField(ctx), blockifyButton(ctx));
+      out.push(
+        readonlyField('選択数', `${sel.length} 個`),
+        ...attrFields(ctx, sel),
+        layerField(ctx),
+        blockifyButton(ctx),
+      );
       out.push(
         el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除']),
       );
       return out;
     }
 
-    out.push(...fieldsFor(ctx, sel[0]), layerField(ctx), blockifyButton(ctx));
+    out.push(...fieldsFor(ctx, sel[0]), ...attrFields(ctx, sel), layerField(ctx), blockifyButton(ctx));
     out.push(
       el('button', { class: 'wide danger', type: 'button', onclick: () => ctx.deleteSelection() }, ['削除 (Delete)']),
     );
@@ -246,6 +253,63 @@ function setSize(f: Fixture, w: number | null, h: number | null): void {
  * 選択したものの画層。複数選んでいればまとめて変える。
  * ノードは画層を持たない（接続する壁から導く）ので、そのときは出さない。
  */
+/**
+ * 素材・色・積算の欄。**選択したものすべてにまとめて効く。**
+ *
+ * 壁 4 面に別々の壁紙を貼るのも、部屋の壁をまとめて 1 つにするのも、
+ * ここから。属性を持たない種別（ノード・室名）を選んでいるときは出さない。
+ */
+function attrFields(ctx: PanelContext, sel: EntityRef[]): (HTMLElement | null)[] {
+  const scene = ctx.editor.store.scene;
+  const targets = sel.map((ref) => attrsOf(scene, ref)).filter((a): a is Attrs => a !== null);
+  if (targets.length === 0) return [];
+
+  const materials = ctx.catalogs.materials ?? [];
+  // 全部が同じ値なら、その値。食い違っていれば空（＝触らなければそのまま）
+  const common = <T>(pick: (a: Attrs) => T): T | null => {
+    const first = pick(targets[0]);
+    return targets.every((a) => pick(a) === first) ? first : null;
+  };
+  const setAll = (fn: (a: Attrs) => void) => ctx.edit(() => {
+    for (const a of targets) fn(a);
+  });
+
+  const out: (HTMLElement | null)[] = [el('h3', { class: 'attr-head' }, ['仕上げと積算'])];
+
+  if (materials.length > 0) {
+    out.push(
+      selectField(
+        '素材',
+        common((a) => a.materialRef) ?? '',
+        [{ value: '', label: '（指定なし）' }, ...materials.map((m) => ({ value: m.ref, label: m.label }))],
+        (v) => setAll((a) => void (a.materialRef = v || null)),
+      ),
+    );
+  } else {
+    // **持っていないものは、持っていないと書く**
+    out.push(el('p', { class: 'empty-note' }, ['素材カタログを受け取っていません。']));
+  }
+
+  out.push(
+    selectField(
+      '積算',
+      common((a) => a.takeoff) ?? '',
+      [
+        // **3 つの状態を畳まない。** 未指定を「対象外」に化けさせると、
+        // 書き忘れが黙って数量から消える
+        { value: '', label: '（未指定）' },
+        { value: 'included', label: '対象' },
+        { value: 'excluded', label: '対象外' },
+      ],
+      (v) => setAll((a) => void (a.takeoff = isTakeoffMode(v) ? v : null)),
+    ),
+  );
+  if (common((a) => a.takeoff) === 'excluded') {
+    out.push(el('p', { class: 'empty-note' }, ['対象外にしたものは、実測 JSON の数量から外れます。']));
+  }
+  return out;
+}
+
 function layerField(ctx: PanelContext): HTMLElement | null {
   const scene = ctx.editor.store.scene;
   const refs = ctx.editor.store.selection.filter((r) => r.type !== 'node');

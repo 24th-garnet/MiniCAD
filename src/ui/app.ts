@@ -122,6 +122,15 @@ export class App {
     // 座標表示はポインタが動くたびに更新したいので、全体の再描画とは別経路にする
     shell.canvas.addEventListener('pointermove', () => this.statusBar.refreshReadout(this.ctx));
 
+    // 素材の表示色はホストのカタログから。MiniCAD は意味を読まない
+    this.viewer3d.setMaterialColors(
+      new Map(
+        (this.catalogs.materials ?? [])
+          .filter((m) => typeof m.color === 'string' && m.color.length > 0)
+          .map((m) => [m.ref, m.color as string]),
+      ),
+    );
+
     this.editor.onChange(() => this.refresh());
     // 最初の通知を抑える。読み込んだ直後は、ホストが渡したものがそのまま入っている
     this.lastNotifiedVersion = this.editor.store.sceneVersion;

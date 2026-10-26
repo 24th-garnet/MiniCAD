@@ -1668,6 +1668,64 @@ async function run() {
   assert.equal(afterInsertUndo.instances, beforeInsert.instances, 'undo で戻らない');
   assert.ok(afterInsertUndo.blockLabels.includes('ホストの机'), '定義まで消えている');
   console.log('✔ ホストのカタログから部品を置ける');
+
+  // --- 素材 ---
+  // **3D の着色はホストが渡した表示ヒントを読むだけ。** 意味は読まない
+  await page.evaluate((f) => {
+    window.minicadApi.destroy();
+    window.minicadApi = window.mountMiniCad(document.getElementById('app'), {
+      scene: f,
+      catalogs: {
+        materials: [
+          { ref: 'm-red', label: '赤い壁紙', color: '#c0392b' },
+          { ref: 'm-plain', label: '色の無い素材' },
+        ],
+      },
+    });
+  }, hostFile);
+  await sleep(600);
+
+  // 壁を 1 本選んで素材を当てる
+  const painted = await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const wallId = Object.keys(ed.store.scene.walls)[0];
+    ed.store.setSelection([{ type: 'wall', id: wallId }]);
+    return wallId;
+  });
+  await sleep(250);
+
+  const field = page.locator('.field').filter({ hasText: '素材' }).first();
+  assert.equal(await field.count(), 1, '素材の欄が出ていない');
+  await field.locator('select').selectOption({ label: '赤い壁紙' });
+  await sleep(300);
+
+  const ref = await page.evaluate(
+    (id) => window.minicad.editorInstance.store.scene.walls[id].attrs.materialRef,
+    painted,
+  );
+  assert.equal(ref, 'm-red', '素材が付いていない');
+
+  // 3D で色が変わる。選択中は選択色が勝つので、選択を解いてから見る
+  await page.evaluate(() => window.minicad.editorInstance.store.clearSelection());
+  await page.keyboard.press('F3');
+  await sleep(500);
+  const tinted = await page.evaluate((id) => {
+    const v = window.minicad.viewer;
+    const faces = v.meshNow().filter((f) => f.ref && f.ref.type === 'wall' && f.ref.id === id);
+    return faces.length;
+  }, painted);
+  assert.ok(tinted > 0, '素材を当てた壁が 3D に無い');
+
+  // **面の色そのものは変えない。** 置き換えるのは描くときの色で、
+  // メッシュは素材を知らない（キャッシュが素材で腐らない）
+  const meshColor = await page.evaluate((id) => {
+    const faces = window.minicad.viewer.meshNow().filter((f) => f.ref && f.ref.id === id);
+    return faces[0].color;
+  }, painted);
+  assert.notEqual(meshColor, '#c0392b', 'メッシュに素材の色が焼き込まれている');
+  await page.keyboard.press('F3');
+  await sleep(300);
+  console.log('✔ 素材はホストの識別子のまま運ばれ、3D の着色だけが表示ヒントを読む');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

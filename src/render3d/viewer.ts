@@ -59,6 +59,12 @@ export class Viewer3D {
   private resizeObserver: ResizeObserver | null = null;
   private readonly teardown = new AbortController();
 
+  /**
+   * 素材の ref から表示色を引く表。**ホストが渡した表示ヒントだけ。**
+   * 素材そのものの意味は MiniCAD は知らない
+   */
+  private materials: ReadonlyMap<string, string> = new Map();
+
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly editor: Editor,
@@ -87,6 +93,12 @@ export class Viewer3D {
 
   isVisible(): boolean {
     return this.visible;
+  }
+
+  /** ホストのカタログから表示色を取り込む。渡されなければ既定の 5 色のまま */
+  setMaterialColors(colors: ReadonlyMap<string, string>): void {
+    this.materials = colors;
+    this.requestRender();
   }
 
   /** 図面全体が入るようにカメラを合わせる */
@@ -162,7 +174,7 @@ export class Viewer3D {
     paint(this.ctx, this.camera, this.mesh, this.width, this.height, {
       showEdges: this.showEdges,
       dpr: this.dpr,
-      tint: highlightOf(this.editor),
+      tint: highlightOf(this.editor, this.materials),
     });
   }
 
