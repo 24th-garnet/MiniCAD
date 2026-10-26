@@ -1137,6 +1137,56 @@ async function run() {
   assert.equal((await state()).openings, beforeBay.openings, 'undo で戻らない');
   console.log('✔ 出窓は窓に張り出しを足したもので、種別は増えない');
 
+  // --- 建具の結合 ---
+  // 同じ種別に重ねて置くと、まとまって 1 つになる（区間マージ）
+  await page.locator('.part-button[data-opening="窓"]').click();
+  await sleep(200);
+  const beforeMerge = await state();
+  await moveWorld(spot[0], spot[1]);
+  await clickWorld(spot[0], spot[1]);
+  await sleep(250);
+  const one = await state();
+  assert.equal(one.openings, beforeMerge.openings + 1, '1 つ目の窓が置けない');
+
+  const firstWidth = await page.evaluate(() => {
+    const ops = Object.values(window.minicad.editorInstance.store.scene.openings);
+    return ops[ops.length - 1].width;
+  });
+
+  // 少しずらして重ねる
+  const near = await page.evaluate(([x, y]) => {
+    const s = window.minicad.editorInstance.store.scene;
+    const ops = Object.values(s.openings);
+    const last = ops[ops.length - 1];
+    const w = s.walls[last.wallId];
+    const a = s.nodes[w.a];
+    const b = s.nodes[w.b];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const t = (last.offset + last.width * 0.5) / len;
+    void x; void y;
+    return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t];
+  }, spot);
+  await moveWorld(near[0], near[1]);
+  await clickWorld(near[0], near[1]);
+  await sleep(250);
+
+  const merged = await state();
+  assert.equal(merged.openings, beforeMerge.openings + 1, `結合せずに増えた (${merged.openings})`);
+  const mergedWidth = await page.evaluate(() => {
+    const ops = Object.values(window.minicad.editorInstance.store.scene.openings);
+    return ops[ops.length - 1].width;
+  });
+  assert.ok(mergedWidth > firstWidth, `幅が広がっていない (${firstWidth} → ${mergedWidth})`);
+
+  // undo 1 回で元の 2 つ…ではなく、元の 1 つに戻る（結合は 1 コミット）
+  await page.keyboard.press('Control+z');
+  await sleep(250);
+  assert.equal((await state()).openings, beforeMerge.openings + 1, 'undo 1 回で戻らない');
+  await page.keyboard.press('Control+z');
+  await sleep(250);
+  assert.equal((await state()).openings, beforeMerge.openings, '2 回目の undo で戻らない');
+  console.log('✔ 同じ種別の建具を重ねると 1 つにまとまる');
+
   await page.keyboard.press('Escape');
   await page.keyboard.press('v');
   await sleep(150);

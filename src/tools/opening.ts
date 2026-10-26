@@ -1,6 +1,6 @@
 import { defaultAttrs } from '../core/attrs.ts';
 import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
-import { clampOpening, wallEnds, wallLength } from '../core/ops.ts';
+import { clampOpening, mergeOpeningSpan, wallEnds, wallLength } from '../core/ops.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { openingFrame, openingQuad } from '../core/shape.ts';
 import { OPENING_SYMBOLS, openingKindsOf, openingPrimitives } from '../core/opening.ts';
@@ -16,6 +16,10 @@ import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 interface Candidate {
   wallId: Id;
   offset: number;
+  /** 置く幅。既存と結合するときは、まとめた区間の幅になる */
+  width: number;
+  /** 結合して消える開口。置くのと同じコミットで消す */
+  absorb: Id[];
 }
 
 /**
@@ -77,7 +81,7 @@ export class OpeningTool implements Tool {
       id,
       wallId: candidate.wallId,
       offset: candidate.offset,
-      width: this.width,
+      width: candidate.width,
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
@@ -90,6 +94,8 @@ export class OpeningTool implements Tool {
       attrs: defaultAttrs(),
     };
     store.commit(() => {
+      // 吸収したぶんは同じコミットで消す。undo 1 回で元の 2 つに戻る
+      for (const absorbed of candidate.absorb) delete store.scene.openings[absorbed];
       store.scene.openings[id] = opening;
     });
   }
@@ -114,7 +120,7 @@ export class OpeningTool implements Tool {
   private findCandidate(editor: Editor, p: Vec): Candidate | null {
     const scene = editor.store.scene;
     const limit = editor.viewport.toWorldLength(40);
-    let best: { wallId: Id; offset: number; d: number } | null = null;
+    let best: (Candidate & { d: number }) | null = null;
 
     for (const wall of Object.values(scene.walls)) {
       const [a, b] = wallEnds(scene, wall);
@@ -122,11 +128,22 @@ export class OpeningTool implements Tool {
       const reach = Math.max(limit, wall.thickness);
       if (c.dist > reach) continue;
       const raw = c.t * dist(a, b);
-      const offset = clampOpening(scene, wall.id, raw, this.width);
-      if (offset === null) continue;
-      if (!best || c.dist < best.d) best = { wallId: wall.id, offset, d: c.dist };
+
+      // **同じ種別と重なるならまとめる。** 壁が既に持っている 1 次元の
+      // パラメータ空間での区間マージで、CSG ではない
+      const merged = mergeOpeningSpan(scene, wall.id, this.kind, raw, this.width);
+      const here: Candidate | null = merged
+        ? { wallId: wall.id, offset: merged.offset, width: merged.width, absorb: merged.absorb }
+        : (() => {
+            const offset = clampOpening(scene, wall.id, raw, this.width);
+            return offset === null ? null : { wallId: wall.id, offset, width: this.width, absorb: [] };
+          })();
+      if (!here) continue;
+      if (!best || c.dist < best.d) best = { ...here, d: c.dist };
     }
-    return best ? { wallId: best.wallId, offset: best.offset } : null;
+    if (!best) return null;
+    const { d: _d, ...candidate } = best;
+    return candidate;
   }
 
   drawOverlay(editor: Editor, frame: Frame): void {
@@ -137,7 +154,8 @@ export class OpeningTool implements Tool {
       id: '__preview',
       wallId: candidate.wallId,
       offset: candidate.offset,
-      width: this.width,
+      // 結合するときは、まとめた後の形を先に見せる。押してから驚かない
+      width: candidate.width,
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
@@ -228,6 +246,9 @@ export class OpeningTool implements Tool {
     const wall = editor.store.scene.walls[this.candidate.wallId];
     const total = wall ? Math.round(wallLength(editor.store.scene, wall)) : 0;
     const hint = this.symbol.usesFlipX || this.symbol.usesFlipY ? '  —  X / Y で反転' : '';
-    return `${this.symbol.label} 幅 ${this.width}mm / 壁長 ${total}mm の ${Math.round(this.candidate.offset)}mm の位置${hint}`;
+    const merge = this.candidate.absorb.length > 0
+      ? `  —  既存の ${this.candidate.absorb.length} つと結合して幅 ${Math.round(this.candidate.width)}mm になります`
+      : '';
+    return `${this.symbol.label} 幅 ${this.width}mm / 壁長 ${total}mm の ${Math.round(this.candidate.offset)}mm の位置${hint}${merge}`;
   }
 }

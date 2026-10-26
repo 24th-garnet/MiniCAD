@@ -1,7 +1,7 @@
 import { defaultAttrs } from './attrs.ts';
 import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
-import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
+import { newId, type Id, type Opening, type OpeningKind, type Scene, type Wall } from './types.ts';
 import { dropConstraintsForWall, splitConstraints } from './constraintOps.ts';
 
 /** 同一ノードとみなす距離 (mm) */
@@ -119,12 +119,15 @@ export function openingsOnWall(scene: Scene, wallId: Id): Opening[] {
     .sort((x, y) => x.offset - y.offset);
 }
 
+/** 開口の端と壁の端のあいだに残す最小の寸法 (mm) */
+const OPENING_MARGIN = 20;
+
 /** 開口を壁内に収め、他の開口と重ならない位置へ丸める。置けないなら null */
 export function clampOpening(scene: Scene, wallId: Id, offset: number, width: number, ignoreId?: Id): number | null {
   const wall = scene.walls[wallId];
   if (!wall) return null;
   const total = wallLength(scene, wall);
-  const margin = 20;
+  const margin = OPENING_MARGIN;
   if (total < width + margin * 2) return null;
   let lo = width / 2 + margin;
   let hi = total - width / 2 - margin;
@@ -139,6 +142,58 @@ export function clampOpening(scene: Scene, wallId: Id, offset: number, width: nu
   return Math.max(lo, Math.min(hi, offset));
 }
 
+
+/**
+ * 同じ種別の開口と重なるなら、まとめた 1 つの区間を返す。重ならないなら null。
+ *
+ * **壁が既に持っている 1 次元のパラメータ空間での区間マージ。** CSG でも
+ * ブーリアンでもない。ワイヤーの「ブーリアンのように見える処理」はこれで足りる。
+ *
+ * **同じ種別のものとしか結合しない。** ドアと窓を融かすと、出来たものが
+ * どちらでもなくなる。種別が違うなら `clampOpening` が今までどおり脇へ逃がす。
+ *
+ * **触れているだけでは結合しない。** 柱の無い位置に窓を 2 つ並べるのは
+ * ふつうの作図で、隣に置いた瞬間に 1 つになると困る。
+ */
+export function mergeOpeningSpan(
+  scene: Scene,
+  wallId: Id,
+  kind: OpeningKind,
+  offset: number,
+  width: number,
+): { offset: number; width: number; absorb: Id[] } | null {
+  const wall = scene.walls[wallId];
+  if (!wall) return null;
+  const total = wallLength(scene, wall);
+  let lo = offset - width / 2;
+  let hi = offset + width / 2;
+  const absorb: Id[] = [];
+
+  // 吸収するたびに区間が伸びるので、伸びなくなるまで繰り返す
+  for (let pass = 0; pass < Object.keys(scene.openings).length + 1; pass++) {
+    let grew = false;
+    for (const other of openingsOnWall(scene, wallId)) {
+      if (other.kind !== kind) continue;
+      if (absorb.includes(other.id)) continue;
+      const oLo = other.offset - other.width / 2;
+      const oHi = other.offset + other.width / 2;
+      if (oHi <= lo + MERGE_TOLERANCE || oLo >= hi - MERGE_TOLERANCE) continue;
+      lo = Math.min(lo, oLo);
+      hi = Math.max(hi, oHi);
+      absorb.push(other.id);
+      grew = true;
+    }
+    if (!grew) break;
+  }
+  if (absorb.length === 0) return null;
+
+  // 結合した結果が壁に収まらないなら、結合しない方がまし
+  if (lo < OPENING_MARGIN || hi > total - OPENING_MARGIN) return null;
+  return { offset: (lo + hi) / 2, width: hi - lo, absorb };
+}
+
+/** これ以上重なったら結合する (mm)。触れているだけでは結合しない */
+const MERGE_TOLERANCE = 1;
 
 /** ノードをまとめて移動する（壁は端点を共有しているので自動的に追従する） */
 export function moveNodes(scene: Scene, ids: Id[], delta: Vec): void {
