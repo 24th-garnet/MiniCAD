@@ -23,10 +23,17 @@ body {
   overflow: hidden;
 }
 
+/* 単体で立ち上げたときの入れ物。埋め込まれるときはホストが寸法を決める */
 #app {
+  height: 100%;
+}
+
+/* MiniCAD 本体の外枠。貰った箱いっぱいに広がる */
+.minicad {
   display: grid;
   grid-template-rows: 44px 1fr 26px;
   height: 100%;
+  min-height: 0;
 }
 
 /* --- 上部バー --- */

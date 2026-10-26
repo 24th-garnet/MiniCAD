@@ -33,6 +33,7 @@ import { StatusBar } from './status-bar.ts';
 import { ViewTabs } from './panels/view-tabs.ts';
 import { Viewer3D } from '../render3d/viewer.ts';
 import { ViewState, type ViewMode } from './view-state.ts';
+import { buildShell } from './shell.ts';
 
 const AUTOSAVE_DELAY_MS = 600;
 
@@ -51,11 +52,12 @@ export class App {
   readonly view: ViewState;
   private readonly canvasWrap: HTMLElement;
 
-  constructor(root: Document = document) {
-    const canvas = root.getElementById('canvas') as HTMLCanvasElement;
-    this.editor = new Editor(canvas);
-    this.viewer3d = new Viewer3D(root.getElementById('canvas3d') as HTMLCanvasElement, this.editor);
-    this.canvasWrap = canvas.parentElement!;
+  constructor(host: HTMLElement) {
+    // 骨組みは自分で組む。埋め込まれるとき、MiniCAD は入る箱しか貰えない
+    const shell = buildShell(host);
+    this.editor = new Editor(shell.canvas);
+    this.viewer3d = new Viewer3D(shell.canvas3d, this.editor);
+    this.canvasWrap = shell.canvasWrap;
     // **ビューの状態は App が持つ。** `Viewer3D.visible` は従属に降りる
     this.view = new ViewState((mode) => this.applyView(mode));
 
@@ -105,24 +107,16 @@ export class App {
         ctx.refresh();
       },
     });
-    const toolbar = new Toolbar(root.getElementById('toolbar')!);
-    const fileActions = new FileActions(root.getElementById('file-actions')!);
-    const commandInput = new CommandInput(
-      root.getElementById('numeric') as HTMLFormElement,
-      root.getElementById('numeric-input') as HTMLInputElement,
-      root.getElementById('numeric-label')!,
-    );
-    this.statusBar = new StatusBar(
-      root.getElementById('status-hint')!,
-      root.getElementById('status-readout')!,
-      this.viewer3d,
-    );
+    const toolbar = new Toolbar(shell.toolbar);
+    const fileActions = new FileActions(shell.fileActions);
+    const commandInput = new CommandInput(shell.numeric, shell.numericInput, shell.numericLabel);
+    this.statusBar = new StatusBar(shell.statusHint, shell.statusReadout, this.viewer3d);
 
     this.panels = [
       toolbar,
       fileActions,
-      new OptionsBar(root.getElementById('options')!),
-      new Inspector(root.getElementById('inspector')!, [
+      new OptionsBar(shell.options),
+      new Inspector(shell.inspector, [
         new SelectionSection(),
         new ConstraintsSection(),
         new RoomsSection(),
@@ -136,7 +130,7 @@ export class App {
       ]),
       this.statusBar,
       commandInput,
-      new ViewTabs(root.getElementById('view-tabs')!, this.viewer3d),
+      new ViewTabs(shell.viewTabs, this.viewer3d),
     ];
 
     toolbar.build(this.ctx);
@@ -145,7 +139,7 @@ export class App {
     installKeymap(this.ctx, bindings, commandInput);
 
     // 座標表示はポインタが動くたびに更新したいので、全体の再描画とは別経路にする
-    canvas.addEventListener('pointermove', () => this.statusBar.refreshReadout(this.ctx));
+    shell.canvas.addEventListener('pointermove', () => this.statusBar.refreshReadout(this.ctx));
 
     this.editor.onChange(() => this.refresh());
     this.refresh();

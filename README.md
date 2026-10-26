@@ -283,6 +283,8 @@ src/
   tools/     ツール。Tool インターフェースを実装すれば追加できる
   io/        JSON / SVG / DXF / サンプル間取り
   ui/        DOM。エディタ本体、パネル、インスペクタの各区画
+    shell.ts     画面の骨組み。index.html ではなくここが組む
+    view-state.ts 2D / 3D / 分割のどれを出しているか
 tools/       開発用。DXF を外部パーサで読み戻して画像化する検証スクリプト
 ```
 

@@ -3,7 +3,9 @@ import { loadLocal } from './io/scene.ts';
 import { sampleScene } from './io/sample.ts';
 import { App } from './ui/app.ts';
 
-const app = new App();
+const host = document.getElementById('app');
+if (!host) throw new Error('#app が見つかりません');
+const app = new App(host);
 // 前回の続きがあれば復元し、初回はサンプル間取りで始める
 app.loadScene(loadLocal() ?? sampleScene());
 
