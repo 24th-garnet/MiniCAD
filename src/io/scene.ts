@@ -205,6 +205,8 @@ export function deserialize(raw: unknown): Scene {
       x: l.x,
       y: l.y,
       name: typeof l.name === 'string' ? l.name : '部屋',
+      floorMaterial: typeof l.floorMaterial === 'string' ? l.floorMaterial : null,
+      ceilingMaterial: typeof l.ceilingMaterial === 'string' ? l.ceilingMaterial : null,
       layerId: layerOr(l.layerId, LAYER_IDS.roomName),
       levelId: levelOr(l.levelId),
     };

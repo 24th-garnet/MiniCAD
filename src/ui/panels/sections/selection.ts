@@ -195,7 +195,29 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
     case 'roomLabel': {
       const label = scene.roomLabels[ref.id];
       if (!label) return [];
-      return [textField('部屋名', label.name, (v) => edit(() => void (label.name = v)))];
+      // **床と天井の仕上げはここに紐づく。** 部屋は壁から導く派生データで
+      // id を持たず、位置依存の id に落ちるので、そこに貼ると壁を 1 本
+      // 足しただけで別の部屋のものになる
+      const materials = ctx.catalogs.materials ?? [];
+      const options = [
+        { value: '', label: '（指定なし）' },
+        ...materials.map((m) => ({ value: m.ref, label: m.label })),
+      ];
+      return [
+        textField('部屋名', label.name, (v) => edit(() => void (label.name = v))),
+        el('h3', { class: 'attr-head' }, ['仕上げ']),
+        materials.length === 0
+          ? el('p', { class: 'empty-note' }, ['素材カタログを受け取っていません。'])
+          : null,
+        materials.length > 0
+          ? selectField('床', label.floorMaterial ?? '', options,
+              (v) => edit(() => void (label.floorMaterial = v || null)))
+          : null,
+        materials.length > 0
+          ? selectField('天井', label.ceilingMaterial ?? '', options,
+              (v) => edit(() => void (label.ceilingMaterial = v || null)))
+          : null,
+      ];
     }
     case 'shape': {
       const shape = scene.shapes[ref.id];

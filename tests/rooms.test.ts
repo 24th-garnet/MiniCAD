@@ -74,6 +74,7 @@ test('部屋ラベルは内側に置かれた部屋に結びつく', () => {
   rect(scene, 0, 0, 4000, 3000);
   scene.roomLabels['L1'] = {
     id: 'L1', x: 2000, y: 1500, name: 'リビング',
+    floorMaterial: null, ceilingMaterial: null,
     layerId: LAYER_IDS.roomName, levelId: DEFAULT_LEVEL_ID,
   };
   const rooms = detectRooms(scene);

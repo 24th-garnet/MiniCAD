@@ -251,3 +251,80 @@ test('建具の対象外は効かない（穴は実在する）', async () => {
     '建具が消えている',
   );
 });
+
+test('面ごとの仕上げは、選んだ種類だけ全面まとめて出る', async () => {
+  // **拾い側は「面が来ている種類は室ごとの行を作らない」。**
+  // 1 面でも漏らすと、その面が見積書から黙って消える
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  assert.equal(sceneToMeasures(scene, detectRooms(scene), { planId: 'p' }).rooms[0].surfaces,
+    undefined, '何も選んでいないのに面が出ている');
+
+  const rooms = detectRooms(scene);
+  const wallIds = [...new Set(rooms[0].wallIds)];
+  scene.walls[wallIds[0]].attrs.materialRef = 'm-1';
+
+  const got = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' }).rooms[0];
+  assert.ok(got.surfaces, '面が出ていない');
+  const walls = got.surfaces.filter((f) => f.kind === 'wall');
+  assert.equal(walls.length, wallIds.length, `壁が ${walls.length} 面しか出ていない`);
+  assert.equal(walls.find((f) => f.id === wallIds[0])?.finish, 'm-1');
+  // 選んでいない面は空。**空は「室ごとの選択に落ちる」の印**
+  assert.ok(walls.filter((f) => f.id !== wallIds[0]).every((f) => f.finish === ''));
+});
+
+test('対象外にした壁は面にも出ない', async () => {
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  const wallIds = [...new Set(detectRooms(scene)[0].wallIds)];
+  scene.walls[wallIds[0]].attrs.materialRef = 'm-1';
+  scene.walls[wallIds[1]].attrs.takeoff = 'excluded';
+
+  const got = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' }).rooms[0];
+  const walls = got.surfaces!.filter((f) => f.kind === 'wall');
+  assert.equal(walls.length, wallIds.length - 1);
+  assert.ok(!walls.some((f) => f.id === wallIds[1]));
+});
+
+test('床と天井の仕上げは室名ラベルに紐づく', async () => {
+  // **部屋は派生データで id を持たない。** 位置依存の id に貼ると、
+  // 壁を 1 本足して並びが変わっただけで別の部屋のものになる
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  const labelId = detectRooms(scene).find((r) => r.labelId)!.labelId!;
+  scene.roomLabels[labelId].floorMaterial = 'FL-1';
+  scene.roomLabels[labelId].ceilingMaterial = 'CL-1';
+
+  const file = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  const room = file.rooms.find((r) => r.id === labelId)!;
+  const floor = room.surfaces!.find((f) => f.kind === 'floor')!;
+  const ceiling = room.surfaces!.find((f) => f.kind === 'ceiling')!;
+  assert.equal(floor.id, '__floor__');
+  assert.equal(floor.finish, 'FL-1');
+  assert.equal(floor.area, room.floor_area, '床の面積が室の床面積と食い違う');
+  assert.equal(ceiling.finish, 'CL-1');
+  // 壁を選んでいないので、壁の面は出ない（室ごとの行に任せる）
+  assert.ok(!room.surfaces!.some((f) => f.kind === 'wall'));
+});
+
+test('仕上げが室名ラベルの往復を生き延びる', async () => {
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { deserialize, serialize } = await import('../src/io/scene.ts');
+  const scene = sampleScene();
+  const id = Object.keys(scene.roomLabels)[0];
+  scene.roomLabels[id].floorMaterial = 'host://FL?v=2';
+  scene.roomLabels[id].ceilingMaterial = null;
+
+  const back = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
+  assert.equal(back.roomLabels[id].floorMaterial, 'host://FL?v=2');
+  assert.equal(back.roomLabels[id].ceilingMaterial, null);
+});

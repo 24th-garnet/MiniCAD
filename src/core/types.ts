@@ -124,13 +124,29 @@ export interface Opening {
   attrs: Attrs;
 }
 
-/** 部屋名の手動ラベル。部屋ポリゴン自体は壁から自動検出する */
+/**
+ * 部屋名の手動ラベル。部屋ポリゴン自体は壁から自動検出する。
+ *
+ * **床と天井の仕上げの、耐久するアンカーでもある。**
+ * `Room` は壁から導く派生データで id を持たず、`measures.ts` は
+ * `room.labelId ?? \`r${index+1}\`` という**位置依存の id** に落ちる。
+ * 壁を 1 本足して部屋の並びが変わると、r2 に貼った床が r3 のものになる。
+ * ラベルは実体で id を持つので、そこに紐づけたものは動かない。
+ *
+ * **床と天井は部屋のもので、どの実体のものでもない。** 壁の仕上げは壁
+ * （実体）が持てるが、床と天井には持ち主がいない。だから欄が 2 つだけ
+ * ここに来る。巾木や回り縁は面から導く量なので、持ち主は要らない。
+ */
 export interface RoomLabel {
   id: Id;
   /** 部屋の内部に置かれた点。この点を含む検出済み部屋に名前が付く */
   x: number;
   y: number;
   name: string;
+  /** 床の仕上げ。ホストの不透明な識別子。null なら指定なし */
+  floorMaterial: string | null;
+  /** 天井の仕上げ。同上 */
+  ceilingMaterial: string | null;
   layerId: LayerId;
   levelId: Id;
 }

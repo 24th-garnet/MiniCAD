@@ -1,5 +1,5 @@
 import { blockOf, instanceLabel } from '../core/block.ts';
-import { levelOf, wallHeightOf } from '../core/level.ts';
+import { levelOf, wallHeightOf, type Level } from '../core/level.ts';
 import { openingVertical } from '../core/opening.ts';
 import { openingsOnWall } from '../core/ops.ts';
 import { nestingOf, perimeterOf, roomAt } from '../core/rooms.ts';
@@ -75,8 +75,30 @@ export interface MeasuredRoom {
     sill: number;
   }[];
   furniture: { code: string; label: string; count: number }[];
+  /**
+   * 面を個体として分けたもの。**仕上げを面ごとに選んだときだけ出す。**
+   *
+   * 拾い側は「面が来ている種類は室ごとの行を作らない」ので、出すなら
+   * **その種類の面を全部**出す必要がある。1 面でも漏らすと、その面が
+   * 見積書から黙って消える。
+   */
+  surfaces?: MeasuredSurface[];
   basis: Record<string, Basis>;
   basis_note: Record<string, string>;
+}
+
+export interface MeasuredSurface {
+  id: string;
+  kind: 'wall' | 'floor' | 'ceiling';
+  /** 上流で選んだ仕上げ。**空なら室ごとの選択に落ちる** */
+  finish: string;
+  /** 壁のみ */
+  length?: number;
+  height?: number;
+  /** 床・天井のみ */
+  area?: number;
+  /** この面に属する開口の id */
+  openings?: string[];
 }
 
 const round = (v: number, digits = 3): number => {
@@ -120,6 +142,57 @@ function furnitureOf(scene: Scene, rooms: Room[], room: Room) {
     else counts.set(code, { code, label: instanceLabel(scene, inst), count: 1 });
   }
   return [...counts.values()].sort((a, b) => (a.code < b.code ? -1 : 1));
+}
+
+/**
+ * 面を個体として分ける。**仕上げが選ばれている種類だけ**を出す。
+ *
+ * 拾い側（QuantityTakeoff）は、ある種類の面が 1 枚でも来ていれば
+ * その種類の室ごとの行を作らない。だから**出すならその種類を全部**出す。
+ * 1 面でも漏らすと、その面が見積書から黙って消える。
+ *
+ * 床と天井の仕上げは室名ラベルが持つ。`Room` は壁から導く派生データで
+ * id を持たず、位置依存の id に落ちるので、そこに紐づけると壁を 1 本
+ * 足しただけで別の部屋のものになる。
+ */
+function surfacesOf(
+  scene: Scene,
+  room: Room,
+  level: Level,
+  floorArea: number,
+  roomOpeningIds: string[],
+): MeasuredSurface[] {
+  const out: MeasuredSurface[] = [];
+  const known = new Set(roomOpeningIds);
+
+  // --- 壁。1 面でも素材が付いていれば、その部屋の壁を全部出す ---
+  const seen = new Set<string>();
+  const walls = room.wallIds
+    .filter((id) => (seen.has(id) ? false : (seen.add(id), true)))
+    .map((id) => scene.walls[id])
+    .filter((w): w is NonNullable<typeof w> => Boolean(w) && !isExcluded(w.attrs));
+  if (walls.some((w) => w.attrs.materialRef)) {
+    for (const wall of walls) {
+      out.push({
+        id: wall.id,
+        kind: 'wall',
+        finish: wall.attrs.materialRef ?? '',
+        length: Math.round(netLength(scene, wall.id)),
+        height: Math.round(wallHeightOf(wall, level)),
+        openings: openingsOnWall(scene, wall.id).map((o) => o.id).filter((id) => known.has(id)),
+      });
+    }
+  }
+
+  // --- 床と天井。室名ラベルが持つ ---
+  const label = room.labelId ? scene.roomLabels[room.labelId] : null;
+  if (label?.floorMaterial) {
+    out.push({ id: '__floor__', kind: 'floor', finish: label.floorMaterial, area: round(floorArea) });
+  }
+  if (label?.ceilingMaterial) {
+    out.push({ id: '__ceiling__', kind: 'ceiling', finish: label.ceilingMaterial, area: round(floorArea) });
+  }
+  return out;
 }
 
 export function sceneToMeasures(
@@ -203,6 +276,8 @@ export function sceneToMeasures(
         .join(' / ');
     }
 
+    const surfaces = surfacesOf(scene, room, level, floor, openings.map((o) => o.id));
+
     return {
       id: room.labelId ?? `r${index + 1}`,
       name: room.name ?? '',
@@ -213,6 +288,7 @@ export function sceneToMeasures(
       wall_area: round(wallArea),
       openings,
       furniture: furnitureOf(scene, rooms, room),
+      ...(surfaces.length > 0 ? { surfaces } : {}),
       basis,
       basis_note: note,
     };
