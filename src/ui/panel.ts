@@ -1,4 +1,5 @@
 import type { Editor } from './editor.ts';
+import type { ViewState } from './view-state.ts';
 
 /**
  * パネルから編集系の操作を呼ぶための窓口。
@@ -15,6 +16,8 @@ export interface PanelContext {
   set(fn: () => void): void;
   deleteSelection(): void;
   loadScene(scene: Parameters<Editor['store']['replaceScene']>[0]): void;
+  /** どのビューを出しているか。パネルは `Viewer3D` に手を伸ばさずここを読む */
+  readonly view: ViewState;
 }
 
 export interface Panel {

@@ -32,6 +32,7 @@ import { StatsSection } from './panels/sections/stats.ts';
 import { StatusBar } from './status-bar.ts';
 import { ViewTabs } from './panels/view-tabs.ts';
 import { Viewer3D } from '../render3d/viewer.ts';
+import { ViewState, type ViewMode } from './view-state.ts';
 
 const AUTOSAVE_DELAY_MS = 600;
 
@@ -47,10 +48,16 @@ export class App {
   private readonly ctx: PanelContext;
   private autosaveTimer: number | undefined;
 
+  readonly view: ViewState;
+  private readonly canvasWrap: HTMLElement;
+
   constructor(root: Document = document) {
     const canvas = root.getElementById('canvas') as HTMLCanvasElement;
     this.editor = new Editor(canvas);
     this.viewer3d = new Viewer3D(root.getElementById('canvas3d') as HTMLCanvasElement, this.editor);
+    this.canvasWrap = canvas.parentElement!;
+    // **ビューの状態は App が持つ。** `Viewer3D.visible` は従属に降りる
+    this.view = new ViewState((mode) => this.applyView(mode));
 
     // 並び順がそのままツールバーの並び。グループが変わるところに区切りが入る
     for (const tool of [
@@ -83,6 +90,7 @@ export class App {
       set: (fn) => this.editor.store.update(fn),
       deleteSelection: () => this.deleteSelection(),
       loadScene: (scene) => this.loadScene(scene),
+      view: this.view,
     };
 
     const bindings = defaultBindings();
@@ -93,7 +101,7 @@ export class App {
       display: 'F3',
       description: '2D / 3D 切り替え',
       run: (ctx) => {
-        this.viewer3d.setVisible(!this.viewer3d.isVisible());
+        this.view.toggle3d();
         ctx.refresh();
       },
     });
@@ -104,7 +112,11 @@ export class App {
       root.getElementById('numeric-input') as HTMLInputElement,
       root.getElementById('numeric-label')!,
     );
-    this.statusBar = new StatusBar(root.getElementById('status-hint')!, root.getElementById('status-readout')!);
+    this.statusBar = new StatusBar(
+      root.getElementById('status-hint')!,
+      root.getElementById('status-readout')!,
+      this.viewer3d,
+    );
 
     this.panels = [
       toolbar,
@@ -158,6 +170,23 @@ export class App {
     const refs = [...store.selection];
     store.commit(() => removeEntities(store.scene, refs));
     store.clearSelection();
+  }
+
+  /**
+   * ビューの切り替え。**CSS のクラスと 3D の表示だけ**を動かす。
+   *
+   * `Editor.observeResize` にも `Viewer3D.observeResize` にも触らない。
+   * 親のレイアウトが変われば、どちらの `ResizeObserver` も自分で気づいて
+   * 測り直す。**2 枚のキャンバスに分けた当初の判断が、ここで初めて本当に効く。**
+   *
+   * クラスを先に当てるのは、`setVisible` が中で `measure()` を呼ぶため。
+   * 順番が逆だと、分割になる前の幅で測ってしまう。
+   */
+  private applyView(mode: ViewMode): void {
+    this.canvasWrap.classList.toggle('split', mode === 'split');
+    this.viewer3d.setVisible(this.view.shows3d);
+    this.editor.requestRender();
+    this.refresh();
   }
 
   private refresh(): void {

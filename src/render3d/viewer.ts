@@ -16,6 +16,15 @@ import { screenRay } from './ray.ts';
  * MiniCAD でいちばん壊れやすい15行。ここに 3D の分岐を入れたくない。
  * 2枚にすれば `Editor` 側の変更は `get revision()` の1行だけで済む。
  *
+ * **その判断が、分割表示で初めて本当に効いた。** 2D と 3D を左右に並べるのは
+ * `.canvas-wrap` に CSS のクラスを 1 つ足すだけで済んでいる。どちらのキャンバスも
+ * 自分の `ResizeObserver` を持っているので、親の列が変われば自分で測り直す。
+ * **どちらの `observeResize` にも 1 行も触っていない。**
+ *
+ * **どのビューを出しているかは、ここではなく `ui/view-state.ts` が持つ。**
+ * `visible` は「3D が見えているか」しか答えられず、分割では 2D も同時に見えている。
+ * ここに残っているのは描画を止めるためのフラグで、権威ではない。
+ *
  * メッシュは**実体ごとに**持ち、変わったものだけ作り直す（`MeshCache`）。
  * カメラを動かしても作り直さない——`buildMesh` が `Camera3D` を引数に取らないので、
  * 取り違えはコンパイルで止まる。
@@ -153,6 +162,11 @@ export class Viewer3D {
   /** いまの状態の説明。ステータスバーが 3D のときに読む */
   status(): string {
     return this.select.status(this.editor);
+  }
+
+  /** 3D で何かを掴んでいる最中か。分割中にどちらの説明を出すかの判断に使う */
+  isGrabbing(): boolean {
+    return this.select.isActive();
   }
 
   /**

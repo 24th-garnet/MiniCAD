@@ -161,6 +161,27 @@ body {
   cursor: grabbing;
 }
 
+/* 分割表示。**ここは CSS だけで解く。**
+   2D と 3D はそれぞれ自前の ResizeObserver を持っているので、親の列が
+   変われば両方が自分で測り直す。JS 側のサイズ計算には 1 行も触らない。
+   キャンバスを 2 枚に分けた当初の判断が、ここで初めて本当に効く */
+.canvas-wrap.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.canvas-wrap.split > #canvas,
+.canvas-wrap.split > #canvas3d {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 重ね置きをやめて 2 列目に落とす。inset は position が static だと効かない */
+.canvas-wrap.split > #canvas3d {
+  position: static;
+  border-left: 1px solid var(--panel-border);
+}
+
 .options-bar {
   position: absolute;
   top: 10px;

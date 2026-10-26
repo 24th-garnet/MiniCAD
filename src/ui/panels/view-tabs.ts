@@ -1,9 +1,13 @@
 import type { Viewer3D } from '../../render3d/viewer.ts';
 import { clear, el } from '../dom.ts';
 import type { Panel, PanelContext } from '../panel.ts';
+import { VIEW_LABELS, VIEW_MODES } from '../view-state.ts';
 
 /**
- * 2D と 3D の切り替え。
+ * 2D / 3D / 分割の切り替え。
+ *
+ * **どのビューかは `ctx.view` が権威。** `Viewer3D.isVisible()` は
+ * 「3D が見えているか」しか答えられず、分割では 2D も同時に見えている。
  *
  * `Viewer3D` 自身は `Panel` にしない。`App.refresh()` が全パネルを毎回呼ぶので、
  * 隠れているときも描画要求が立ってしまう。ここはボタンだけを持つ。
@@ -16,17 +20,21 @@ export class ViewTabs implements Panel {
 
   refresh(ctx: PanelContext): void {
     clear(this.host);
-    const is3d = this.viewer.isVisible();
 
-    const tab = (label: string, active: boolean, onClick: () => void) =>
-      el('button', { type: 'button', 'aria-pressed': String(active), onclick: onClick }, [label]);
+    for (const mode of VIEW_MODES) {
+      this.host.append(
+        el('button', {
+          type: 'button',
+          'aria-pressed': String(ctx.view.mode === mode),
+          onclick: () => {
+            ctx.view.set(mode);
+          },
+        }, [VIEW_LABELS[mode]]),
+      );
+    }
 
-    this.host.append(
-      tab('2D', !is3d, () => this.show(ctx, false)),
-      tab('3D', is3d, () => this.show(ctx, true)),
-    );
-
-    if (!is3d) return;
+    // カメラの操作は 3D が見えているときだけ意味がある
+    if (!ctx.view.shows3d) return;
     this.host.append(
       el('button', { type: 'button', title: '図面全体が入るように合わせる', onclick: () => this.viewer.fit() }, [
         '全体',
@@ -60,10 +68,5 @@ export class ViewTabs implements Panel {
         ['平行'],
       ),
     );
-  }
-
-  private show(ctx: PanelContext, is3d: boolean): void {
-    this.viewer.setVisible(is3d);
-    ctx.refresh();
   }
 }

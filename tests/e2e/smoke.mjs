@@ -110,6 +110,8 @@ async function run() {
         },
         layerRows: document.querySelectorAll('.layer-row').length,
         view3d: !document.getElementById('canvas3d').hidden,
+        viewMode: window.minicad.view.mode,
+        split: document.querySelector('.canvas-wrap').classList.contains('split'),
         wallLayerVisible: s.layers['wall'].visible,
         wallLayerLocked: s.layers['wall'].locked,
         layerNames: Object.values(s.layers).map((l) => l.name),
@@ -1203,6 +1205,91 @@ async function run() {
   await page.keyboard.press('F3');
   await sleep(300);
   console.log('✔ 3D の 1 フレームが予算に収まる');
+
+  // --- 分割表示 ---
+  const tab = (label) => page.locator('.view-tabs button').filter({ hasText: label }).first();
+
+  await tab('分割').click();
+  await sleep(500);
+  const split = await state();
+  assert.equal(split.viewMode, 'split');
+  assert.equal(split.view3d, true, '分割なのに 3D が隠れている');
+  assert.equal(split.split, true, '分割のクラスが当たっていない');
+
+  // 2 枚が並んでいる。幅は CSS の 1fr 1fr だけで決まり、
+  // どちらの ResizeObserver も自分で測り直している
+  const layout = await page.evaluate(() => {
+    const wrap = document.querySelector('.canvas-wrap').getBoundingClientRect();
+    const c2 = document.getElementById('canvas').getBoundingClientRect();
+    const c3 = document.getElementById('canvas3d').getBoundingClientRect();
+    return {
+      wrap: wrap.width,
+      w2: c2.width, w3: c3.width,
+      left2: c2.left, left3: c3.left,
+      // キャンバスの画素数も付いてきているか（ResizeObserver が測り直した証拠）
+      px2: document.getElementById('canvas').width,
+      px3: document.getElementById('canvas3d').width,
+      dpr: window.devicePixelRatio,
+    };
+  });
+  assert.ok(Math.abs(layout.w2 - layout.wrap / 2) < 4,
+    `2D が半分になっていない (${layout.w2} / ${layout.wrap})`);
+  assert.ok(Math.abs(layout.w3 - layout.wrap / 2) < 4,
+    `3D が半分になっていない (${layout.w3} / ${layout.wrap})`);
+  assert.ok(layout.left3 > layout.left2, '3D が 2D の上に重なったまま');
+  assert.ok(Math.abs(layout.px2 - layout.w2 * layout.dpr) < 4,
+    `2D の画素数が幅に追従していない (${layout.px2} / ${layout.w2 * layout.dpr})`);
+  assert.ok(Math.abs(layout.px3 - layout.w3 * layout.dpr) < 4,
+    `3D の画素数が幅に追従していない (${layout.px3} / ${layout.w3 * layout.dpr})`);
+  console.log('✔ 分割で 2D と 3D が半分ずつ並ぶ');
+
+  // 分割中に 3D で動かすと、2D が同じ画面で追従する
+  const movable = await page.evaluate(() => {
+    const v = window.minicad.viewer;
+    const rect = document.querySelector('#canvas3d').getBoundingClientRect();
+    for (let y = 20; y < rect.height - 20; y += 6) {
+      for (let x = 20; x < rect.width - 20; x += 6) {
+        const hit = v.hitAt(x, y);
+        if (hit && hit.kind === 'blockInstance') return { x: rect.left + x, y: rect.top + y, id: hit.id };
+      }
+    }
+    return null;
+  });
+  assert.ok(movable, '分割の 3D に家具が出ていない');
+
+  const plan = () => page.evaluate(() => document.getElementById('canvas').toDataURL());
+  const planBefore = await plan();
+  const posBefore = await page.evaluate(
+    (id) => { const i = window.minicad.editorInstance.store.scene.instances[id]; return `${i.x},${i.y}`; },
+    movable.id,
+  );
+
+  await page.mouse.move(movable.x, movable.y);
+  await page.mouse.down();
+  await page.mouse.move(movable.x + 70, movable.y + 40, { steps: 8 });
+  await page.mouse.up();
+  await sleep(400);
+
+  const posAfter = await page.evaluate(
+    (id) => { const i = window.minicad.editorInstance.store.scene.instances[id]; return `${i.x},${i.y}`; },
+    movable.id,
+  );
+  assert.notEqual(posAfter, posBefore, '分割の 3D で動かせない');
+  assert.notEqual(await plan(), planBefore, '3D で動かしたのに 2D が描き直されていない');
+  assert.equal((await state()).viewMode, 'split', 'ドラッグでビューが変わった');
+  console.log('✔ 分割中に 3D で動かすと 2D が追従する');
+
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+
+  // F3 は「3D を見ているか」で折り返す。分割からは 2D に戻る
+  await page.keyboard.press('F3');
+  await sleep(400);
+  const afterF3 = await state();
+  assert.equal(afterF3.viewMode, '2d', '分割から F3 で 2D に戻らない');
+  assert.equal(afterF3.view3d, false, '2D なのに 3D が残っている');
+  assert.equal(afterF3.split, false, '2D に戻ったのに分割のクラスが残っている');
+  console.log('✔ 分割から F3 で 2D に戻る');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */
