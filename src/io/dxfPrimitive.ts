@@ -43,6 +43,28 @@ export const dxfLine = (a: Vec, b: Vec, layerName: string, lineType?: LineType):
   '11', fmt(b.x), '21', fmt(b.y), '31', '0.0',
 ];
 
+/**
+ * 3 点か 4 点の平らな面。R12 から使える唯一の立体エンティティ。
+ *
+ * **4 点に満たないときは最後の点を繰り返す。** `3DFACE` は常に 4 点を持ち、
+ * 三角形は「4 点目が 3 点目と同じ」として表す、というのが R12 の約束。
+ * 点を 3 つだけ書くと、読む側が 4 点目を原点と解釈して床まで伸びた面になる。
+ */
+export const dxf3dFace = (points: Vec3Like[], layerName: string): DxfEntity => {
+  const p = [points[0], points[1], points[2], points[3] ?? points[2]];
+  const out: DxfEntity = ['0', '3DFACE', '8', layerName];
+  for (let i = 0; i < 4; i++) {
+    out.push(String(10 + i), fmt(p[i].x), String(20 + i), fmt(p[i].y), String(30 + i), fmt(p[i].z));
+  }
+  return out;
+};
+
+export interface Vec3Like {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** DXF の ARC は start から end へ反時計回りに描かれる。角度は度 */
 export const dxfArc = (
   center: Vec,

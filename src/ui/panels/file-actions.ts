@@ -1,5 +1,6 @@
 import { emptyScene } from '../../core/types.ts';
 import { downloadDxf, exportLossReport } from '../../io/dxf.ts';
+import { sceneToDxf3d } from '../../io/dxf3d.ts';
 import { measuresToJson, sceneToMeasures } from '../../io/measures.ts';
 import { elevationToSvg, sceneToElevations } from '../../io/elevation.ts';
 import { clearLocal, deserialize, downloadJson, triggerDownload } from '../../io/scene.ts';
@@ -104,6 +105,21 @@ export class FileActions implements Panel {
           triggerDownload(blob, `${planId}.measures.json`);
         },
         '実測 JSON を書き出す — 数量拾いへ渡します',
+      )),
+      when(canDownload, button(
+        '3D',
+        () => {
+          const scene = ctx.editor.store.scene;
+          const got = sceneToDxf3d(scene, ctx.editor.rooms);
+          if (got.faces === 0) {
+            window.alert('3D に出るものがありません。');
+            return;
+          }
+          triggerDownload(new Blob([got.text], { type: 'application/dxf' }), 'madori-3d.dxf');
+          // **近似したことも落としたことも書く**
+          window.alert(`3D を ${got.faces} 面の DXF にしました。\n\n${got.notes.join('\n')}`);
+        },
+        '3D を DXF (3DFACE) で書き出す',
       )),
       when(canDownload, button(
         '立面',

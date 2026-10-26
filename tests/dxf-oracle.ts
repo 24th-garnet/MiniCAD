@@ -20,6 +20,23 @@ import type { DxfOptions } from '../src/io/dxf.ts';
  */
 export type DxfEnt = IEntity & { [key: string]: any };
 
+/**
+ * `3DFACE` の頂点。**末尾の空の 1 件を落とす。**
+ *
+ * `dxf-parser` は正しい 3DFACE（コード 10〜13 / 20〜23 / 30〜33）に対しても
+ * 頂点を 5 つ返し、5 つ目は `{}` になる。自前の出力の問題ではないことを、
+ * 4 点が全部違う最小の DXF で確かめてある。
+ *
+ * **オラクル側の癖はオラクルの道具に閉じ込める。** 各テストで
+ * `slice(0, 4)` を書くと、なぜ 4 なのかが散らばって分からなくなる。
+ */
+export function faceVertices(e: DxfEnt): { x: number; y: number; z: number }[] {
+  const v = (e.vertices ?? []) as { x?: number; y?: number; z?: number }[];
+  return v
+    .filter((p) => typeof p.x === 'number' && typeof p.y === 'number')
+    .map((p) => ({ x: p.x as number, y: p.y as number, z: p.z ?? 0 }));
+}
+
 /** 書き出した DXF を外部パーサで読み戻す。読めなければテストを落とす */
 export function parseDxfOracle(dxf: string): IDxf {
   const parsed = new DxfParser().parseSync(dxf);

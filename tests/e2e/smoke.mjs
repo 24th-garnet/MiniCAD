@@ -1451,6 +1451,29 @@ async function run() {
     `立面図に新しい高さ ${Math.round(heightAfter)} が出ていない`);
   console.log('✔ 高さの変更が立面図に出る');
 
+  // --- 3D を DXF で書き出す ---
+  await page.keyboard.press('F3');
+  await sleep(300);
+  page.once('dialog', (d) => d.accept());
+  const [dxf3d] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.click('button[title="3D を DXF (3DFACE) で書き出す"]'),
+  ]);
+  const dxf3dText = await readFile(await dxf3d.path(), 'utf8');
+  assert.ok(dxf3dText.includes('3DFACE'), '3DFACE が入っていない');
+  assert.ok(dxf3dText.includes('A-WALL-3D'), '3D の画層が入っていない');
+  // **高さを持っている（平面図ではない）**
+  const zCodes = dxf3dText.split('\r\n');
+  let maxZ = 0;
+  for (let i = 0; i < zCodes.length - 1; i++) {
+    if (zCodes[i] === '32') maxZ = Math.max(maxZ, Number(zCodes[i + 1]) || 0);
+  }
+  assert.ok(maxZ > 2000, `いちばん高い点が ${maxZ}`);
+  await sleep(300);
+  console.log(`✔ 3D を DXF で書き出せる（最高 ${maxZ}mm）`);
+  await page.keyboard.press('F3');
+  await sleep(300);
+
   // --- 1 フレームの内訳を測って残す ---
   await page.keyboard.press('F3');
   await sleep(400);
