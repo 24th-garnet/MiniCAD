@@ -67,38 +67,57 @@ const PANEL_THICKNESS = 40;
  * 床の高さ（`Level.floorZ`）が階ごとに違うので、同じ平面に重ならない。
  * 描く順（`BUCKET_ORDER`）は階に関係なく正しいまま——床が壁と交差しない、
  * という性質は階の中で閉じているため。
+ *
+ * **キャッシュを挟まない素の組み立てとして残してある。**
+ * `MeshCache` が正しいかは、これと面単位で一致するかで確かめる。
  */
 export function buildMesh(scene: Scene, rooms: Room[]): Face3[] {
   const out: Face3[] = [];
+  buildFloorFaces(scene, rooms, out);
+  for (const wall of Object.values(scene.walls)) buildWallFaces(scene, wall.id, out);
+  for (const inst of Object.values(scene.instances)) buildInstanceFaces(scene, inst.id, out);
+  return out;
+}
 
-  // 床は内法ポリゴン。壁芯で作ると壁と必ず交差し、どうソートしても破綻する
+/**
+ * 床。**内法ポリゴン**で作る。壁芯で作ると壁と必ず交差し、どうソートしても破綻する。
+ *
+ * 部屋は派生データで実体を持たないので `ref` は null。2D でも部屋の内側を
+ * クリックして部屋そのものは選べない（室名ラベルは別）ので、挙動が揃う。
+ *
+ * 床だけまとめて作るのは、部屋が壁から導かれるぶん 1 室だけ作り直すことに
+ * 意味が無いから（どれか 1 本の壁が動けば部屋の形が変わりうる）。
+ */
+export function buildFloorFaces(scene: Scene, rooms: Room[], out: Face3[]): void {
   for (const room of rooms) {
     const poly = room.innerPolygon;
     if (poly.length < 3) continue;
     const levelId = scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId;
     const level = levelOf(scene, levelId);
-    // 床に ref が無いのは、部屋が派生データで実体を持たないから。
-    // 2D でも部屋の内側をクリックして部屋そのものは選べない（室名ラベルは別）
     out.push(flatFace(poly, level.floorZ, theme.floor3d, 'floor', { ref: null, levelId }));
   }
+}
 
-  for (const wall of Object.values(scene.walls)) {
-    if (!isSnappable(scene, { type: 'wall', id: wall.id })) continue;
-    extrudeWall(scene, wall.id, levelOf(scene, wall.levelId), out);
-  }
+/** 壁 1 本ぶん。その壁に載る開口（腰壁・まぐさ・小口・建具）もここで出る */
+export function buildWallFaces(scene: Scene, wallId: Id, out: Face3[]): void {
+  const wall = scene.walls[wallId];
+  if (!wall) return;
+  if (!isSnappable(scene, { type: 'wall', id: wallId })) return;
+  extrudeWall(scene, wallId, levelOf(scene, wall.levelId), out);
+}
 
-  for (const inst of Object.values(scene.instances)) {
-    if (!isSnappable(scene, { type: 'blockInstance', id: inst.id })) continue;
-    const def = blockOf(scene, inst);
-    if (!def) continue;
-    const height = BLOCK_HEIGHTS[def.id] ?? DEFAULT_BLOCK_HEIGHT;
-    if (height <= 0) continue; // 階段のように箱で表すと嘘になるものは立てない
-    const { floorZ } = levelOf(scene, inst.levelId);
-    const src: FaceSource = { ref: { type: 'blockInstance', id: inst.id }, levelId: inst.levelId };
-    extrudePrism(instanceFootprint(scene, inst), floorZ, floorZ + height, theme.furniture3d, 'furniture', src, out);
-  }
-
-  return out;
+/** ブロック挿入 1 つぶん */
+export function buildInstanceFaces(scene: Scene, instId: Id, out: Face3[]): void {
+  const inst = scene.instances[instId];
+  if (!inst) return;
+  if (!isSnappable(scene, { type: 'blockInstance', id: instId })) return;
+  const def = blockOf(scene, inst);
+  if (!def) return;
+  const height = BLOCK_HEIGHTS[def.id] ?? DEFAULT_BLOCK_HEIGHT;
+  if (height <= 0) return; // 階段のように箱で表すと嘘になるものは立てない
+  const { floorZ } = levelOf(scene, inst.levelId);
+  const src: FaceSource = { ref: { type: 'blockInstance', id: instId }, levelId: inst.levelId };
+  extrudePrism(instanceFootprint(scene, inst), floorZ, floorZ + height, theme.furniture3d, 'furniture', src, out);
 }
 
 function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): void {

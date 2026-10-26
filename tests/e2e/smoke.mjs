@@ -1056,6 +1056,22 @@ async function run() {
   await page.keyboard.press('F3');
   await sleep(300);
   console.log('✔ 3D で空を叩くと選択が解ける');
+
+  // --- 1 フレームの内訳を測って残す ---
+  await page.keyboard.press('F3');
+  await sleep(400);
+  const perf = await page.evaluate(() => window.minicad.viewer.profile(120));
+  const total = perf.rooms + perf.mesh + perf.paint;
+  console.log(
+    `  3D 1 フレーム: 部屋 ${perf.rooms}ms + メッシュ ${perf.mesh}ms + 描画 ${perf.paint}ms`
+    + ` = ${total.toFixed(3)}ms  作り直し ${perf.stats}`,
+  );
+  // 余裕を持った上限。桁が変わるような回帰だけを捕まえる
+  assert.ok(total < 16, `3D の 1 フレームが ${total.toFixed(3)}ms と遅い`);
+  assert.ok(perf.mesh < perf.paint, 'メッシュの組み立てが描画より重い（キャッシュが効いていない）');
+  await page.keyboard.press('F3');
+  await sleep(300);
+  console.log('✔ 3D の 1 フレームが予算に収まる');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

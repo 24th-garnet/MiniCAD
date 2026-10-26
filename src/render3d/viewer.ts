@@ -3,7 +3,8 @@ import { activeLevel } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
 import { defaultCamera, dolly, frameAll, orbit, pan, type Camera3D } from './camera.ts';
 import { highlightOf, pickEntity, Select3D, type Pointer3D } from './interact.ts';
-import { buildMesh, type Face3 } from './mesh.ts';
+import { type Face3 } from './mesh.ts';
+import { MeshCache } from './meshCache.ts';
 import { paint } from './paint.ts';
 import { screenRay } from './ray.ts';
 
@@ -15,8 +16,9 @@ import { screenRay } from './ray.ts';
  * MiniCAD でいちばん壊れやすい15行。ここに 3D の分岐を入れたくない。
  * 2枚にすれば `Editor` 側の変更は `get revision()` の1行だけで済む。
  *
- * メッシュはシーンの版で持ち、カメラを動かしても作り直さない。
- * `buildMesh` が `Camera3D` を引数に取らないので、取り違えはコンパイルで止まる。
+ * メッシュは**実体ごとに**持ち、変わったものだけ作り直す（`MeshCache`）。
+ * カメラを動かしても作り直さない——`buildMesh` が `Camera3D` を引数に取らないので、
+ * 取り違えはコンパイルで止まる。
  *
  * **ポインタはカメラと選択に振り分ける。** 素の左ドラッグは今まで通り回転で、
  * 動かさずに離したときだけクリックとして `Select3D` に回す。
@@ -33,8 +35,7 @@ export class Viewer3D {
   showEdges = false;
 
   private readonly ctx: CanvasRenderingContext2D;
-  private meshCache: Face3[] | null = null;
-  private cachedRevision = -1;
+  private readonly meshCache = new MeshCache();
   private frameRequested = false;
   private visible = false;
   private width = 0;
@@ -94,13 +95,51 @@ export class Viewer3D {
     });
   }
 
+  /**
+   * いまのメッシュ。**変わった実体だけ作り直す。**
+   *
+   * シーンの版では見ない。版はシーン全体の単位なので、壁を 1 本動かすと
+   * 全部作り直すことになる。ドラッグ中は毎フレーム版が上がるので、
+   * ここが効いてくる。
+   */
   private get mesh(): Face3[] {
-    const revision = this.editor.revision;
-    if (this.meshCache === null || this.cachedRevision !== revision) {
-      this.meshCache = buildMesh(this.editor.store.scene, this.editor.rooms);
-      this.cachedRevision = revision;
-    }
-    return this.meshCache;
+    return this.meshCache.faces(this.editor.store.scene, this.editor.rooms);
+  }
+
+  /** 直近の組み立てで何を作り直したか。開発時の計測が読む */
+  get meshStats(): { walls: number; instances: number; floors: number } {
+    return this.meshCache.stats;
+  }
+
+  /**
+   * 1 フレームの内訳を測る。**開発時だけ**（`window.minicad.viewer.profile()`）。
+   *
+   * 「速くなったはず」を数字にしておかないと、あとから入った無駄に気づけない。
+   * 家具を 1mm ずつ動かしながら回すので、ドラッグ中と同じ負荷になる。
+   */
+  profile(frames = 120): { rooms: number; mesh: number; paint: number; stats: string } {
+    const scene = this.editor.store.scene;
+    const ids = Object.keys(scene.instances);
+    const nudge = () => {
+      const inst = ids.length ? scene.instances[ids[0]] : null;
+      if (inst) inst.x += 1;
+    };
+
+    const time = (fn: () => void): number => {
+      const t0 = performance.now();
+      for (let i = 0; i < frames; i += 1) { nudge(); fn(); }
+      return (performance.now() - t0) / frames;
+    };
+
+    const rooms = time(() => void this.editor.rooms);
+    const mesh = time(() => void this.mesh);
+    const paintMs = time(() => this.draw());
+    return {
+      rooms: Number(rooms.toFixed(3)),
+      mesh: Number(mesh.toFixed(3)),
+      paint: Number(paintMs.toFixed(3)),
+      stats: JSON.stringify(this.meshCache.stats),
+    };
   }
 
   private draw(): void {
