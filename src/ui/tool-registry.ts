@@ -1,5 +1,6 @@
 import { BlockInsertTool } from '../tools/block-insert.ts';
 import { DimensionTool } from '../tools/dimension.ts';
+import { FixtureTool } from '../tools/fixture.ts';
 import { MeasureTool } from '../tools/measure.ts';
 import { ModifyTool } from '../tools/modify.ts';
 import { OpeningTool } from '../tools/opening.ts';
@@ -54,6 +55,9 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), glyph: '✂', modes: PRO_ONLY, edits: true },
   extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), glyph: '⇥', modes: PRO_ONLY, edits: true },
   wall: { make: () => new WallTool(), glyph: '▬', modes: BOTH_MODES, edits: true },
+  // **構造は建具より上に並べる**（ワイヤーの奥谷さんの指摘）。
+  // 躯体を決めてから建具を入れるのが実際の手順
+  fixture: { make: () => new FixtureTool(), glyph: '◫', modes: BOTH_MODES, edits: true },
   door: { make: () => new OpeningTool('door', 'door', 'ドア', 'D'), glyph: '⌒', modes: BOTH_MODES, edits: true },
   window: { make: () => new OpeningTool('window', 'window', '窓', 'S'), glyph: '▤', modes: BOTH_MODES, edits: true },
   block: { make: () => new BlockInsertTool(), glyph: '▦', modes: BOTH_MODES, edits: true },

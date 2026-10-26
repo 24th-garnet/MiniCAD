@@ -118,8 +118,13 @@ export class Viewer3D {
   }
 
   /** 直近の組み立てで何を作り直したか。開発時の計測が読む */
-  get meshStats(): { walls: number; instances: number; floors: number } {
+  get meshStats(): { walls: number; fixtures: number; instances: number; floors: number } {
     return this.meshCache.stats;
+  }
+
+  /** いまの面。**開発時の確認と e2e のため**で、描画には使わない */
+  meshNow(): Face3[] {
+    return this.mesh;
   }
 
   /**

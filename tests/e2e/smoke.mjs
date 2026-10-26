@@ -97,6 +97,8 @@ async function run() {
         walls: Object.keys(s.walls).length,
         openings: Object.keys(s.openings).length,
         instances: Object.keys(s.instances).length,
+        fixtures: Object.keys(s.fixtures).length,
+        fixtureKinds: Object.values(s.fixtures).map((f) => f.kind),
         blocks: Object.keys(s.blocks).length,
         blockLabels: Object.values(s.blocks).map((b) => b.label),
         shapes: Object.keys(s.shapes).length,
@@ -1031,6 +1033,62 @@ async function run() {
   assert.ok((await slope(wallId)) > 500, '拘束の追加が undo で戻らない');
   console.log('✔ 拘束の追加を undo 1回で取り消せる');
 
+  // --- 構造 ---
+  const beforeFixture = await state();
+  await page.locator('.part-button[data-fixture="column"]').click();
+  await sleep(250);
+  assert.equal((await state()).tool, 'fixture', '構造ツールに移っていない');
+
+  await clickWorld(2000, 2000);
+  await sleep(250);
+  const withColumn = await state();
+  assert.equal(withColumn.fixtures, beforeFixture.fixtures + 1, '柱が置けない');
+  assert.deepEqual(withColumn.fixtureKinds, ['column']);
+
+  // 既定の高さは階高に落ちている（上書きしていない）
+  const col = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const f = Object.values(s.fixtures)[0];
+    return { base: f.base, height: f.height, w: f.size.w, levelId: f.levelId };
+  });
+  assert.equal(col.base, null, '下端が既定になっていない');
+  assert.equal(col.height, null, '高さが既定になっていない');
+  assert.equal(col.levelId, 'lv-1');
+
+  // 梁も置ける。天井から下がるので下端が 0 ではない
+  await page.locator('.part-button[data-fixture="beam"]').click();
+  await sleep(200);
+  await clickWorld(2000, 4000);
+  await sleep(250);
+  assert.equal((await state()).fixtures, beforeFixture.fixtures + 2, '梁が置けない');
+
+  // 3D に立つ。柱と梁は躯体なので壁の層に出る
+  const solids = await page.evaluate(() => {
+    const app = window.minicad;
+    const scene = app.editorInstance.store.scene;
+    const mine = app.viewer.meshNow().filter((f) => f.ref && f.ref.type === 'fixture');
+    return {
+      count: mine.length,
+      buckets: [...new Set(mine.map((f) => f.bucket))],
+      maxZ: Math.max(...mine.map((f) => Math.max(...f.points.map((p) => p.z)))),
+      wallHeight: scene.levels[scene.activeLevelId].wallHeight,
+    };
+  });
+  assert.ok(solids.count > 0, '構造が 3D に出ていない');
+  assert.deepEqual(solids.buckets, ['wall'], `層が違う: ${solids.buckets}`);
+  assert.ok(Math.abs(solids.maxZ - solids.wallHeight) < 1, '柱が階高まで立っていない');
+
+  // undo 2 回でどちらも消える
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  await sleep(250);
+  assert.equal((await state()).fixtures, beforeFixture.fixtures, 'undo で戻らない');
+  console.log('✔ 柱と梁を置けて、3D にも立つ');
+
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
+  await sleep(150);
+
   // --- 3D ---
   const before3d = await state();
   await page.keyboard.press('F3');
@@ -1041,12 +1099,19 @@ async function run() {
   assert.deepEqual(shown.rooms, before3d.rooms, '切り替えで部屋が変わった');
   console.log('✔ 3D に切り替えてもシーンは変わらない');
 
-  // カメラを動かしても副作用が無い
+  // カメラを動かしても副作用が無い。
+  // **空から掴む。** 図面の上から掴むと、回転ではなくその実体の移動になり、
+  // 「カメラ操作に副作用がない」を見ているつもりで別のことを見てしまう
   const canvas3d = await page.locator('#canvas3d').boundingBox();
   const mid = { x: canvas3d.x + canvas3d.width / 2, y: canvas3d.y + canvas3d.height / 2 };
-  await page.mouse.move(mid.x, mid.y);
+  const sky = { x: canvas3d.x + 20, y: canvas3d.y + 20 };
+  assert.equal(await page.evaluate(
+    ([x, y]) => window.minicad.viewer.hitAt(x, y),
+    [20, 20],
+  ), null, '空のつもりの点に何か写っている');
+  await page.mouse.move(sky.x, sky.y);
   await page.mouse.down();
-  await page.mouse.move(mid.x + 120, mid.y - 60, { steps: 6 });
+  await page.mouse.move(sky.x + 120, sky.y - 60, { steps: 6 });
   await page.mouse.up();
   await page.mouse.wheel(0, -240);
   await sleep(300);
@@ -1295,6 +1360,11 @@ async function run() {
   });
   assert.ok(movable, '分割の 3D に家具が出ていない');
 
+  // 2D 側を全体表示にしておく。分割にすると幅が半分になって図面が切れ、
+  // 動かした家具が画面の外だと「描き直されたか」を画素で見られない
+  await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+  await sleep(300);
+
   const plan = () => page.evaluate(() => document.getElementById('canvas').toDataURL());
   const planBefore = await plan();
   const posBefore = await page.evaluate(
@@ -1470,13 +1540,14 @@ async function run() {
   }, hostFile);
   await sleep(500);
 
-  const parts = page.locator('.part-button');
+  // 構造のボタンは組み込みなので、ホストのカタログだけを数える
+  const parts = page.locator('.part-button:not([data-fixture])');
   assert.equal(await parts.count(), 2, 'カタログがパレットに出ていない');
   assert.equal(await page.locator('.part-button:disabled').count(), 1,
     '壁を含む部品が挿せるように見えている');
 
   const beforeInsert = await state();
-  await page.locator('.part-button:not(:disabled)').first().click();
+  await page.locator('.part-button:not([data-fixture]):not(:disabled)').first().click();
   await sleep(250);
   assert.equal((await state()).tool, 'block', 'ブロックツールに移っていない');
 

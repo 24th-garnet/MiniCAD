@@ -50,6 +50,7 @@ export function defaultBindings(): Binding[] {
         const all = [
           ...Object.keys(scene.walls).map((id) => ({ type: 'wall' as const, id })),
           ...Object.keys(scene.instances).map((id) => ({ type: 'blockInstance' as const, id })),
+          ...Object.keys(scene.fixtures).map((id) => ({ type: 'fixture' as const, id })),
           ...Object.keys(scene.openings).map((id) => ({ type: 'opening' as const, id })),
         ];
         ctx.editor.store.setSelection(all.filter((ref) => isSelectable(scene, ref)));

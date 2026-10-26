@@ -77,7 +77,7 @@ test('同じシーンを 2 回渡しても何も作り直さない', () => {
   const cache = new MeshCache();
   cached(cache, scene);
   cached(cache, scene);
-  assert.deepEqual(cache.stats, { walls: 0, instances: 0, floors: 0 });
+  assert.deepEqual(cache.stats, { walls: 0, fixtures: 0, instances: 0, floors: 0 });
 });
 
 test('家具を 1 つ動かしても壁は作り直さない', () => {

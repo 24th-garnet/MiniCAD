@@ -85,6 +85,16 @@ function moveEntities(
     const s = scene.shapes[id];
     if (s) scene.shapes[id] = transformShape(scene, s, t, null);
   }
+  for (const id of sel.fixtureIds) {
+    const f = scene.fixtures[id];
+    if (!f) continue;
+    const p = applyPoint(t, f);
+    f.x = p.x;
+    f.y = p.y;
+    f.angle = directionAngleAfter(t, f.angle);
+    // 柱も階段も左右の区別が無い（階段は上り方向を角度で持つ）ので、
+    // ブロックのような尺度の符号による反転は要らない
+  }
   if (mirrored) {
     const movedWallIds = new Set(movedWalls.map((w) => w.id));
     for (const op of Object.values(scene.openings)) {
@@ -97,6 +107,7 @@ function moveEntities(
     ...sel.instanceIds.map((id) => ({ type: 'blockInstance' as const, id })),
     ...sel.roomLabelIds.map((id) => ({ type: 'roomLabel' as const, id })),
     ...sel.shapeIds.map((id) => ({ type: 'shape' as const, id })),
+    ...sel.fixtureIds.map((id) => ({ type: 'fixture' as const, id })),
   ];
   return { refs, nodeMap: new Map(), wallMap: new Map() };
 }
@@ -176,6 +187,23 @@ function copyEntities(
     const newShapeId = newId('s');
     scene.shapes[newShapeId] = { ...transformShape(scene, s, t, nodeMap), id: newShapeId };
     refs.push({ type: 'shape', id: newShapeId });
+  }
+
+  for (const id of sel.fixtureIds) {
+    const f = scene.fixtures[id];
+    if (!f) continue;
+    const p = applyPoint(t, f);
+    const newFixtureId = newId('f');
+    scene.fixtures[newFixtureId] = {
+      ...f,
+      id: newFixtureId,
+      x: p.x,
+      y: p.y,
+      angle: directionAngleAfter(t, f.angle),
+      size: { ...f.size },
+      attrs: { ...f.attrs },
+    };
+    refs.push({ type: 'fixture', id: newFixtureId });
   }
 
   // 全参照先が複製された拘束だけを写す。片側だけだと複製が元に引きずられて動く

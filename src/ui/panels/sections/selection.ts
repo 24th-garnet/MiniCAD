@@ -5,6 +5,7 @@ import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
 import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
+import { FIXTURE_SPECS, type Fixture } from '../../../core/fixture.ts';
 import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
 import { resolveSelection, selectionCenter } from '../../../core/selection.ts';
@@ -157,7 +158,51 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
       if (!shape) return [];
       return shapeFields(shape, edit);
     }
+    case 'fixture': {
+      const f = scene.fixtures[ref.id];
+      if (!f) return [];
+      const spec = FIXTURE_SPECS[f.kind];
+      const level = levelOf(scene, f.levelId);
+      const round = f.kind === 'roundColumn';
+      return [
+        readonlyField('種類', spec.label),
+        numberField(round ? '直径' : '幅', f.size.w, (v) => edit(() => setSize(f, Math.max(10, v), null)), {
+          step: 50, min: 10, suffix: 'mm',
+        }),
+        // 円柱は直径 1 つで決まる。奥行の欄を出すと、直せない値が見えて混乱する
+        round ? null : numberField('奥行', f.size.h, (v) => edit(() => setSize(f, null, Math.max(10, v))), {
+          step: 50, min: 10, suffix: 'mm',
+        }),
+        optionalNumberField(
+          '下端',
+          f.base,
+          spec.defaultBase(level),
+          (v) => edit(() => void (f.base = v === null ? null : Math.max(0, v))),
+          { step: 50, min: 0, suffix: 'mm' },
+        ),
+        optionalNumberField(
+          '高さ',
+          f.height,
+          spec.defaultHeight(level),
+          (v) => edit(() => void (f.height = v === null ? null : Math.max(1, v))),
+          { step: 100, min: 1, suffix: 'mm' },
+        ),
+        numberField('角度', toDeg(f.angle), (v) => edit(() => void (f.angle = toRad(v))), {
+          step: 15, suffix: '°',
+        }),
+        numberField('X', f.x, (v) => edit(() => void (f.x = v)), { step: 50, suffix: 'mm' }),
+        numberField('Y', f.y, (v) => edit(() => void (f.y = v)), { step: 50, suffix: 'mm' }),
+        textField('文字', f.label, (v) => edit(() => void (f.label = v.trim()))),
+      ];
+    }
   }
+}
+
+/** 幅と奥行は別々に直せる。円柱は直径が奥行も決める */
+function setSize(f: Fixture, w: number | null, h: number | null): void {
+  if (w !== null) f.size.w = w;
+  if (h !== null) f.size.h = h;
+  if (f.kind === 'roundColumn') f.size.h = f.size.w;
 }
 
 /**

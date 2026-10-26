@@ -17,6 +17,7 @@ export interface ResolvedSelection {
   instanceIds: Id[];
   roomLabelIds: Id[];
   shapeIds: Id[];
+  fixtureIds: Id[];
 }
 
 /** 操作開始時の位置。ドラッグ中に同じ delta を何度適用しても累積しないようにするため */
@@ -24,6 +25,7 @@ export interface MoveOrigins {
   nodes: Map<Id, Vec>;
   instances: Map<Id, Vec>;
   roomLabels: Map<Id, Vec>;
+  fixtures: Map<Id, Vec>;
   /** 開口は壁に沿った距離で持つ */
   openings: Map<Id, number>;
   /** 図形は種別ごとに持つ座標が違うので、元の図形ごと控えておく */
@@ -34,6 +36,7 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
   const nodeIds = new Set<Id>();
   const openingIds = new Set<Id>();
   const instanceIds = new Set<Id>();
+  const fixtureIds = new Set<Id>();
   const roomLabelIds = new Set<Id>();
   const shapeIds = new Set<Id>();
 
@@ -62,6 +65,9 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
       case 'shape':
         if (scene.shapes[ref.id]) shapeIds.add(ref.id);
         break;
+      case 'fixture':
+        if (scene.fixtures[ref.id]) fixtureIds.add(ref.id);
+        break;
     }
   }
   return {
@@ -70,6 +76,7 @@ export function resolveSelection(scene: Scene, refs: EntityRef[]): ResolvedSelec
     instanceIds: [...instanceIds],
     roomLabelIds: [...roomLabelIds],
     shapeIds: [...shapeIds],
+    fixtureIds: [...fixtureIds],
   };
 }
 
@@ -79,7 +86,8 @@ export function isEmptySelection(sel: ResolvedSelection): boolean {
     sel.openingIds.length === 0 &&
     sel.instanceIds.length === 0 &&
     sel.roomLabelIds.length === 0 &&
-    sel.shapeIds.length === 0
+    sel.shapeIds.length === 0 &&
+    sel.fixtureIds.length === 0
   );
 }
 
@@ -88,6 +96,7 @@ export function captureOrigins(scene: Scene, sel: ResolvedSelection): MoveOrigin
     nodes: new Map(),
     instances: new Map(),
     roomLabels: new Map(),
+    fixtures: new Map(),
     openings: new Map(),
     shapes: new Map(),
   };
@@ -99,6 +108,10 @@ export function captureOrigins(scene: Scene, sel: ResolvedSelection): MoveOrigin
   for (const id of sel.roomLabelIds) {
     const l = scene.roomLabels[id];
     if (l) origins.roomLabels.set(id, vec(l.x, l.y));
+  }
+  for (const id of sel.fixtureIds) {
+    const f = scene.fixtures[id];
+    if (f) origins.fixtures.set(id, vec(f.x, f.y));
   }
   for (const id of sel.openingIds) {
     const o = scene.openings[id];
@@ -127,6 +140,10 @@ export function selectionCenter(scene: Scene, sel: ResolvedSelection): Vec | nul
     const s = scene.shapes[id];
     if (s) pts.push(...shapeVertices(scene, s));
   }
+  for (const id of sel.fixtureIds) {
+    const f = scene.fixtures[id];
+    if (f) pts.push(vec(f.x, f.y));
+  }
   if (pts.length === 0) return null;
   const sum = pts.reduce((acc, p) => add(acc, p), vec(0, 0));
   return vec(sum.x / pts.length, sum.y / pts.length);
@@ -154,6 +171,12 @@ export function placeSelection(scene: Scene, origins: MoveOrigins, delta: Vec): 
     if (!label) continue;
     label.x = origin.x + delta.x;
     label.y = origin.y + delta.y;
+  }
+  for (const [id, origin] of origins.fixtures) {
+    const f = scene.fixtures[id];
+    if (!f) continue;
+    f.x = origin.x + delta.x;
+    f.y = origin.y + delta.y;
   }
   for (const [id, origin] of origins.shapes) {
     if (!scene.shapes[id]) continue;

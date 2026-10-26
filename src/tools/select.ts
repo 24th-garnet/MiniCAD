@@ -154,7 +154,10 @@ export class SelectTool implements Tool {
     if (drag.kind !== 'move') return;
     const settings = editor.store.settings;
     const single =
-      drag.sel.nodeIds.length === 1 && drag.sel.instanceIds.length === 0 && drag.sel.roomLabelIds.length === 0;
+      drag.sel.nodeIds.length === 1 &&
+      drag.sel.instanceIds.length === 0 &&
+      drag.sel.roomLabelIds.length === 0 &&
+      drag.sel.fixtureIds.length === 0;
 
     let delta = sub(p.raw, drag.start);
     if (single) {

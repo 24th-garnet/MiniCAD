@@ -4,6 +4,7 @@ import { levelOf } from '../core/level.ts';
 import { openingsOnWall } from '../core/ops.ts';
 import type { Id, Room, Scene } from '../core/types.ts';
 import { buildFloorFaces, buildInstanceFaces, buildWallFaces, type Face3 } from './mesh.ts';
+import { buildFixtureFaces, fixtureFingerprint } from './fixture3d.ts';
 
 /**
  * メッシュを実体ごとに持つ。変わったものだけ作り直す。
@@ -24,18 +25,20 @@ import { buildFloorFaces, buildInstanceFaces, buildWallFaces, type Face3 } from 
  */
 export class MeshCache {
   private wallFaces = new Map<Id, Entry>();
+  private fixtureFaces = new Map<Id, Entry>();
   private instanceFaces = new Map<Id, Entry>();
   private floors: Entry | null = null;
 
   /** 直近の `faces()` で何を作り直したか。テストと計測が読む */
-  readonly stats = { walls: 0, instances: 0, floors: 0 };
+  readonly stats = { walls: 0, fixtures: 0, instances: 0, floors: 0 };
 
   faces(scene: Scene, rooms: Room[]): Face3[] {
     this.stats.walls = 0;
+    this.stats.fixtures = 0;
     this.stats.instances = 0;
     this.stats.floors = 0;
 
-    // 並びは buildMesh と同じ（床 → 壁 → 家具）。ソートは paint が引き受ける
+    // 並びは buildMesh と同じ（床 → 壁 → 構造 → 家具）。ソートは paint が引き受ける
     const out: Face3[] = [];
 
     const floorKey = floorFingerprint(scene, rooms);
@@ -50,6 +53,11 @@ export class MeshCache {
     collect(scene.walls, this.wallFaces, out, (id) => wallFingerprint(scene, id), (id, faces) => {
       buildWallFaces(scene, id, faces);
       this.stats.walls += 1;
+    });
+
+    collect(scene.fixtures, this.fixtureFaces, out, (id) => fixtureFingerprint(scene, id), (id, faces) => {
+      buildFixtureFaces(scene, id, faces);
+      this.stats.fixtures += 1;
     });
 
     collect(scene.instances, this.instanceFaces, out, (id) => instanceFingerprint(scene, id), (id, faces) => {

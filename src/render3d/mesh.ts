@@ -6,6 +6,7 @@ import { doorSwing, openingFrame, wallPointAt, wallSpans } from '../core/shape.t
 import { BLOCK_HEIGHTS, DEFAULT_BLOCK_HEIGHT } from '../core/blockPresets.ts';
 import { blockOf } from '../core/block.ts';
 import { isSnappable } from '../core/entity.ts';
+import { buildFixtureFaces } from './fixture3d.ts';
 import { theme } from '../render/theme.ts';
 import type { EntityRef, Id, Room, Scene } from '../core/types.ts';
 import { cross3, normalize3, sub3, vec3, type Vec3 } from './mat4.ts';
@@ -75,6 +76,7 @@ export function buildMesh(scene: Scene, rooms: Room[]): Face3[] {
   const out: Face3[] = [];
   buildFloorFaces(scene, rooms, out);
   for (const wall of Object.values(scene.walls)) buildWallFaces(scene, wall.id, out);
+  for (const f of Object.values(scene.fixtures)) buildFixtureFaces(scene, f.id, out);
   for (const inst of Object.values(scene.instances)) buildInstanceFaces(scene, inst.id, out);
   return out;
 }
@@ -232,6 +234,16 @@ function flatFace(poly: Vec[], z: number, color: string, bucket: Bucket, src: Fa
 function downwardFace(poly: Vec[], z: number, color: string, bucket: Bucket, src: FaceSource): Face3 {
   const points = ccw(poly).map((p) => vec3(p.x, p.y, z)).reverse();
   return { points, normal: vec3(0, 0, -1), color, bucket, ...src };
+}
+
+/**
+ * 任意の 3D 多角形を 1 枚の面にする。**頂点は外向き法線に対して反時計回りに渡す。**
+ *
+ * `extrudePrism` は上下が平らな角柱しか作れないので、斜めの面（スロープの上面）は
+ * これで直に組む。法線は最初の 3 点から出すので、呼ぶ側が向きの責任を持つ。
+ */
+export function polygonFace(points: Vec3[], color: string, bucket: Bucket, src: FaceSource): Face3 {
+  return { points, normal: faceNormal(points), color, bucket, ...src };
 }
 
 /**

@@ -3,6 +3,7 @@ import { getLayer, isBuiltinLayer, type Layer, type LayerId } from './layer.ts';
 import { nodePos, openingsOnWall, pruneOrphanNodes, wallEnds, wallsAtNode } from './ops.ts';
 import { instanceVertices } from './block.ts';
 import { openingFrame } from './shape.ts';
+import { outline } from './fixture.ts';
 import { shapeVertices } from './shapes.ts';
 import { DEFAULT_LAYER_FOR, type EntityRef, type EntityType, type Id, type Scene } from './types.ts';
 import { pruneConstraints } from './constraintOps.ts';
@@ -125,6 +126,27 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     points: (scene, id) => {
       const s = scene.shapes[id];
       return s ? shapeVertices(scene, s) : [];
+    },
+  },
+
+  fixture: {
+    label: '構造',
+    table: (scene) => scene.fixtures,
+    layerIdOf: (scene, id) => scene.fixtures[id]?.layerId ?? null,
+    setLayerId: (scene, id, layerId) => {
+      const f = scene.fixtures[id];
+      if (!f) return false;
+      f.layerId = layerId;
+      return true;
+    },
+    remove: (scene, id) => {
+      if (!scene.fixtures[id]) return false;
+      delete scene.fixtures[id];
+      return true;
+    },
+    points: (scene, id) => {
+      const f = scene.fixtures[id];
+      return f ? outline(f) : [];
     },
   },
 

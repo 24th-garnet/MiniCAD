@@ -5,6 +5,7 @@ import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
 import type { BlockDef, BlockInstance } from './block.ts';
 import type { Constraint } from './constraints.ts';
+import type { Fixture } from './fixture.ts';
 import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from './level.ts';
 import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
@@ -106,6 +107,8 @@ export interface Scene {
   roomLabels: Record<Id, RoomLabel>;
   /** 間取りの意味を持たない汎用図形（線・円弧・円・ポリライン・文字・点） */
   shapes: Record<Id, Shape>;
+  /** 構造物（柱・梁・階段・スロープ・吹抜）。壁グラフには参加しない */
+  fixtures: Record<Id, Fixture>;
   /** 画層。DXF の LAYER テーブルに対応する */
   layers: Record<LayerId, Layer>;
   /** 線群・尺度・文字高さなどの製図規格。図面の属性なのでシーンと一緒に保存する */
@@ -131,6 +134,7 @@ export function emptyScene(): Scene {
     openings: {},
     roomLabels: {},
     shapes: {},
+    fixtures: {},
     layers: defaultLayers(),
     standard: jisStandard(),
     sheet: defaultSheet(),
@@ -149,9 +153,17 @@ export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, 'node'>, LayerId> = {
   blockInstance: LAYER_IDS.furniture,
   roomLabel: LAYER_IDS.roomName,
   shape: LAYER_IDS.shape,
+  fixture: LAYER_IDS.wall,
 };
 
-export type EntityType = 'node' | 'wall' | 'opening' | 'blockInstance' | 'roomLabel' | 'shape';
+export type EntityType =
+  | 'node'
+  | 'wall'
+  | 'opening'
+  | 'blockInstance'
+  | 'roomLabel'
+  | 'shape'
+  | 'fixture';
 
 export interface EntityRef {
   type: EntityType;

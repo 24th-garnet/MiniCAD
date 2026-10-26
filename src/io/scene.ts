@@ -14,6 +14,7 @@ import { BLOCK_PRESETS } from '../core/blockPresets.ts';
 import type { Shape } from '../core/shapes.ts';
 import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
+import { FIXTURE_SPECS, isFixtureKind } from '../core/fixture.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
 import { defaultAttrs, isTakeoffMode, type Attrs } from '../core/attrs.ts';
@@ -32,7 +33,7 @@ import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../co
  * `levelId` の無い実体は**既定の階に乗せる**だけで済む。
  * `DEFAULT_LEVEL_ID` が固定値なのはこのため。
  */
-export const FILE_VERSION = 9;
+export const FILE_VERSION = 10;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -164,6 +165,29 @@ export function deserialize(raw: unknown): Scene {
       kind: c.kind,
       walls,
       value: spec.usesValue ? numberOr(c.value, spec.initialValue(scene, walls) ?? 0) : null,
+    };
+  }
+
+  for (const [id, raw] of Object.entries(table<Record<string, unknown>>('fixtures'))) {
+    if (!isFixtureKind(raw?.kind)) continue;
+    if (typeof raw.x !== 'number' || typeof raw.y !== 'number') continue;
+    const spec = FIXTURE_SPECS[raw.kind];
+    const size = (typeof raw.size === 'object' && raw.size !== null ? raw.size : {}) as Record<string, unknown>;
+    const w = Math.max(1, numberOr(size.w, spec.defaultSize.w));
+    scene.fixtures[id] = {
+      id,
+      kind: raw.kind,
+      x: raw.x,
+      y: raw.y,
+      angle: numberOr(raw.angle, 0),
+      // 円柱は直径 1 つで決まる。奥行が別の値で書かれていても直径に揃える
+      size: { w, h: raw.kind === 'roundColumn' ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+      base: typeof raw.base === 'number' ? raw.base : null,
+      height: typeof raw.height === 'number' ? raw.height : null,
+      label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
+      layerId: layerOr(raw.layerId, spec.defaultLayer),
+      levelId: levelOr(raw.levelId),
+      attrs: readAttrs(raw.attrs),
     };
   }
 

@@ -3,6 +3,7 @@ import { isSelectable } from './entity.ts';
 import { wallEnds } from './ops.ts';
 import { instanceOutline, instanceVertices } from './block.ts';
 import { openingFrame } from './shape.ts';
+import { outline, outlineSegments, specOf } from './fixture.ts';
 import { shapeHitTest, shapePickPriority, shapeVertices } from './shapes.ts';
 import type { EntityRef, Scene } from './types.ts';
 
@@ -55,6 +56,18 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
 
   const curve = pickShape(scene, p, tolerance, ok, (s) => shapePickPriority(s) >= SMALL_SHAPE_PRIORITY);
   if (curve) return curve;
+
+  // 構造は壁より先に拾う。柱は壁の中に立つことが多く、後に回すと掴めない。
+  // 種別の間の順は表の `pickPriority`（柱 → 梁 → 階段 → 吹抜）
+  const fixtures = Object.values(scene.fixtures)
+    .slice()
+    .sort((a, b) => specOf(a).pickPriority - specOf(b).pickPriority);
+  for (const f of fixtures) {
+    const ref: EntityRef = { type: 'fixture', id: f.id };
+    if (!ok(ref)) continue;
+    if (pointInPolygon(p, outline(f))) return ref;
+    if (outlineSegments(f).some((sg) => closestOnSegment(p, sg.a, sg.b).dist <= tolerance)) return ref;
+  }
 
   let bestWall: { ref: EntityRef; d: number } | null = null;
   for (const w of Object.values(scene.walls)) {
@@ -120,6 +133,12 @@ export function pickInRect(
     const pts = shapeVertices(scene, shape);
     if (pts.length === 0) continue;
     if (crossing ? pts.some(inside) : pts.every(inside)) refs.push(ref);
+  }
+  for (const f of Object.values(scene.fixtures)) {
+    const ref: EntityRef = { type: 'fixture', id: f.id };
+    if (!ok(ref)) continue;
+    const corners = outline(f);
+    if (crossing ? corners.some(inside) : corners.every(inside)) refs.push(ref);
   }
   return refs;
 }

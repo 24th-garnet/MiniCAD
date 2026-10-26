@@ -27,6 +27,7 @@ import {
   instanceVertices,
   labelFits,
 } from '../core/block.ts';
+import { fixturePrimitives } from '../core/fixture.ts';
 import { shapePrimitives } from '../core/shapes.ts';
 import { sheetPrimitives } from '../core/sheet.ts';
 import { fontOf, theme } from './theme.ts';
@@ -58,6 +59,8 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawWalls(frame);
   drawOpenings(frame);
   drawInstances(frame);
+  // 構造は壁の上に描く。柱は壁に重なって立つので、下に回すと隠れる
+  drawFixtures(frame);
   drawShapes(frame);
   drawRoomLabels(frame);
   drawNodes(frame);
@@ -300,6 +303,20 @@ function drawInstances(frame: Frame): void {
  * 図形は中間表現（Primitive）に落としてから描く。
  * 同じ中間表現を SVG と DXF も使うので、種別を足してもここは変わらない。
  */
+function drawFixtures(frame: Frame): void {
+  const { scene, selected, hover } = frame;
+  for (const f of Object.values(scene.fixtures)) {
+    const layer = layerFor(frame, f.layerId, LAYER_IDS.wall);
+    if (!layer.visible) continue;
+    const accent = selected.has(`fixture:${f.id}`)
+      ? theme.wallSelected
+      : hover?.type === 'fixture' && hover.id === f.id
+        ? theme.wallHover
+        : null;
+    drawPrimitives(frame, fixturePrimitives(f, scene.standard.textHeight.furniture), layer, accent);
+  }
+}
+
 function drawShapes(frame: Frame): void {
   const { scene, selected, hover } = frame;
   for (const s of Object.values(scene.shapes)) {
