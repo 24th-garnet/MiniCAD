@@ -16,9 +16,11 @@ export class RoomsSection implements Section {
 
     const list = el('ul', { class: 'room-list' }, []);
     let total = 0;
+    let voids = 0;
     for (const room of rooms) {
       const area = innerArea ? room.innerArea : room.area;
       total += area;
+      voids += room.voidArea;
       list.append(
         el('li', {}, [
           el('span', {}, [room.name ?? '(無名)']),
@@ -33,6 +35,14 @@ export class RoomsSection implements Section {
       ]),
     );
     out.push(list);
+    if (voids > 0) {
+      // **面積の欄は内法のまま。** 吹抜は床が無いだけで、部屋の広さは変わらない。
+      // 床の面積が要るのは積算で、そちらには別の数字で渡している
+      out.push(el('p', { class: 'empty-note' }, [
+        `うち吹抜 ${voids.toFixed(2)} m²（床はありません）。`
+        + `床面積の合計は ${(total - voids).toFixed(2)} m² です。`,
+      ]));
+    }
     return out;
   }
 }

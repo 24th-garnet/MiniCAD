@@ -143,3 +143,50 @@ test('円柱は奥行が別の値で書かれていても直径に揃う', () =>
   assert.equal(f.size.w, 400);
   assert.equal(f.size.h, 400, '直径と奥行が食い違っている');
 });
+
+test('吹抜は部屋の床面積を食うが、内法面積は変えない', async () => {
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { findOrCreateNode, addWall } = await import('../src/core/ops.ts');
+  const { vec } = await import('../src/core/geometry.ts');
+
+  const scene = emptyScene();
+  const c = [vec(0, 0), vec(5000, 0), vec(5000, 4000), vec(0, 4000)].map((p) => findOrCreateNode(scene, p));
+  for (let i = 0; i < 4; i++) addWall(scene, c[i], c[(i + 1) % 4], 100);
+
+  const before = detectRooms(scene);
+  assert.equal(before.length, 1);
+  assert.equal(before[0].voidArea, 0);
+  assert.equal(before[0].floorArea, before[0].innerArea);
+
+  // 2000 × 2000 の吹抜を真ん中に置く
+  scene.fixtures.v = make('void', { id: 'v', x: 2500, y: 2000, size: { w: 2000, h: 2000 } });
+  const after = detectRooms(scene);
+  assert.equal(after[0].innerArea, before[0].innerArea, '内法面積まで変わっている');
+  assert.ok(Math.abs(after[0].voidArea - 4) < 1e-6, `吹抜が ${after[0].voidArea} m²`);
+  assert.ok(Math.abs(after[0].floorArea - (before[0].innerArea - 4)) < 1e-6, '床面積が引けていない');
+});
+
+test('部屋の外の吹抜は数えない', async () => {
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { findOrCreateNode, addWall } = await import('../src/core/ops.ts');
+  const { vec } = await import('../src/core/geometry.ts');
+
+  const scene = emptyScene();
+  const c = [vec(0, 0), vec(5000, 0), vec(5000, 4000), vec(0, 4000)].map((p) => findOrCreateNode(scene, p));
+  for (let i = 0; i < 4; i++) addWall(scene, c[i], c[(i + 1) % 4], 100);
+  scene.fixtures.v = make('void', { id: 'v', x: 20000, y: 20000 });
+  assert.equal(detectRooms(scene)[0].voidArea, 0);
+});
+
+test('立体になる構造は床を食わない', async () => {
+  // 柱は床の上に立つ。穴ではない
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { findOrCreateNode, addWall } = await import('../src/core/ops.ts');
+  const { vec } = await import('../src/core/geometry.ts');
+
+  const scene = emptyScene();
+  const c = [vec(0, 0), vec(5000, 0), vec(5000, 4000), vec(0, 4000)].map((p) => findOrCreateNode(scene, p));
+  for (let i = 0; i < 4; i++) addWall(scene, c[i], c[(i + 1) % 4], 100);
+  scene.fixtures.k = make('column', { id: 'k', x: 2500, y: 2000 });
+  assert.equal(detectRooms(scene)[0].voidArea, 0);
+});

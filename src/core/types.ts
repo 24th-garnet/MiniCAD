@@ -189,8 +189,19 @@ export interface Room {
   innerPolygon: Vec[];
   /** 壁芯面積 (m^2) */
   area: number;
-  /** 内法面積 (m^2) */
+  /** 内法面積 (m^2)。**吹抜を含む** */
   innerArea: number;
+  /**
+   * この部屋の中にある吹抜・PS・煙道の合計 (m^2)。
+   *
+   * **`innerArea` から引いていない。** 内法面積は壁の内側の広さで、
+   * 床面積とは別の数字。引いてしまうと「内法」の意味が変わり、
+   * 立面図・DXF・下流の積算が同じ名前で違うものを読むことになる。
+   * 床面積が要るところは `floorArea` を使う
+   */
+  voidArea: number;
+  /** 床の面積 (m^2)。内法面積から吹抜を引いたもの */
+  floorArea: number;
   center: Vec;
   wallIds: Id[];
   name: string | null;

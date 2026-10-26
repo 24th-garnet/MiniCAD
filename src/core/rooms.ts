@@ -14,6 +14,7 @@ import {
   type Vec,
 } from './geometry.ts';
 import { nodePos } from './ops.ts';
+import { FIXTURE_SPECS, outline } from './fixture.ts';
 import type { Id, Room, Scene } from './types.ts';
 
 interface HalfEdge {
@@ -114,12 +115,15 @@ export function detectRooms(scene: Scene): Room[] {
     const thicknesses = cycle.map((he) => scene.walls[he.wallId]?.thickness ?? 0);
     const innerPolygon = offsetInward(polygon, thicknesses);
     const innerArea = Math.abs(signedArea(innerPolygon));
+    const voidArea = voidAreaIn(scene, innerPolygon);
 
     rooms.push({
       polygon,
       innerPolygon,
       area: area / 1e6,
       innerArea: innerArea / 1e6,
+      voidArea: voidArea / 1e6,
+      floorArea: Math.max(0, innerArea - voidArea) / 1e6,
       center: centroid(innerPolygon.length >= 3 ? innerPolygon : polygon),
       wallIds,
       name: null,
@@ -129,6 +133,27 @@ export function detectRooms(scene: Scene): Room[] {
 
   attachLabels(scene, rooms);
   return rooms;
+}
+
+/**
+ * 部屋の中にある吹抜・PS・煙道の合計面積 (mm^2)。
+ *
+ * **吹抜は部屋ではない。部屋の中の穴。** 壁グラフには参加しないので、
+ * フェイス探索は何も変わらない——中心が内法ポリゴンに入っているかで数えるだけ。
+ *
+ * **中心で判定する。** 部分的にはみ出した吹抜を面積で按分すると、多角形の
+ * 交差が要る。はみ出した吹抜は作図の誤りなので、厳密に扱う価値がない。
+ * 入っているなら全部、入っていないなら 0 とはっきりさせる。
+ */
+function voidAreaIn(scene: Scene, innerPolygon: Vec[]): number {
+  if (innerPolygon.length < 3) return 0;
+  let total = 0;
+  for (const f of Object.values(scene.fixtures)) {
+    if (FIXTURE_SPECS[f.kind].solid) continue; // 立体になるものは穴ではない
+    if (!pointInPolygon(vec(f.x, f.y), innerPolygon)) continue;
+    total += Math.abs(signedArea(outline(f)));
+  }
+  return total;
 }
 
 /**

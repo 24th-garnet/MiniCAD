@@ -116,7 +116,8 @@ export function sceneToMeasures(
       (sum, i) => sum + perimeterOf(rooms[i].innerPolygon),
       0,
     );
-    const floor = Math.max(room.innerArea - holeArea, 0);
+    // 吹抜・PS・煙道は床が無い。**仕上げも積まない**
+    const floor = Math.max(room.innerArea - holeArea - room.voidArea, 0);
 
     // 巾木・回り縁は柱型の周りを回るので、**周長には足す**
     const perimeter = perimeterOf(room.innerPolygon) + holePerimeter;
@@ -154,6 +155,14 @@ export function sceneToMeasures(
     if (inner.length > 0) {
       basis.area = '推定';
       note.area = `入れ子の ${inner.length} 室を控除した`;
+    }
+    if (room.voidArea > 0) {
+      // **何を引いたかを書く。** 数字だけ渡すと、受け取った側が
+      // 「内法より小さいのはなぜか」を追えない
+      basis.area = '推定';
+      note.area = [note.area, `吹抜 ${round(room.voidArea)}m² を控除した`]
+        .filter(Boolean)
+        .join(' / ');
     }
 
     return {
