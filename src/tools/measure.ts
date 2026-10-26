@@ -90,6 +90,11 @@ export class MeasureTool implements Tool {
       store.scene.measurements[id] = measurement;
     });
     store.setSelection([{ type: 'measurement', id }]);
+    // **プレビューを畳む。** 残すと実体と二重に描かれて、同じ線に
+    // ラベルが 2 枚重なる
+    this.from = null;
+    this.to = null;
+    editor.snapContext = {};
   }
 
   onKeyDown(editor: Editor, e: KeyboardEvent): boolean {
@@ -163,8 +168,7 @@ export class MeasureTool implements Tool {
   }
 
   status(): string {
-    if (!this.from) return '始点をクリック';
-    if (!this.to) return '終点をクリックで確定 / Esc で取り消し';
-    return '測った結果は残ります。クリックで次の計測を開始';
+    if (!this.from) return '始点をクリック。測った結果は残ります';
+    return '終点をクリックで確定 / Esc で取り消し';
   }
 }
