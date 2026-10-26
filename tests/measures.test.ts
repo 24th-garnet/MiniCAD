@@ -181,3 +181,73 @@ test('入れ子を控除したら根拠に推定が立つ', () => {
   const outer = m.rooms.reduce((a, b) => (a.floor_area > b.floor_area ? a : b));
   assert.equal(outer.basis.area, '推定');
 });
+
+test('積算の対象外にした壁は幾何ごと外れる', async () => {
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  const before = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  const room = before.rooms[0];
+  assert.ok(room.wall_area > 0);
+
+  // その部屋の壁を 1 面だけ対象外にする
+  const rooms = detectRooms(scene);
+  const wallId = rooms[0].wallIds[0];
+  scene.walls[wallId].attrs.takeoff = 'excluded';
+
+  const after = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  assert.ok(after.rooms[0].wall_area < room.wall_area, '壁面積が減っていない');
+  // **何を外したかを書く。** 数字だけ渡すと追えない
+  assert.equal(after.rooms[0].basis.wall_area, '推定');
+  assert.match(after.rooms[0].basis_note.wall_area, /対象外にした壁 1 面/);
+});
+
+test('未指定は対象外ではない', async () => {
+  // **3 つの状態を畳まない。** 書き忘れが「拾わないと決めた」に化けると、
+  // 黙って数量から消える
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  const base = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  for (const w of Object.values(scene.walls)) w.attrs.takeoff = null;
+  const same = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  assert.equal(same.rooms[0].wall_area, base.rooms[0].wall_area);
+  assert.equal(same.rooms[0].basis.wall_area, undefined, '未指定で根拠が立っている');
+});
+
+test('積算の対象外にした家具は員数に入らない', async () => {
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  const before = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  const total = (f: typeof before) => f.rooms.reduce((n, r) => n + r.furniture.length, 0);
+  assert.ok(total(before) > 0);
+
+  for (const inst of Object.values(scene.instances)) inst.attrs.takeoff = 'excluded';
+  const after = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  assert.equal(total(after), 0, '対象外の家具が残っている');
+});
+
+test('建具の対象外は効かない（穴は実在する）', async () => {
+  // 拾い側は openings[] を品目の数え上げと壁面積の控除の両方に使うので、
+  // 外すと穴が無かったことになって壁が多く出る
+  const { sampleScene } = await import('../src/io/sample.ts');
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { sceneToMeasures } = await import('../src/io/measures.ts');
+
+  const scene = sampleScene();
+  const before = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  for (const o of Object.values(scene.openings)) o.attrs.takeoff = 'excluded';
+  const after = sceneToMeasures(scene, detectRooms(scene), { planId: 'p' });
+  assert.deepEqual(
+    after.rooms.map((r) => r.openings.length),
+    before.rooms.map((r) => r.openings.length),
+    '建具が消えている',
+  );
+});

@@ -6,6 +6,7 @@ import { nestingOf, perimeterOf, roomAt } from '../core/rooms.ts';
 import { wallSpans } from '../core/shape.ts';
 import { vec } from '../core/geometry.ts';
 import type { Opening, Room, Scene } from '../core/types.ts';
+import type { TakeoffMode } from '../core/attrs.ts';
 
 /**
  * 数量拾いへ渡す中立の実測 JSON を作る。
@@ -20,7 +21,19 @@ import type { Opening, Room, Scene } from '../core/types.ts';
  * **測ったものと仮定したものを区別する。** `wall.height === null` や
  * `opening.sillHeight === null` は「階の既定に落ちた」ことを型が教えてくれるので、
  * `basis: '既定'` が機械的に立つ。新しいフラグは要らない。
+ *
+ * **素材と積算の可否だけは別。** あれは導けない——作図者が宣言した意図で、
+ * 幾何のどこにも書いていない。だから `Attrs` という明示の欄がある。
+ * 「MiniCAD は拾い方の規約を持たない」は変わらない。規約ではなく、
+ * **その図面について人が決めたこと**を運んでいる。
+ *
+ * **建具の「対象外」は効かない。** 拾い側は `openings[]` を品目の数え上げと
+ * 壁面積の控除の**両方**に使っているので、外すと穴が無かったことになって
+ * 壁が多く出る。穴は実在する幾何なので、外さない。
  */
+
+/** 人が「拾わない」と決めたか。**未指定（null）は対象外ではない** */
+const isExcluded = (attrs: { takeoff: TakeoffMode | null }): boolean => attrs.takeoff === 'excluded';
 
 /** 契約の版。拾い側がこれを見て断る */
 export const SCHEMA = 'mdr-measures-1';
@@ -96,6 +109,7 @@ function openingsOf(scene: Scene, room: Room): Opening[] {
 function furnitureOf(scene: Scene, rooms: Room[], room: Room) {
   const counts = new Map<string, { code: string; label: string; count: number }>();
   for (const inst of Object.values(scene.instances)) {
+    if (isExcluded(inst.attrs)) continue;
     if (roomAt(rooms, vec(inst.x, inst.y)) !== room) continue;
     const def = blockOf(scene, inst);
     if (!def) continue;
@@ -135,11 +149,18 @@ export function sceneToMeasures(
     const seen = new Set<string>();
     let wallArea = 0;
     let anyDefaultHeight = false;
+    let excludedWalls = 0;
     for (const wallId of room.wallIds) {
       if (seen.has(wallId)) continue;
       seen.add(wallId);
       const wall = scene.walls[wallId];
       if (!wall) continue;
+      // **対象外にした壁は幾何ごと渡さない。** 数だけ引いて面積を残すと、
+      // 受け取った側が同じ部屋を 2 通りに数えられてしまう
+      if (isExcluded(wall.attrs)) {
+        excludedWalls += 1;
+        continue;
+      }
       if (wall.height === null) anyDefaultHeight = true;
       wallArea += (netLength(scene, wallId) * wallHeightOf(wall, level)) / 1e6;
     }
@@ -168,6 +189,10 @@ export function sceneToMeasures(
     if (inner.length > 0) {
       basis.area = '推定';
       note.area = `入れ子の ${inner.length} 室を控除した`;
+    }
+    if (excludedWalls > 0) {
+      basis.wall_area = '推定';
+      note.wall_area = `積算の対象外にした壁 ${excludedWalls} 面を外した`;
     }
     if (room.voidArea > 0) {
       // **何を引いたかを書く。** 数字だけ渡すと、受け取った側が
