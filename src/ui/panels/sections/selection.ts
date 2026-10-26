@@ -102,6 +102,15 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
           (v) => edit(() => void (op.height = v === null ? null : Math.max(1, v))),
           { step: 50, min: 1, suffix: 'mm' },
         ),
+        // **符号は種別を増やさないための札。** 上げ下げ・FIX・すべり出しは
+        // 平面では同じ記号なので、違いはここで持つ
+        textField('建具符号', op.designation, (v) => edit(() => void (op.designation = v.trim()))),
+        // 枚数で記号が変わる種別にだけ出す
+        symbol.usesLeaves
+          ? numberField('枚数', op.leaves, (v) => edit(() => void (op.leaves = Math.max(1, Math.round(v)))), {
+              step: 1, min: 1, max: 6,
+            })
+          : null,
         // 反転が意味を持たない種別では欄自体を出さない
         symbol.usesFlipX ? checkboxField('吊元・引き勝手を反転', op.flipX, (v) => edit(() => void (op.flipX = v))) : null,
         symbol.usesFlipY ? checkboxField('開く向きを反転', op.flipY, (v) => edit(() => void (op.flipY = v))) : null,

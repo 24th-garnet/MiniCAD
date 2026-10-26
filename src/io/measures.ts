@@ -51,7 +51,16 @@ export interface MeasuredRoom {
   perimeter: number;
   height: number;
   wall_area: number;
-  openings: { id: string; kind: string; width: number; height: number; sill: number }[];
+  openings: {
+    id: string;
+    kind: string;
+    /** 建具符号。平面では同じ記号になる建具を区別する唯一の手がかり */
+    designation: string;
+    leaves: number;
+    width: number;
+    height: number;
+    sill: number;
+  }[];
   furniture: { code: string; label: string; count: number }[];
   basis: Record<string, Basis>;
   basis_note: Record<string, string>;
@@ -140,6 +149,10 @@ export function sceneToMeasures(
       return {
         id: o.id,
         kind: o.kind as string,
+        // **符号を渡す。** 平面では同じ記号になる建具（上げ下げ・FIX・
+        // すべり出し）を、受け取った側が区別できる唯一の手がかり
+        designation: o.designation,
+        leaves: o.leaves,
         width: Math.round(o.width),
         height: Math.round(v.head - v.sill),
         sill: Math.round(v.sill - level.floorZ),

@@ -26,6 +26,13 @@ export interface OpeningSymbol {
   usesFlipX: boolean;
   /** 開き勝手の反転（Y キー）が意味を持つか */
   usesFlipY: boolean;
+  /**
+   * 枚数で記号が変わるか。
+   *
+   * **変わらない種別で欄を出さない**ための札。片開き戸に「枚数」を出すと、
+   * 直しても図面が変わらない欄が残り、使う側が何かが壊れたと思う。
+   */
+  usesLeaves: boolean;
   primitives(frame: OpeningFrame, opening: Opening): Primitive[];
 }
 
@@ -51,6 +58,9 @@ const FOLD = 1 / 6;
 /** 親子扉の子扉が占める割合 */
 const CHILD = 1 / 3;
 
+/** 建具符号を壁芯から逃がす距離。壁厚に対する比 */
+const DESIGNATION_OFFSET = 1.1;
+
 export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
   door: {
     label: '片開き戸',
@@ -58,6 +68,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 800,
     usesFlipX: true,
     usesFlipY: true,
+    usesLeaves: false,
     primitives: (f, op) => swing(f, op.flipX, op.flipY),
   },
 
@@ -67,6 +78,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1600,
     usesFlipX: false,
     usesFlipY: true,
+    usesLeaves: false,
     primitives: (f, op) => leaves(f, 0, op.flipY),
   },
 
@@ -77,6 +89,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1200,
     usesFlipX: true,
     usesFlipY: true,
+    usesLeaves: false,
     primitives: (f, op) => leaves(f, f.width * (op.flipX ? 0.5 - CHILD : CHILD - 0.5), op.flipY),
   },
 
@@ -86,6 +99,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1650,
     usesFlipX: false,
     usesFlipY: false,
+    usesLeaves: false,
     primitives: (f) => {
       const at = openingAt(f);
       return [{ kind: 'segments', segments: [{ a: at(-f.width / 2, 0), b: at(f.width / 2, 0) }, meetTick(f)] }];
@@ -99,6 +113,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1600,
     usesFlipX: true,
     usesFlipY: false,
+    usesLeaves: false,
     primitives: (f, op) => {
       const at = openingAt(f);
       const s = op.flipX ? -1 : 1;
@@ -116,6 +131,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1600,
     usesFlipX: true,
     usesFlipY: false,
+    usesLeaves: false,
     primitives: (f, op) => {
       const at = openingAt(f);
       const s = op.flipX ? -1 : 1;
@@ -142,6 +158,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1200,
     usesFlipX: false,
     usesFlipY: true,
+    usesLeaves: false,
     primitives: (f, op) => {
       const at = openingAt(f);
       const w = f.width;
@@ -158,6 +175,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 900,
     usesFlipX: false,
     usesFlipY: false,
+    usesLeaves: false,
     primitives: (f) => [{ kind: 'segments', segments: [meetTick(f)] }],
   },
 
@@ -168,6 +186,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1700,
     usesFlipX: false,
     usesFlipY: false,
+    usesLeaves: false,
     primitives: (f) => [{ kind: 'segments', segments: sashes(f) }],
   },
 
@@ -177,7 +196,9 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1700,
     usesFlipX: false,
     usesFlipY: false,
-    primitives: (f) => [{ kind: 'segments', segments: [...sashes(f), meetTick(f)] }],
+    // 4 枚建てはここで出す。**種別を増やさない**
+    usesLeaves: true,
+    primitives: (f, op) => [{ kind: 'segments', segments: [...sashes(f), ...meetTicks(f, op.leaves)] }],
   },
 };
 
@@ -273,6 +294,26 @@ function sashes(frame: OpeningFrame): Segment[] {
   ];
 }
 
+/**
+ * 召し合わせの印を枚数ぶん。**2 枚なら真ん中に 1 本**で、今までと同じ。
+ *
+ * 戸は等分に並ぶものとし、内側の分かれ目（枚数 − 1 箇所）に印を置く。
+ * 4 枚建ての引違い窓のために種別を増やさずに済ませるための一般化。
+ */
+function meetTicks(frame: OpeningFrame, leaves: number): Segment[] {
+  const n = Math.max(1, Math.round(leaves));
+  if (n < 2) return [];
+  const at = openingAt(frame);
+  const t = frame.thickness * TICK;
+  const half = frame.width / 2;
+  const out: Segment[] = [];
+  for (let i = 1; i < n; i++) {
+    const along = -half + (frame.width * i) / n;
+    out.push({ a: at(along, t), b: at(along, -t) });
+  }
+  return out;
+}
+
 const chain = (points: { x: number; y: number }[]): Segment[] =>
   points.slice(0, -1).map((a, i) => ({ a, b: points[i + 1] }));
 
@@ -280,7 +321,22 @@ const chain = (points: { x: number; y: number }[]): Segment[] =>
 export function openingPrimitives(scene: Scene, opening: Opening): Primitive[] {
   const frame = openingFrame(scene, opening);
   if (!frame) return [];
-  return OPENING_SYMBOLS[opening.kind].primitives(frame, opening);
+  const out = OPENING_SYMBOLS[opening.kind].primitives(frame, opening);
+  // **符号は図面に出す。** 持っているのに出さないと、インスペクタを開かないと
+  // 分からない情報になり、紙に落ちた瞬間に消える
+  if (opening.designation.length > 0) {
+    const at = openingAt(frame);
+    out.push({
+      kind: 'text',
+      text: opening.designation,
+      // 壁の外側へ少し逃がす。障子線や召し合わせと重ならない位置
+      at: at(0, frame.thickness * DESIGNATION_OFFSET),
+      paperMm: scene.standard.textHeight.dimension,
+      angle: angleOf(frame.dir),
+      align: 'center',
+    });
+  }
+  return out;
 }
 
 /** 種別セレクタ用。ツールの系統で絞り込む */

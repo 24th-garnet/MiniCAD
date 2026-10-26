@@ -35,6 +35,8 @@ export function wallFixture(
       flipY: false,
       sillHeight: null,
       bay: null,
+      designation: '',
+      leaves: 2,
       height: null,
       layerId: LAYER_IDS.opening,
       attrs: defaultAttrs(),

@@ -115,6 +115,9 @@ export function deserialize(raw: unknown): Scene {
       flipY: o.flipY === true,
       sillHeight: finiteOrNull(o.sillHeight),
       bay: readBay(o.bay),
+      designation: typeof o.designation === 'string' ? o.designation.trim() : '',
+      // 枚数は 1 以上の整数。引違いの既定は 2 枚
+      leaves: Math.max(1, Math.round(numberOr(o.leaves, 2))),
       height: finiteOrNull(o.height),
       layerId: layerOr(o.layerId, LAYER_IDS.opening),
       attrs: readAttrs(o.attrs),

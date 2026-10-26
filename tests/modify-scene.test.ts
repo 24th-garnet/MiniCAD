@@ -207,6 +207,8 @@ test('壁のトリムで、切断線をまたぐ開口部は消える', () => {
     flipY: false,
     sillHeight: null,
     bay: null,
+    designation: '',
+    leaves: 2,
     height: null,
     layerId: LAYER_IDS.opening,
     attrs: defaultAttrs(),

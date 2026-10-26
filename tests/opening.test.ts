@@ -1,5 +1,6 @@
 import { defaultAttrs } from '../src/core/attrs.ts';
 import { dxfOpts, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
+import { makeOpening } from './make.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sampleScene } from '../src/io/sample.ts';
@@ -49,6 +50,8 @@ function sceneWith(kind: OpeningKind, width = 1600, flip: Partial<Opening> = {})
   const opening: Opening = {
     sillHeight: null,
     bay: null,
+    designation: '',
+    leaves: 2,
     height: null,
     id: newId('op'),
     wallId: wall.id,
@@ -363,4 +366,77 @@ test('知らない階を指す実体は作業中の階に落ちる', () => {
   const back = deserialize(raw);
   for (const n of Object.values(back.nodes)) assert.equal(n.levelId, back.activeLevelId);
   assert.equal(Object.keys(back.walls).length, Object.keys(scene.walls).length, '壁が落ちた');
+});
+
+test('引違いの召し合わせは枚数で増える', async () => {
+  // **4 枚建てのために種別を増やさない。** 戸は等分に並び、
+  // 内側の分かれ目（枚数 − 1 箇所）に印が入る
+  const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
+  const { openingFrame } = await import('../src/core/shape.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(6000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const base = makeOpening(wall.id, { kind: 'windowSliding', offset: 3000, width: 2400 });
+
+  const ticksOf = (leaves: number): number => {
+    const op = { ...base, leaves };
+    const frame = openingFrame(scene, op)!;
+    const prims = OPENING_SYMBOLS.windowSliding.primitives(frame, op);
+    const all = prims.flatMap((p) => (p.kind === 'segments' ? p.segments : []));
+    // 障子線は壁に沿って長い。召し合わせは壁を横切る短い線
+    return all.filter((s) => Math.abs(s.a.x - s.b.x) < 1e-6).length;
+  };
+
+  assert.equal(ticksOf(2), 1, '2 枚は真ん中に 1 本（今までと同じ）');
+  assert.equal(ticksOf(4), 3, '4 枚は 3 本');
+  assert.equal(ticksOf(1), 0, '1 枚なら召し合わせは無い');
+});
+
+test('枚数が記号に効く種別だけが使うと言っている', async () => {
+  const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
+  for (const kind of OPENING_KINDS) {
+    const uses = OPENING_SYMBOLS[kind].usesLeaves;
+    assert.equal(uses, kind === 'windowSliding', `${kind} の usesLeaves が ${uses}`);
+  }
+});
+
+test('建具符号は図面に出て、往復を生き延びる', async () => {
+  const { openingPrimitives } = await import('../src/core/opening.ts');
+  const { deserialize, serialize } = await import('../src/io/scene.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(4000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const op = makeOpening(wall.id, { kind: 'window', offset: 2000, width: 1600 });
+  scene.openings[op.id] = op;
+
+  assert.ok(!openingPrimitives(scene, op).some((p) => p.kind === 'text'), '符号が無いのに文字が出る');
+
+  op.designation = 'AW-1';
+  const text = openingPrimitives(scene, op).filter((p) => p.kind === 'text');
+  assert.equal(text.length, 1);
+  assert.equal(text[0].kind === 'text' ? text[0].text : '', 'AW-1');
+
+  const back = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
+  assert.equal(back.openings[op.id].designation, 'AW-1');
+  assert.equal(back.openings[op.id].leaves, 2);
+});
+
+test('壊れた枚数は 1 以上の整数に丸める', async () => {
+  const { deserialize } = await import('../src/io/scene.ts');
+  const raw = (leaves: unknown) => ({
+    format: 'minicad', version: 10, unit: 'mm',
+    scene: {
+      nodes: { a: { x: 0, y: 0 }, b: { x: 4000, y: 0 } },
+      walls: { w: { a: 'a', b: 'b', thickness: 120 } },
+      openings: { o: { wallId: 'w', offset: 2000, width: 1600, kind: 'windowSliding', leaves } },
+    },
+  });
+  assert.equal(deserialize(raw(0)).openings.o.leaves, 1);
+  assert.equal(deserialize(raw(-5)).openings.o.leaves, 1);
+  assert.equal(deserialize(raw(2.6)).openings.o.leaves, 3);
+  assert.equal(deserialize(raw('yon')).openings.o.leaves, 2);
 });

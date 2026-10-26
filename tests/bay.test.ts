@@ -20,6 +20,7 @@ function sceneWithWindow(bay: Bay | null): { scene: Scene; opening: Opening } {
   const opening: Opening = {
     id, wallId: wall.id, offset: 2000, width: 1600, kind: 'window',
     flipX: false, flipY: false, sillHeight: null, height: null, bay,
+    designation: '', leaves: 2,
     layerId: LAYER_IDS.opening, attrs: defaultAttrs(),
   };
   scene.openings[id] = opening;
