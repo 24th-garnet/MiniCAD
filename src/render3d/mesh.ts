@@ -7,7 +7,7 @@ import { BLOCK_HEIGHTS, DEFAULT_BLOCK_HEIGHT } from '../core/blockPresets.ts';
 import { blockOf } from '../core/block.ts';
 import { isSnappable } from '../core/entity.ts';
 import { theme } from '../render/theme.ts';
-import type { Room, Scene } from '../core/types.ts';
+import type { EntityRef, Id, Room, Scene } from '../core/types.ts';
 import { cross3, normalize3, sub3, vec3, type Vec3 } from './mat4.ts';
 
 /**
@@ -24,6 +24,33 @@ export interface Face3 {
   bucket: Bucket;
   /** 裏からも見える面（床・ガラス） */
   doubleSided?: boolean;
+  /**
+   * この面を生んだ実体。**床は `null`**（部屋は派生データで実体がない）。
+   *
+   * **同じ実体から出た面はこのオブジェクトを共有する。書き換えないこと。**
+   * 面ごとに作ると壁 1 本で 10 個以上になる。拾う側は参照の同一性ではなく
+   * `type` と `id` で見る。
+   */
+  ref: EntityRef | null;
+  /** 乗っている階。床の高さが階ごとに違うので、面も階を覚えておく */
+  levelId: Id;
+}
+
+/**
+ * 面の出どころ。押し出す側が生成時に知っているものを、そのまま面へ渡す。
+ *
+ * **規則は一文: 開口のために生まれた面は建具、それ以外は壁。**
+ * 腰壁・まぐさ・ジャム・窓台の上面・まぐさの下面・戸板・ガラスはすべて建具を指す。
+ *
+ * 恣意的な分け方ではない。建具を指す面が覆うのは壁の上の `[hole.lo, hole.hi]` と
+ * 壁厚で決まる範囲で、これは 2D の `pickAt` が開口と見なす範囲
+ * （`frame.start`〜`frame.end` から壁厚の半分まで）と**同じ区間から導かれる**。
+ * 結果として、**3D で窓の下の腰壁をクリックしても、平面図でその窓をクリックしたときと
+ * 同じものが選ばれる**。壁の面と建具の面の境目が、2D と 3D でずれない。
+ */
+export interface FaceSource {
+  ref: EntityRef | null;
+  levelId: Id;
 }
 
 export type Bucket = 'floor' | 'wall' | 'furniture' | 'glass';
@@ -48,8 +75,11 @@ export function buildMesh(scene: Scene, rooms: Room[]): Face3[] {
   for (const room of rooms) {
     const poly = room.innerPolygon;
     if (poly.length < 3) continue;
-    const level = levelOf(scene, scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId);
-    out.push(flatFace(poly, level.floorZ, theme.floor3d, 'floor'));
+    const levelId = scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId;
+    const level = levelOf(scene, levelId);
+    // 床に ref が無いのは、部屋が派生データで実体を持たないから。
+    // 2D でも部屋の内側をクリックして部屋そのものは選べない（室名ラベルは別）
+    out.push(flatFace(poly, level.floorZ, theme.floor3d, 'floor', { ref: null, levelId }));
   }
 
   for (const wall of Object.values(scene.walls)) {
@@ -64,7 +94,8 @@ export function buildMesh(scene: Scene, rooms: Room[]): Face3[] {
     const height = BLOCK_HEIGHTS[def.id] ?? DEFAULT_BLOCK_HEIGHT;
     if (height <= 0) continue; // 階段のように箱で表すと嘘になるものは立てない
     const { floorZ } = levelOf(scene, inst.levelId);
-    extrudePrism(instanceFootprint(scene, inst), floorZ, floorZ + height, theme.furniture3d, 'furniture', out);
+    const src: FaceSource = { ref: { type: 'blockInstance', id: inst.id }, levelId: inst.levelId };
+    extrudePrism(instanceFootprint(scene, inst), floorZ, floorZ + height, theme.furniture3d, 'furniture', src, out);
   }
 
   return out;
@@ -77,22 +108,29 @@ function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): 
   const z0 = level.floorZ;
   const z1 = z0 + wallHeightOf(wall, level);
   const at = (along: number, side: number): Vec => wallPointAt(ws, along, side);
-  const box = (lo: number, hi: number, bottom: number, top: number) => {
+  // 壁ぶんの出どころは 1 つ作って、この壁から出る面すべてで共有する
+  const wallSrc: FaceSource = { ref: { type: 'wall', id: wall.id }, levelId: wall.levelId };
+  const box = (lo: number, hi: number, bottom: number, top: number, src: FaceSource) => {
     if (hi - lo < 1e-6 || top - bottom < 1e-6) return;
-    extrudePrism([at(lo, -1), at(hi, -1), at(hi, 1), at(lo, 1)], bottom, top, theme.wall3d, 'wall', out);
+    extrudePrism([at(lo, -1), at(hi, -1), at(hi, 1), at(lo, 1)], bottom, top, theme.wall3d, 'wall', src, out);
   };
 
   // 開口に食われていない区間
-  for (const [lo, hi] of ws.spans) box(lo, hi, z0, z1);
+  for (const [lo, hi] of ws.spans) box(lo, hi, z0, z1, wallSrc);
 
   for (const hole of ws.holes) {
     const { sill, head } = openingVertical(hole.opening, level);
     const bottom = Math.max(z0, Math.min(sill, z1));
     const top = Math.max(z0, Math.min(head, z1));
+    // 開口のために生まれた面は建具を指す。腰壁もまぐさもジャムも戸板も
+    const holeSrc: FaceSource = {
+      ref: { type: 'opening', id: hole.opening.id },
+      levelId: wall.levelId,
+    };
 
     // 腰壁とまぐさ
-    box(hole.lo, hole.hi, z0, bottom);
-    box(hole.lo, hole.hi, top, z1);
+    box(hole.lo, hole.hi, z0, bottom, holeSrc);
+    box(hole.lo, hole.hi, top, z1, holeSrc);
 
     if (top - bottom < 1e-6) continue;
 
@@ -103,15 +141,15 @@ function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): 
       [hole.hi, 1],
     ] as const) {
       out.push(
-        verticalFace(at(along, -sign), at(along, sign), bottom, top, theme.wall3d, 'wall'),
+        verticalFace(at(along, -sign), at(along, sign), bottom, top, theme.wall3d, 'wall', holeSrc),
       );
     }
-    if (bottom > z0 + 1e-6) out.push(flatFace([at(hole.lo, -1), at(hole.hi, -1), at(hole.hi, 1), at(hole.lo, 1)], bottom, theme.wall3d, 'wall'));
+    if (bottom > z0 + 1e-6) out.push(flatFace([at(hole.lo, -1), at(hole.hi, -1), at(hole.hi, 1), at(hole.lo, 1)], bottom, theme.wall3d, 'wall', holeSrc));
     if (top < z1 - 1e-6) {
-      out.push(downwardFace([at(hole.lo, -1), at(hole.hi, -1), at(hole.hi, 1), at(hole.lo, 1)], top, theme.wall3d, 'wall'));
+      out.push(downwardFace([at(hole.lo, -1), at(hole.hi, -1), at(hole.hi, 1), at(hole.lo, 1)], top, theme.wall3d, 'wall', holeSrc));
     }
 
-    pushLeaf(scene, hole.opening.id, bottom, top, out);
+    pushLeaf(scene, hole.opening.id, bottom, top, holeSrc, out);
   }
 }
 
@@ -119,7 +157,7 @@ function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): 
  * 建具そのもの。窓はガラス1枚、戸は板1枚。
  * 平面の記号と同じく `family` で分け、開き戸は `doorSwing` の開いた位置に立てる。
  */
-function pushLeaf(scene: Scene, openingId: string, bottom: number, top: number, out: Face3[]): void {
+function pushLeaf(scene: Scene, openingId: string, bottom: number, top: number, src: FaceSource, out: Face3[]): void {
   const opening = scene.openings[openingId];
   const frame = openingFrame(scene, opening);
   if (!frame) return;
@@ -128,7 +166,7 @@ function pushLeaf(scene: Scene, openingId: string, bottom: number, top: number, 
   if (symbol.family === 'window') {
     // ガラスは壁芯に1枚。裏からも見えるので両面
     out.push({
-      ...verticalFace(frame.start, frame.end, bottom, top, theme.glass3d, 'glass'),
+      ...verticalFace(frame.start, frame.end, bottom, top, theme.glass3d, 'glass', src),
       doubleSided: true,
     });
     return;
@@ -139,15 +177,15 @@ function pushLeaf(scene: Scene, openingId: string, bottom: number, top: number, 
   if (opening.kind === 'door' || opening.kind === 'doubleDoor' || opening.kind === 'unequalDoor') {
     // 開き戸は開いた位置に立てる。平面図の円弧と同じ姿勢になる
     const swing = doorSwing(frame, opening.flipX, opening.flipY);
-    panel(swing.hinge, swing.open, bottom, top, out);
+    panel(swing.hinge, swing.open, bottom, top, src, out);
     return;
   }
 
   // 引戸・折戸は開口の上に寝かせる
-  panel(frame.start, frame.end, bottom, top, out);
+  panel(frame.start, frame.end, bottom, top, src, out);
 }
 
-function panel(a: Vec, b: Vec, bottom: number, top: number, out: Face3[]): void {
+function panel(a: Vec, b: Vec, bottom: number, top: number, src: FaceSource, out: Face3[]): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy);
@@ -160,35 +198,35 @@ function panel(a: Vec, b: Vec, bottom: number, top: number, out: Face3[]): void 
     vec(b.x + nx, b.y + ny),
     vec(a.x + nx, a.y + ny),
   ];
-  extrudePrism(poly, bottom, top, theme.door3d, 'furniture', out);
+  extrudePrism(poly, bottom, top, theme.door3d, 'furniture', src, out);
 }
 
 // --- 面の組み立て ---
 
 /** 上向きの面。頂点は反時計回りに揃える */
-function flatFace(poly: Vec[], z: number, color: string, bucket: Bucket): Face3 {
+function flatFace(poly: Vec[], z: number, color: string, bucket: Bucket, src: FaceSource): Face3 {
   const points = ccw(poly).map((p) => vec3(p.x, p.y, z));
-  return { points, normal: vec3(0, 0, 1), color, bucket, doubleSided: bucket === 'floor' };
+  return { points, normal: vec3(0, 0, 1), color, bucket, doubleSided: bucket === 'floor', ...src };
 }
 
 /** 下向きの面（まぐさの下端など） */
-function downwardFace(poly: Vec[], z: number, color: string, bucket: Bucket): Face3 {
+function downwardFace(poly: Vec[], z: number, color: string, bucket: Bucket, src: FaceSource): Face3 {
   const points = ccw(poly).map((p) => vec3(p.x, p.y, z)).reverse();
-  return { points, normal: vec3(0, 0, -1), color, bucket };
+  return { points, normal: vec3(0, 0, -1), color, bucket, ...src };
 }
 
 /**
  * 縦の1枚。`a → b` の進行方向に対して左が表になる。
  * 四隅は a(bottom) → a(top) → b(top) → b(bottom) の順で、法線は左向き。
  */
-function verticalFace(a: Vec, b: Vec, bottom: number, top: number, color: string, bucket: Bucket): Face3 {
+function verticalFace(a: Vec, b: Vec, bottom: number, top: number, color: string, bucket: Bucket, src: FaceSource): Face3 {
   const points = [
     vec3(a.x, a.y, bottom),
     vec3(a.x, a.y, top),
     vec3(b.x, b.y, top),
     vec3(b.x, b.y, bottom),
   ];
-  return { points, normal: faceNormal(points), color, bucket };
+  return { points, normal: faceNormal(points), color, bucket, ...src };
 }
 
 /**
@@ -201,6 +239,7 @@ export function extrudePrism(
   top: number,
   color: string,
   bucket: Bucket,
+  src: FaceSource,
   out: Face3[],
 ): void {
   if (poly.length < 3 || top - bottom < 1e-6) return;
@@ -211,10 +250,10 @@ export function extrudePrism(
     const b = ring[(i + 1) % ring.length];
     if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) continue; // 長さ 0 の辺は面にならない
     // 反時計回りの辺では、進行方向の右が外。verticalFace は左が表なので b → a で渡す
-    out.push(verticalFace(b, a, bottom, top, color, bucket));
+    out.push(verticalFace(b, a, bottom, top, color, bucket, src));
   }
-  out.push(flatFace(ring, top, color, bucket));
-  out.push(downwardFace(ring, bottom, color, bucket));
+  out.push(flatFace(ring, top, color, bucket, src));
+  out.push(downwardFace(ring, bottom, color, bucket, src));
 }
 
 /** 連続する重複点を落としてから、反時計回りに揃える */

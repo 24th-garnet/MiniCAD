@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sampleScene } from '../src/io/sample.ts';
 import { detectRooms } from '../src/core/rooms.ts';
-import { sceneBounds } from '../src/core/entity.ts';
+import { entityExists, sceneBounds } from '../src/core/entity.ts';
 import { activeLevel, wallHeightOf } from '../src/core/level.ts';
 import { buildMesh, BUCKET_ORDER, type Face3 } from '../src/render3d/mesh.ts';
 import { paint } from '../src/render3d/paint.ts';
@@ -243,4 +243,67 @@ test('陰影が範囲に収まり、色の形式を保つ', () => {
   assert.equal(shade('#808080', 1), 'rgb(128, 128, 128)');
   assert.equal(shade('#ffffff', 2), 'rgb(255, 255, 255)', '上限で飽和する');
   assert.match(shade('rgba(100, 150, 200, 0.5)', 0.5), /^rgba\(50, 75, 100, 0\.5\)$/);
+});
+
+// --- 面の出どころ -----------------------------------------------------------
+
+test('床以外のすべての面がどのエンティティから出たか言える', () => {
+  const mesh = meshOf(sampleScene());
+  const orphan = mesh.filter((f) => f.ref === null && f.bucket !== 'floor');
+  assert.equal(orphan.length, 0, `出どころの無い面が ${orphan.length} 枚ある`);
+});
+
+test('床の面は実体を指さない', () => {
+  // 部屋は壁から導く派生データで、実体がない。2D でも部屋そのものは選べない
+  const floors = meshOf(sampleScene()).filter((f) => f.bucket === 'floor');
+  assert.ok(floors.length > 0, '前提: 床の面がある');
+  for (const f of floors) assert.equal(f.ref, null);
+});
+
+test('面が指す実体はシーンに実在する', () => {
+  const scene = sampleScene();
+  for (const f of meshOf(scene)) {
+    if (!f.ref) continue;
+    assert.ok(entityExists(scene, f.ref), `${f.ref.type}:${f.ref.id} が無い`);
+  }
+});
+
+test('開口のために出来た面は建具を、それ以外は壁を指す', () => {
+  // 腰壁・まぐさ・ジャム・窓台の上面・まぐさの下面・ガラスは全部「建具」。
+  // この分け方が 2D の当たり判定（開口の多角形）と揃っていることが肝
+  const plain = meshOf(oneWall(null));
+  const withWindow = meshOf(oneWall('window'));
+
+  assert.equal(plain.filter((f) => f.ref?.type === 'opening').length, 0,
+    '建具が無いのに建具の面がある');
+  assert.ok(withWindow.filter((f) => f.ref?.type === 'opening').length > 0,
+    '建具から出た面が 1 枚もない');
+  assert.ok(withWindow.filter((f) => f.ref?.type === 'wall').length > 0,
+    '壁から出た面が 1 枚もない');
+});
+
+test('同じ壁から出た面は出どころのオブジェクトを共有する', () => {
+  // 面ごとに作ると壁 1 本で 10 枚以上になる。共有は意図した選択なので固定しておく
+  const wallFaces = meshOf(oneWall(null)).filter((f) => f.ref?.type === 'wall');
+  assert.ok(wallFaces.length > 3, '前提: 壁は複数の面になる');
+  for (const f of wallFaces) assert.equal(f.ref, wallFaces[0].ref, '出どころが共有されていない');
+});
+
+test('家具の面は挿入そのものを指す', () => {
+  const scene = sampleScene();
+  const instIds = new Set(Object.keys(scene.instances));
+  const furniture = meshOf(scene).filter((f) => f.ref?.type === 'blockInstance');
+  assert.ok(furniture.length > 0, '前提: 家具がある');
+  for (const f of furniture) assert.ok(instIds.has(f.ref!.id));
+});
+
+test('面は乗っている階を覚えている', () => {
+  const scene = emptyScene();
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 2400, wallHeight: 2400 };
+  addWall(scene, findOrCreateNode(scene, vec(0, 0), 'lv-1'), findOrCreateNode(scene, vec(4000, 0), 'lv-1'), 120);
+  scene.activeLevelId = 'lv-2';
+  addWall(scene, findOrCreateNode(scene, vec(0, 0), 'lv-2'), findOrCreateNode(scene, vec(4000, 0), 'lv-2'), 120);
+
+  const levels = new Set(meshOf(scene).map((f) => f.levelId));
+  assert.deepEqual([...levels].sort(), ['lv-1', 'lv-2'], '階ごとに面が出ていない');
 });
