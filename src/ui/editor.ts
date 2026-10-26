@@ -37,7 +37,6 @@ export class Editor {
   snapContext: SnapContext = {};
 
   private roomsCache: Room[] | null = null;
-  private sceneRevision = 0;
   private cachedRevision = -1;
 
   private frameRequested = false;
@@ -53,7 +52,6 @@ export class Editor {
     this.ctx = ctx;
 
     this.store.subscribe(() => {
-      this.sceneRevision += 1;
       this.requestRender();
       for (const fn of this.changeListeners) fn();
     });
@@ -67,10 +65,14 @@ export class Editor {
     return () => this.changeListeners.delete(fn);
   }
 
+  /**
+   * シーンを直に書き換えたあとの通知。版が上がるので、派生データが作り直される。
+   *
+   * 選択や表示設定だけを変えたときはこれを呼ばない（`notifyUi`）。
+   * 呼ぶと**クリックのたびに部屋検出と 3D のメッシュを組み直す**ことになる。
+   */
   notifyChanged(): void {
-    this.sceneRevision += 1;
-    this.requestRender();
-    for (const fn of this.changeListeners) fn();
+    this.store.touchScene();
   }
 
   /**
@@ -112,13 +114,13 @@ export class Editor {
 
   /** シーンの版。派生データをキャッシュする側が、作り直す判断に使う */
   get revision(): number {
-    return this.sceneRevision;
+    return this.store.sceneVersion;
   }
 
   get rooms(): Room[] {
-    if (this.roomsCache === null || this.cachedRevision !== this.sceneRevision) {
+    if (this.roomsCache === null || this.cachedRevision !== this.revision) {
       this.roomsCache = detectRooms(this.store.scene);
-      this.cachedRevision = this.sceneRevision;
+      this.cachedRevision = this.revision;
     }
     return this.roomsCache;
   }

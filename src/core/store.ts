@@ -73,8 +73,33 @@ export class Store {
   private listeners = new Set<Listener>();
   /** commit 中のネストを検出して二重スナップショットを防ぐ */
   private inCommit = false;
+
+  /**
+   * シーンの版。**シーンが実際に変わったときだけ上がる。**
+   *
+   * `emit()` は選択や表示設定の変更でも飛ぶ。派生データ（部屋の検出・3D の
+   * メッシュ）がそれで作り直されると、**クリックしただけで全部組み直す**ことになる。
+   * 通知と「中身が変わったか」を分けておく。
+   *
+   * 単調増加なので、`undo` でシーンが差し替わっても腐らない。
+   */
+  private version = 0;
   /** 直近の拘束の解き結果。画面で違反を赤く出すのに使う */
   lastSolve: SolveResult | null = null;
+
+  /** シーンの版。派生データをキャッシュする側が、作り直す判断に使う */
+  get sceneVersion(): number {
+    return this.version;
+  }
+
+  /**
+   * シーンを直に書き換えたあとの通知。ドラッグの途中のように、
+   * `commit` を挟まずに中身が変わる経路で使う。
+   */
+  touchScene(): void {
+    this.version += 1;
+    this.emit();
+  }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
@@ -109,6 +134,7 @@ export class Store {
     if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
     this.redoStack.length = 0;
     this.pruneSelection();
+    this.version += 1;
     this.emit();
   }
 
@@ -141,6 +167,7 @@ export class Store {
     if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
     this.redoStack.length = 0;
     this.pruneSelection();
+    this.version += 1;
     this.emit();
   }
 
@@ -164,6 +191,7 @@ export class Store {
     this.redoStack.push(structuredClone(this.scene));
     this.scene = prev;
     this.pruneSelection();
+    this.version += 1;
     this.emit();
   }
 
@@ -173,6 +201,7 @@ export class Store {
     this.undoStack.push(structuredClone(this.scene));
     this.scene = next;
     this.pruneSelection();
+    this.version += 1;
     this.emit();
   }
 
@@ -186,6 +215,7 @@ export class Store {
     }
     this.scene = scene;
     this.selection = [];
+    this.version += 1;
     this.emit();
   }
 
