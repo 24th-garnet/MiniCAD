@@ -27,7 +27,7 @@ export class Toolbar implements Panel {
             title: `${tool.label} (${tool.shortcut})`,
             'data-tool': tool.id,
             onclick: () => {
-              ctx.editor.setTool(tool.id);
+              ctx.selectTool(tool.id);
               ctx.editor.canvas.focus();
             },
           },

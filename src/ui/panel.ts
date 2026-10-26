@@ -1,4 +1,6 @@
 import type { Editor } from './editor.ts';
+import type { ToolId } from '../tools/tool.ts';
+import type { Mode } from './mode.ts';
 import type { ViewState } from './view-state.ts';
 
 /**
@@ -18,6 +20,11 @@ export interface PanelContext {
   loadScene(scene: Parameters<Editor['store']['replaceScene']>[0]): void;
   /** どのビューを出しているか。パネルは `Viewer3D` に手を伸ばさずここを読む */
   readonly view: ViewState;
+  /** 通常モードかプロモードか */
+  mode: Mode;
+  setMode(mode: Mode): void;
+  /** ツールを選ぶ。作図のツールなら 2D に戻してから切り替える */
+  selectTool(id: ToolId): void;
 }
 
 export interface Panel {

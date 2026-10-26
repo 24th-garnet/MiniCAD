@@ -1,16 +1,19 @@
 import { removeEntities } from '../core/entity.ts';
 import { saveLocal } from '../io/scene.ts';
 import type { Scene } from '../core/types.ts';
+import type { ToolId } from '../tools/tool.ts';
 import { CommandInput } from './command-input.ts';
 import { Editor } from './editor.ts';
-import { defaultBindings, installKeymap } from './keymap.ts';
+import { defaultBindings, installKeymap, type Binding } from './keymap.ts';
 import type { Panel, PanelContext } from './panel.ts';
 import { buildSections } from './section-registry.ts';
 import { buildTools } from './tool-registry.ts';
+import { DEFAULT_MODE, type Mode } from './mode.ts';
 import { FileActions } from './panels/file-actions.ts';
 import { Inspector } from './panels/inspector.ts';
 import { OptionsBar } from './panels/options-bar.ts';
 import { Toolbar } from './panels/toolbar.ts';
+import { ModeSwitch } from './panels/mode-switch.ts';
 import { StatusBar } from './status-bar.ts';
 import { ViewTabs } from './panels/view-tabs.ts';
 import { Viewer3D } from '../render3d/viewer.ts';
@@ -33,6 +36,10 @@ export class App {
 
   readonly view: ViewState;
   private readonly canvasWrap: HTMLElement;
+  private readonly toolbar: Toolbar;
+  private readonly inspector: Inspector;
+  private readonly bindings: Binding[];
+  private currentMode: Mode = DEFAULT_MODE;
 
   constructor(host: HTMLElement) {
     // 骨組みは自分で組む。埋め込まれるとき、MiniCAD は入る箱しか貰えない
@@ -44,7 +51,7 @@ export class App {
     this.view = new ViewState((mode) => this.applyView(mode));
 
     // 何を出すかはレジストリが決める。ここは並べるだけ
-    for (const tool of buildTools()) this.editor.registerTool(tool);
+    for (const tool of buildTools(this.currentMode)) this.editor.registerTool(tool);
 
     this.ctx = {
       editor: this.editor,
@@ -54,9 +61,13 @@ export class App {
       deleteSelection: () => this.deleteSelection(),
       loadScene: (scene) => this.loadScene(scene),
       view: this.view,
+      mode: this.currentMode,
+      setMode: (mode) => this.setMode(mode),
+      selectTool: (id) => this.selectTool(id),
     };
 
     const bindings = defaultBindings();
+    this.bindings = bindings;
     // 3D の切り替えだけは Viewer を掴む必要があるので、ここで足す。
     // 表に入れておけばショートカット一覧にも自動で出る
     bindings.push({
@@ -69,15 +80,19 @@ export class App {
       },
     });
     const toolbar = new Toolbar(shell.toolbar);
+    this.toolbar = toolbar;
     const fileActions = new FileActions(shell.fileActions);
+    const modeSwitch = new ModeSwitch(shell.modeSwitch);
     const commandInput = new CommandInput(shell.numeric, shell.numericInput, shell.numericLabel);
     this.statusBar = new StatusBar(shell.statusHint, shell.statusReadout, this.viewer3d);
 
+    this.inspector = new Inspector(shell.inspector, buildSections({ bindings }, this.currentMode));
     this.panels = [
       toolbar,
+      modeSwitch,
       fileActions,
       new OptionsBar(shell.options),
-      new Inspector(shell.inspector, buildSections({ bindings })),
+      this.inspector,
       this.statusBar,
       commandInput,
       new ViewTabs(shell.viewTabs, this.viewer3d),
@@ -106,6 +121,39 @@ export class App {
 
   get viewer(): Viewer3D {
     return this.viewer3d;
+  }
+
+  get mode(): Mode {
+    return this.currentMode;
+  }
+
+  /**
+   * モードの切り替え。**出すものを決め直して組み直すだけ。**
+   *
+   * 隠すツールは登録から外す（`Editor.setTools`）ので、ツールバーも
+   * キーマップもショートカット一覧も `allTools()` を見ていて自動で揃う。
+   * 第 2 の codebase は作らない。差は表の `modes` 欄にしかない。
+   */
+  private setMode(mode: Mode): void {
+    if (this.currentMode === mode) return;
+    this.currentMode = mode;
+    this.ctx.mode = mode;
+    this.editor.setTools(buildTools(mode));
+    this.toolbar.build(this.ctx);
+    this.inspector.setSections(buildSections({ bindings: this.bindings }, mode));
+    this.refresh();
+  }
+
+  /**
+   * ツールを選ぶ。**作図のツールを選んだら 2D に戻す。**
+   *
+   * 3D では作図できない（Phase 1 で意図して外した）ので、3D を見たまま壁ツールを
+   * 選ぶと、押しても何も起きない行き止まりになる。ワイヤーも通常モード・プロモードの
+   * 両方で「選択時にビューが 2D に切り替わる」と書いている。
+   */
+  private selectTool(id: ToolId): void {
+    if (id !== 'select' && !this.view.shows2d) this.view.set('2d');
+    this.editor.setTool(id);
   }
 
   private deleteSelection(): void {

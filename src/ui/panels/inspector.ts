@@ -1,12 +1,21 @@
 import { clear } from '../dom.ts';
 import type { Panel, PanelContext, Section } from '../panel.ts';
 
-/** セクションを順に並べるだけ。項目が増えたら配列に1行足す */
+/** セクションを順に並べるだけ。何を並べるかは `section-registry.ts` が決める */
 export class Inspector implements Panel {
+  private sections: Section[];
+
   constructor(
     private readonly host: HTMLElement,
-    private readonly sections: Section[],
-  ) {}
+    sections: Section[],
+  ) {
+    this.sections = sections;
+  }
+
+  /** モードが変わったときに差し替える */
+  setSections(sections: Section[]): void {
+    this.sections = sections;
+  }
 
   refresh(ctx: PanelContext): void {
     clear(this.host);

@@ -17,6 +17,7 @@ import { el } from './dom.ts';
  */
 export interface Shell {
   readonly root: HTMLElement;
+  readonly modeSwitch: HTMLElement;
   readonly fileActions: HTMLElement;
   readonly toolbar: HTMLElement;
   readonly canvasWrap: HTMLElement;
@@ -33,6 +34,7 @@ export interface Shell {
 }
 
 export function buildShell(host: HTMLElement): Shell {
+  const modeSwitch = el('div', { class: 'mode-switch', id: 'mode-switch' }, []);
   const fileActions = el('div', { class: 'file-actions', id: 'file-actions' }, []);
   const toolbar = el('nav', { class: 'toolbar', id: 'toolbar', 'aria-label': 'ツール' }, []);
   const canvas = el('canvas', { id: 'canvas', tabindex: 0 }, []);
@@ -55,6 +57,7 @@ export function buildShell(host: HTMLElement): Shell {
   const root = el('div', { class: 'minicad' }, [
     el('header', { class: 'topbar' }, [
       el('div', { class: 'brand' }, [el('strong', {}, ['MiniCAD']), el('span', {}, ['間取りエディタ'])]),
+      modeSwitch,
       fileActions,
     ]),
     el('div', { class: 'workspace' }, [toolbar, canvasWrap, inspector]),
@@ -64,7 +67,7 @@ export function buildShell(host: HTMLElement): Shell {
   host.append(root);
 
   return {
-    root, fileActions, toolbar, canvasWrap, canvas, canvas3d, viewTabs,
+    root, modeSwitch, fileActions, toolbar, canvasWrap, canvas, canvas3d, viewTabs,
     options, numeric, numericLabel, numericInput, inspector, statusHint, statusReadout,
   };
 }

@@ -79,6 +79,41 @@ body {
   background: #4a4b53;
 }
 
+/* --- 編集モード --- */
+
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.mode-label {
+  font-size: 11px;
+  color: #a8a7a2;
+}
+
+.mode-switch button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid #4a4b53;
+  border-radius: 5px;
+  background: #35363c;
+  color: #e9e8e4;
+  cursor: pointer;
+}
+
+.mode-switch button:hover {
+  background: #4a4b53;
+}
+
+.mode-switch button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 /* --- 作業領域 --- */
 
 .workspace {
@@ -560,6 +595,14 @@ input.layer-name:focus {
   border: 1px solid #e8d4a8;
   color: #7a5a1e;
   line-height: 1.5;
+}
+
+/* プロモードの「まだ無いもの」 */
+.missing-list {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  line-height: 1.6;
 }
 
 /* --- ダイアログ --- */

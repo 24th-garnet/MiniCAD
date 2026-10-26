@@ -89,6 +89,29 @@ export class Editor {
     this.tools.set(tool.id, tool);
   }
 
+  /**
+   * 使えるツールを丸ごと入れ替える。モードの切り替えで呼ぶ。
+   *
+   * **隠したツールは登録そのものから外す。** 表示だけ消すと、ショートカットでは
+   * 選べてしまい、ショートカット一覧にも出続ける。登録から外せば、ツールバーも
+   * キーマップも一覧も `allTools()` を見ているので、どれも直さずに揃う。
+   *
+   * 作図の途中なら取り消してから入れ替える。選んでいたツールが消えたときは
+   * 選択ツールに戻す。
+   */
+  setTools(tools: Tool[]): void {
+    this.tool.cancel?.(this);
+    this.tool.onDeactivate?.(this);
+    this.tools.clear();
+    for (const tool of tools) this.tools.set(tool.id, tool);
+    if (!this.tools.has(this.activeToolId)) this.activeToolId = 'select';
+    this.snapContext = {};
+    this.tool.onActivate?.(this);
+    this.canvas.style.cursor = this.tool.cursor;
+    this.requestRender();
+    for (const fn of this.changeListeners) fn();
+  }
+
   get tool(): Tool {
     const t = this.tools.get(this.activeToolId);
     if (!t) throw new Error(`未登録のツール: ${this.activeToolId}`);

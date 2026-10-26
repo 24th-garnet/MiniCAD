@@ -131,7 +131,7 @@ export function installKeymap(ctx: PanelContext, bindings: Binding[], commandInp
     const tool = ctx.editor.allTools().find((t) => t.shortcut.toLowerCase() === e.key.toLowerCase());
     if (tool) {
       e.preventDefault();
-      ctx.editor.setTool(tool.id);
+      ctx.selectTool(tool.id);
     }
   });
 }

@@ -1,8 +1,10 @@
 import type { Binding } from './keymap.ts';
 import type { Section } from './panel.ts';
+import { BOTH_MODES, PRO_ONLY, type Mode } from './mode.ts';
 import { BlocksSection } from './panels/sections/blocks.ts';
 import { ConstraintsSection } from './panels/sections/constraints.ts';
 import { LayersSection } from './panels/sections/layers.ts';
+import { MissingSection } from './panels/sections/missing.ts';
 import { RoomsSection } from './panels/sections/rooms.ts';
 import { SelectionSection } from './panels/sections/selection.ts';
 import { SettingsSection } from './panels/sections/settings.ts';
@@ -26,6 +28,7 @@ export type SectionId =
   | 'blocks'
   | 'settings'
   | 'stats'
+  | 'missing'
   | 'shortcuts';
 
 /** 区画を作るのに要るもの。`App` が持っていて区画からは見えないもの */
@@ -35,22 +38,28 @@ export interface SectionDeps {
 
 export interface SectionEntry {
   make(deps: SectionDeps): Section;
+  /** どのモードで出すか */
+  modes: readonly Mode[];
 }
 
 export const SECTION_REGISTRY: Record<SectionId, SectionEntry> = {
-  selection: { make: () => new SelectionSection() },
-  constraints: { make: () => new ConstraintsSection() },
-  rooms: { make: () => new RoomsSection() },
-  standard: { make: () => new StandardSection() },
-  sheet: { make: () => new SheetSection() },
-  layers: { make: () => new LayersSection() },
-  blocks: { make: () => new BlocksSection() },
-  settings: { make: () => new SettingsSection() },
-  stats: { make: () => new StatsSection() },
-  shortcuts: { make: (deps) => new ShortcutsSection(deps.bindings) },
+  selection: { make: () => new SelectionSection(), modes: BOTH_MODES },
+  // 幾何拘束・製図規格・用紙枠は CAD 寄りの道具立て。通常モードでは出さない
+  constraints: { make: () => new ConstraintsSection(), modes: PRO_ONLY },
+  rooms: { make: () => new RoomsSection(), modes: BOTH_MODES },
+  standard: { make: () => new StandardSection(), modes: PRO_ONLY },
+  sheet: { make: () => new SheetSection(), modes: PRO_ONLY },
+  layers: { make: () => new LayersSection(), modes: BOTH_MODES },
+  blocks: { make: () => new BlocksSection(), modes: BOTH_MODES },
+  settings: { make: () => new SettingsSection(), modes: BOTH_MODES },
+  stats: { make: () => new StatsSection(), modes: BOTH_MODES },
+  missing: { make: () => new MissingSection(), modes: PRO_ONLY },
+  shortcuts: { make: (deps) => new ShortcutsSection(deps.bindings), modes: BOTH_MODES },
 };
 
-/** 出す区画を順に作る。並びは表のキーの順 */
-export function buildSections(deps: SectionDeps): Section[] {
-  return Object.values(SECTION_REGISTRY).map((entry) => entry.make(deps));
+/** そのモードで出す区画を順に作る。並びは表のキーの順 */
+export function buildSections(deps: SectionDeps, mode: Mode): Section[] {
+  return Object.values(SECTION_REGISTRY)
+    .filter((entry) => entry.modes.includes(mode))
+    .map((entry) => entry.make(deps));
 }

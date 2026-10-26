@@ -9,6 +9,7 @@ import { ShapeTool } from '../tools/shape.ts';
 import type { Tool, ToolId } from '../tools/tool.ts';
 import { TransformTool } from '../tools/transform.ts';
 import { WallTool } from '../tools/wall.ts';
+import { BOTH_MODES, PRO_ONLY, type Mode } from './mode.ts';
 
 /**
  * 何のツールを出すかの表。
@@ -36,30 +37,34 @@ export interface ToolEntry {
   make(): Tool;
   /** ツールバーのアイコン */
   glyph: string;
+  /** どのモードで出すか */
+  modes: readonly Mode[];
 }
 
 export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
-  select: { make: () => new SelectTool(), glyph: '↖' },
-  measure: { make: () => new MeasureTool(), glyph: '↔' },
-  copy: { make: () => new TransformTool('copy', 'copy', '複写', 'Y'), glyph: '⧉' },
-  rotate: { make: () => new TransformTool('rotate', 'rotate', '回転', 'R'), glyph: '↻' },
-  mirror: { make: () => new TransformTool('mirror', 'mirror', '鏡像', 'X'), glyph: '⇄' },
-  offset: { make: () => new ModifyTool('offset', 'offset', 'オフセット', 'O'), glyph: '⫽' },
-  trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), glyph: '✂' },
-  extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), glyph: '⇥' },
-  wall: { make: () => new WallTool(), glyph: '▬' },
-  door: { make: () => new OpeningTool('door', 'door', 'ドア', 'D'), glyph: '⌒' },
-  window: { make: () => new OpeningTool('window', 'window', '窓', 'S'), glyph: '▤' },
-  block: { make: () => new BlockInsertTool(), glyph: '▦' },
-  line: { make: () => new ShapeTool('line', 'line', '線', 'L'), glyph: '／' },
-  arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), glyph: '○' },
-  point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), glyph: '・' },
-  text: { make: () => new ShapeTool('text', 'text', '文字', 'T'), glyph: 'A' },
-  dimension: { make: () => new DimensionTool(), glyph: '↦' },
-  room: { make: () => new RoomTool(), glyph: 'あ' },
+  select: { make: () => new SelectTool(), glyph: '↖', modes: BOTH_MODES },
+  measure: { make: () => new MeasureTool(), glyph: '↔', modes: BOTH_MODES },
+  copy: { make: () => new TransformTool('copy', 'copy', '複写', 'Y'), glyph: '⧉', modes: BOTH_MODES },
+  rotate: { make: () => new TransformTool('rotate', 'rotate', '回転', 'R'), glyph: '↻', modes: BOTH_MODES },
+  mirror: { make: () => new TransformTool('mirror', 'mirror', '鏡像', 'X'), glyph: '⇄', modes: BOTH_MODES },
+  offset: { make: () => new ModifyTool('offset', 'offset', 'オフセット', 'O'), glyph: '⫽', modes: PRO_ONLY },
+  trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), glyph: '✂', modes: PRO_ONLY },
+  extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), glyph: '⇥', modes: PRO_ONLY },
+  wall: { make: () => new WallTool(), glyph: '▬', modes: BOTH_MODES },
+  door: { make: () => new OpeningTool('door', 'door', 'ドア', 'D'), glyph: '⌒', modes: BOTH_MODES },
+  window: { make: () => new OpeningTool('window', 'window', '窓', 'S'), glyph: '▤', modes: BOTH_MODES },
+  block: { make: () => new BlockInsertTool(), glyph: '▦', modes: BOTH_MODES },
+  line: { make: () => new ShapeTool('line', 'line', '線', 'L'), glyph: '／', modes: BOTH_MODES },
+  arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), glyph: '○', modes: BOTH_MODES },
+  point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), glyph: '・', modes: PRO_ONLY },
+  text: { make: () => new ShapeTool('text', 'text', '文字', 'T'), glyph: 'A', modes: BOTH_MODES },
+  dimension: { make: () => new DimensionTool(), glyph: '↦', modes: BOTH_MODES },
+  room: { make: () => new RoomTool(), glyph: 'あ', modes: BOTH_MODES },
 };
 
-/** 出すツールを順に作る。並びは表のキーの順 */
-export function buildTools(): Tool[] {
-  return Object.values(TOOL_REGISTRY).map((entry) => entry.make());
+/** そのモードで出すツールを順に作る。並びは表のキーの順 */
+export function buildTools(mode: Mode): Tool[] {
+  return Object.values(TOOL_REGISTRY)
+    .filter((entry) => entry.modes.includes(mode))
+    .map((entry) => entry.make());
 }

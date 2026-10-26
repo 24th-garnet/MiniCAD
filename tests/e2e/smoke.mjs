@@ -85,6 +85,9 @@ async function run() {
     const p = await at(wx, wy);
     await page.mouse.move(p.x, p.y);
   };
+  const mode = (label) =>
+    page.locator('.mode-switch button').filter({ hasText: label }).first().click();
+
   const state = () =>
     page.evaluate(() => {
       const ed = window.minicad.editorInstance;
@@ -111,6 +114,9 @@ async function run() {
         layerRows: document.querySelectorAll('.layer-row').length,
         view3d: !document.getElementById('canvas3d').hidden,
         viewMode: window.minicad.view.mode,
+        mode: window.minicad.mode,
+        toolbar: [...document.querySelectorAll('.tool-button')].map((b) => b.dataset.tool),
+        inspectorHeads: [...document.querySelectorAll('#inspector h2')].map((h) => h.textContent),
         split: document.querySelector('.canvas-wrap').classList.contains('split'),
         wallLayerVisible: s.layers['wall'].visible,
         wallLayerLocked: s.layers['wall'].locked,
@@ -145,6 +151,38 @@ async function run() {
       throw err;
     }
   };
+
+  // --- 編集モード ---
+  // **既定は通常モード。** ワイヤーが 2 度明記している
+  const normal = await state();
+  assert.equal(normal.mode, 'normal', '既定が通常モードではない');
+  for (const hidden of ['offset', 'trim', 'extend', 'point']) {
+    assert.ok(!normal.toolbar.includes(hidden), `通常モードに ${hidden} が出ている`);
+  }
+  for (const shown of ['select', 'wall', 'door', 'window', 'block', 'room']) {
+    assert.ok(normal.toolbar.includes(shown), `通常モードに ${shown} が無い`);
+  }
+  assert.ok(!normal.inspectorHeads.some((h) => h.includes('幾何拘束') || h.includes('製図規格')),
+    `通常モードに CAD 寄りの区画が出ている: ${normal.inspectorHeads}`);
+
+  // 隠したツールはショートカットでも選べない。登録から外しているので
+  await page.keyboard.press('u');
+  await sleep(150);
+  assert.equal((await state()).tool, 'select', '隠したツールがショートカットで選べる');
+
+  await mode('プロモード');
+  await sleep(250);
+  const pro = await state();
+  assert.equal(pro.mode, 'pro');
+  for (const shown of ['offset', 'trim', 'extend', 'point']) {
+    assert.ok(pro.toolbar.includes(shown), `プロモードに ${shown} が無い`);
+  }
+  for (const id of normal.toolbar) {
+    assert.ok(pro.toolbar.includes(id), `${id} が通常にだけある`);
+  }
+  assert.ok(pro.inspectorHeads.includes('まだ無いもの'),
+    'プロモードに「まだ無いもの」が出ていない');
+  console.log('✔ 既定は通常モード、プロモードで CAD 寄りの道具が増える');
 
   await step('サンプル間取りが読み込まれる', async () => {}, (s) => {
     assert.equal(s.walls, 10);
