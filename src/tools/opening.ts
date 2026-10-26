@@ -9,6 +9,7 @@ import { theme } from '../render/theme.ts';
 import { drawPrimitives } from '../render/primitive.ts';
 import { getLayer } from '../core/layer.ts';
 import type { Frame } from '../render/renderer.ts';
+import { BAY_LABELS, BAY_SHAPES, type Bay, type BayShape } from '../core/bay.ts';
 import type { Editor } from '../ui/editor.ts';
 import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
@@ -81,6 +82,7 @@ export class OpeningTool implements Tool {
       flipX: this.flipX,
       flipY: this.flipY,
       sillHeight: null,
+      bay: this.bay ? { ...this.bay } : null,
       height: null,
       layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
       attrs: defaultAttrs(),
@@ -138,6 +140,7 @@ export class OpeningTool implements Tool {
       flipX: this.flipX,
       flipY: this.flipY,
       sillHeight: null,
+      bay: this.bay ? { ...this.bay } : null,
       height: null,
       layerId: LAYER_IDS.opening,
       attrs: defaultAttrs(),
@@ -165,6 +168,9 @@ export class OpeningTool implements Tool {
     drawPrimitives(frame, openingPrimitives(scene, preview), layer, theme.preview);
   }
 
+  /** 出窓・ニッチを付けて置く。パレットの「出窓」が立てる */
+  bay: Bay | null = null;
+
   options(): OptionField[] {
     const flips = [
       this.symbol.usesFlipX ? 'X で吊元・引き勝手' : null,
@@ -190,6 +196,24 @@ export class OpeningTool implements Tool {
         onChange: (v: number) => void (this.width = Math.max(100, v)),
       },
     ];
+    if (this.bay) {
+      fields.push(
+        {
+          kind: 'select',
+          label: '張り出し',
+          value: this.bay.shape,
+          options: BAY_SHAPES.map((k) => ({ value: k, label: BAY_LABELS[k] })),
+          onChange: (v: string) => void (this.bay = { ...this.bay!, shape: v as BayShape }),
+        },
+        {
+          kind: 'number',
+          label: '出 (mm)',
+          value: this.bay.depth,
+          step: 50,
+          onChange: (v: number) => void (this.bay = { ...this.bay!, depth: v }),
+        },
+      );
+    }
     if (flips.length > 0) fields.push({ kind: 'note', text: `${flips.join(' / ')}を反転` });
     return fields;
   }

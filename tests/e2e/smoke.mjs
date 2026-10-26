@@ -1085,6 +1085,58 @@ async function run() {
   assert.equal((await state()).fixtures, beforeFixture.fixtures, 'undo で戻らない');
   console.log('✔ 柱と梁を置けて、3D にも立つ');
 
+  // --- 出窓 ---
+  // **種別は増やさない。** 窓に張り出しを持たせる
+  await page.locator('.part-button[data-opening="出窓"]').click();
+  await sleep(200);
+  const beforeBay = await state();
+  // 前の手順で画面の外に出ている壁があるので、全体を入れてから狙う
+  await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+  await sleep(250);
+  // 壁の上に乗せる。ツールは壁の上でないと置かない
+  const spot = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const used = new Set(Object.values(s.openings).map((o) => o.wallId));
+    // 建具の無い、いちばん長い壁の真ん中。既存の建具とぶつかると置けない
+    const free = Object.values(s.walls)
+      .filter((w) => !used.has(w.id))
+      .map((w) => {
+        const a = s.nodes[w.a];
+        const b = s.nodes[w.b];
+        return { a, b, len: Math.hypot(b.x - a.x, b.y - a.y) };
+      })
+      .sort((x, y) => y.len - x.len)[0];
+    return free ? [(free.a.x + free.b.x) / 2, (free.a.y + free.b.y) / 2] : null;
+  });
+  assert.ok(spot, '建具の無い壁が見つからない');
+  await moveWorld(spot[0], spot[1]);
+  await clickWorld(spot[0], spot[1]);
+  await sleep(300);
+  const withBay = await state();
+  assert.equal(withBay.openings, beforeBay.openings + 1,
+    `出窓が置けない (tool=${withBay.tool}, at=${spot})`);
+
+  const bay = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const ops = Object.values(s.openings);
+    const last = ops[ops.length - 1];
+    return { kind: last.kind, bay: last.bay, kinds: [...new Set(ops.map((o) => o.kind))] };
+  });
+  assert.equal(bay.kind, 'window', '出窓が新しい種別になっている');
+  assert.deepEqual(bay.bay, { shape: 'box', depth: 450, side: 1 });
+
+  // 3D では壁の外に箱が出る
+  const outside = await page.evaluate(() => {
+    const faces = window.minicad.viewer.meshNow();
+    return faces.filter((f) => f.ref && f.ref.type === 'opening').length;
+  });
+  assert.ok(outside > 0, '出窓が 3D に出ていない');
+
+  await page.keyboard.press('Control+z');
+  await sleep(250);
+  assert.equal((await state()).openings, beforeBay.openings, 'undo で戻らない');
+  console.log('✔ 出窓は窓に張り出しを足したもので、種別は増えない');
+
   await page.keyboard.press('Escape');
   await page.keyboard.press('v');
   await sleep(150);
@@ -1541,13 +1593,13 @@ async function run() {
   await sleep(500);
 
   // 構造のボタンは組み込みなので、ホストのカタログだけを数える
-  const parts = page.locator('.part-button:not([data-fixture])');
+  const parts = page.locator('.part-button:not([data-fixture]):not([data-opening])');
   assert.equal(await parts.count(), 2, 'カタログがパレットに出ていない');
   assert.equal(await page.locator('.part-button:disabled').count(), 1,
     '壁を含む部品が挿せるように見えている');
 
   const beforeInsert = await state();
-  await page.locator('.part-button:not([data-fixture]):not(:disabled)').first().click();
+  await page.locator('.part-button:not([data-fixture]):not([data-opening]):not(:disabled)').first().click();
   await sleep(250);
   assert.equal((await state()).tool, 'block', 'ブロックツールに移っていない');
 

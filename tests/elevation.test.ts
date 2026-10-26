@@ -72,7 +72,7 @@ test('開口のある壁だけを立面にする', () => {
   for (let i = 0; i < 4; i++) walls.push(addWall(scene, ids[i], ids[(i + 1) % 4], 100)!);
   const id = newId('o');
   scene.openings[id] = { id, wallId: walls[0].id, offset: 2000, width: 800,
-    kind: 'door', flipX: false, flipY: false, sillHeight: null, height: null,
+    kind: 'door', flipX: false, flipY: false, sillHeight: null, height: null, bay: null,
     layerId: LAYER_IDS.opening, attrs: defaultAttrs() };
   const got = sceneToElevations(scene);
   assert.equal(got.length, 1);

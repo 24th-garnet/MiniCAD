@@ -57,6 +57,7 @@ export function sampleScene(): Scene {
       flipX: false,
       flipY,
       sillHeight: null,
+      bay: null,
       height: null,
       layerId: LAYER_IDS.opening,
       attrs: defaultAttrs(),

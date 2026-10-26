@@ -5,6 +5,7 @@ import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
 import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
+import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
 import { FIXTURE_SPECS, type Fixture } from '../../../core/fixture.ts';
 import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
@@ -104,6 +105,25 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
         // 反転が意味を持たない種別では欄自体を出さない
         symbol.usesFlipX ? checkboxField('吊元・引き勝手を反転', op.flipX, (v) => edit(() => void (op.flipX = v))) : null,
         symbol.usesFlipY ? checkboxField('開く向きを反転', op.flipY, (v) => edit(() => void (op.flipY = v))) : null,
+        // 出窓とニッチ。**種別ではなく欄**なので、どの建具にも付けられる
+        checkboxField('出窓・ニッチ', op.bay !== null, (v) =>
+          edit(() => void (op.bay = v ? defaultBay() : null)),
+        ),
+        ...(op.bay
+          ? [
+              selectField('張り出しの形', op.bay.shape,
+                BAY_SHAPES.map((k) => ({ value: k, label: BAY_LABELS[k] })),
+                (v) => edit(() => void (op.bay!.shape = v as BayShape)),
+              ),
+              numberField('出', op.bay.depth, (v) => edit(() => void (op.bay!.depth = v)), {
+                step: 50, suffix: 'mm',
+              }),
+              checkboxField('反対側へ出す', op.bay.side === -1, (v) =>
+                edit(() => void (op.bay!.side = v ? -1 : 1)),
+              ),
+              el('p', { class: 'empty-note' }, ['出を負にするとニッチ（内側へ凹む）になります。']),
+            ]
+          : []),
       ];
     }
     case 'blockInstance': {

@@ -24,6 +24,7 @@ export function makeOpening(
     flipX: false,
     flipY: false,
     sillHeight: null,
+    bay: null,
     height: null,
     layerId: LAYER_IDS.opening,
     attrs: defaultAttrs(),

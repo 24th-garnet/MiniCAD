@@ -1,6 +1,10 @@
 import { BlockInsertTool } from '../../../tools/block-insert.ts';
 import { FIXTURE_KINDS, FIXTURE_SPECS, type FixtureKind } from '../../../core/fixture.ts';
 import { FixtureTool } from '../../../tools/fixture.ts';
+import { OpeningTool } from '../../../tools/opening.ts';
+import type { Bay } from '../../../core/bay.ts';
+import type { OpeningKind } from '../../../core/types.ts';
+import { OPENING_SYMBOLS } from '../../../core/opening.ts';
 import { el } from '../../dom.ts';
 import type { PanelContext, Section } from '../../panel.ts';
 import type { LibraryItem } from '../../../host.ts';
@@ -27,6 +31,12 @@ export class LibrarySection implements Section {
     const structure = el('div', { class: 'part-grid' }, []);
     for (const kind of FIXTURE_KINDS) structure.append(fixtureButton(kind, ctx));
     out.push(structure);
+
+    // **建具は構造の次。** 躯体 → 建具 → 家具 の順
+    out.push(el('h3', { class: 'part-group' }, ['建具']));
+    const openings = el('div', { class: 'part-grid' }, []);
+    for (const preset of OPENING_PARTS) openings.append(openingButton(preset, ctx));
+    out.push(openings);
 
     if (items.length === 0) return out;
 
@@ -73,6 +83,50 @@ function fixtureButton(kind: FixtureKind, ctx: PanelContext): HTMLElement {
       ctx.refresh();
     },
   }, [spec.label]);
+}
+
+/**
+ * 建具のパレット。**種別と張り出しの組み合わせ**で並べる。
+ *
+ * ワイヤーは「窓 / 出窓 / ハーフ出窓」を別々の部品として並べているが、
+ * JIS の平面では全部同じ記号なので、`OpeningKind` は増やさない。
+ * 違うのは張り出し（`Bay`）と窓台の高さだけ。
+ */
+interface OpeningPart {
+  label: string;
+  family: 'door' | 'window';
+  kind: OpeningKind;
+  bay?: Bay;
+}
+
+const OPENING_PARTS: OpeningPart[] = [
+  { label: 'ドア', family: 'door', kind: 'door' },
+  { label: '引き違い窓', family: 'window', kind: 'windowSliding' },
+  { label: '窓', family: 'window', kind: 'window' },
+  { label: '壁開口', family: 'door', kind: 'opening' },
+  { label: '出窓', family: 'window', kind: 'window', bay: { shape: 'box', depth: 450, side: 1 } },
+  { label: 'ニッチ', family: 'door', kind: 'opening', bay: { shape: 'box', depth: -150, side: 1 } },
+];
+
+function openingButton(part: OpeningPart, ctx: PanelContext): HTMLElement {
+  return el('button', {
+    class: 'part-button',
+    type: 'button',
+    'data-opening': part.label,
+    title: part.label,
+    onclick: () => {
+      ctx.selectTool(part.family);
+      const tool = ctx.editor.tool;
+      if (tool instanceof OpeningTool) {
+        tool.kind = part.kind;
+        // 種別を変えたら幅もその種別の既定に戻す。ツールの種別セレクタと同じ扱い
+        tool.width = OPENING_SYMBOLS[part.kind].defaultWidth;
+        tool.bay = part.bay ? { ...part.bay } : null;
+      }
+      ctx.editor.canvas.focus();
+      ctx.refresh();
+    },
+  }, [part.label]);
 }
 
 function currentKind(ctx: PanelContext): FixtureKind | null {

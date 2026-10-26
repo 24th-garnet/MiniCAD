@@ -15,6 +15,7 @@ import type { Shape } from '../core/shapes.ts';
 import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { FIXTURE_SPECS, isFixtureKind } from '../core/fixture.ts';
+import { isBayShape, type Bay } from '../core/bay.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
 import { defaultAttrs, isTakeoffMode, type Attrs } from '../core/attrs.ts';
@@ -113,6 +114,7 @@ export function deserialize(raw: unknown): Scene {
       flipX: o.flipX === true,
       flipY: o.flipY === true,
       sillHeight: finiteOrNull(o.sillHeight),
+      bay: readBay(o.bay),
       height: finiteOrNull(o.height),
       layerId: layerOr(o.layerId, LAYER_IDS.opening),
       attrs: readAttrs(o.attrs),
@@ -203,6 +205,19 @@ export function deserialize(raw: unknown): Scene {
     };
   }
   return scene;
+}
+
+/**
+ * 出窓・ニッチの読み取り。出が 0 なら無いものと同じなので null に落とす。
+ * **種別を増やしていない**ので、古いファイルは欄が無く、そのまま null になる
+ */
+function readBay(raw: unknown): Bay | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const b = raw as Record<string, unknown>;
+  if (!isBayShape(b.shape)) return null;
+  const depth = numberOr(b.depth, 0);
+  if (Math.abs(depth) < 1e-6) return null;
+  return { shape: b.shape, depth, side: b.side === -1 ? -1 : 1 };
 }
 
 /** ブロック定義の読み取り。中身の図形は既定の画層・既定の階に乗せる（どちらも定義の中では意味を持たない） */

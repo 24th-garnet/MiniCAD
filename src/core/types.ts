@@ -1,4 +1,5 @@
 import type { Attrs } from './attrs.ts';
+import type { Bay } from './bay.ts';
 import type { Vec } from './geometry.ts';
 import { newId, type Id } from './id.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
@@ -85,6 +86,13 @@ export interface Opening {
   sillHeight: number | null;
   /** 開口の高さ (mm)。null なら建具種別の既定 */
   height: number | null;
+  /**
+   * 壁から張り出す出窓、または内へ凹むニッチ。無ければ null。
+   *
+   * **種別（`OpeningKind`）を増やさずに済ませるための欄。** JIS の平面では
+   * 出窓も普通の窓も同じ記号で、違うのは張り出す箱の方。`core/bay.ts` を参照
+   */
+  bay: Bay | null;
   layerId: LayerId;
   attrs: Attrs;
 }

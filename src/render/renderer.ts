@@ -27,6 +27,7 @@ import {
   instanceVertices,
   labelFits,
 } from '../core/block.ts';
+import { bayPrimitives, hasBay } from '../core/bay.ts';
 import { fixturePrimitives } from '../core/fixture.ts';
 import { shapePrimitives } from '../core/shapes.ts';
 import { sheetPrimitives } from '../core/sheet.ts';
@@ -240,6 +241,9 @@ function drawOpenings(frame: Frame): void {
     // 小口（ジャム）は壁の幾何なので記号の表には入れない
     applyLayer(frame, layer, accent);
     strokeSegments(frame, openingJambs(f));
+
+    // 出窓・ニッチの張り出しは壁の幾何なので、記号とは別に出す
+    if (hasBay(op)) drawPrimitives(frame, bayPrimitives(f, op.bay!), layer, accent);
 
     drawPrimitives(frame, openingPrimitives(scene, op), layer, accent);
   }

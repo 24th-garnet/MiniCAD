@@ -3,12 +3,13 @@ import { instanceFootprint } from '../core/block.ts';
 import { levelOf, wallHeightOf, type Level } from '../core/level.ts';
 import { OPENING_SYMBOLS, openingVertical } from '../core/opening.ts';
 import { doorSwing, openingFrame, wallPointAt, wallSpans } from '../core/shape.ts';
+import { bayOutline, hasBay } from '../core/bay.ts';
 import { BLOCK_HEIGHTS, DEFAULT_BLOCK_HEIGHT } from '../core/blockPresets.ts';
 import { blockOf } from '../core/block.ts';
 import { isSnappable } from '../core/entity.ts';
 import { buildFixtureFaces } from './fixture3d.ts';
 import { theme } from '../render/theme.ts';
-import type { EntityRef, Id, Room, Scene } from '../core/types.ts';
+import type { EntityRef, Id, Opening, Room, Scene } from '../core/types.ts';
 import { cross3, normalize3, sub3, vec3, type Vec3 } from './mat4.ts';
 
 /**
@@ -171,7 +172,22 @@ function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): 
     }
 
     pushLeaf(scene, hole.opening.id, bottom, top, holeSrc, out);
+    pushBay(scene, hole.opening, bottom, top, holeSrc, out);
   }
+}
+
+/**
+ * 出窓の張り出し、またはニッチの凹み。
+ *
+ * 壁の穴は上で開いているので、ここは**箱を 1 つ足すだけ**。窓台と天板は
+ * 開口の上下端（`bottom` / `top`）に合わせるので、ハーフ出窓は窓台が高いまま
+ * 張り出す——平面でも立面でも同じ数字から出る。
+ */
+function pushBay(scene: Scene, opening: Opening, bottom: number, top: number, src: FaceSource, out: Face3[]): void {
+  if (!hasBay(opening)) return;
+  const frame = openingFrame(scene, opening);
+  if (!frame) return;
+  extrudePrism(bayOutline(frame, opening.bay!), bottom, top, theme.wall3d, 'wall', src, out);
 }
 
 /**

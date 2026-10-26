@@ -48,6 +48,7 @@ function sceneWith(kind: OpeningKind, width = 1600, flip: Partial<Opening> = {})
   const wall = addWall(scene, a, b, THICKNESS)!;
   const opening: Opening = {
     sillHeight: null,
+    bay: null,
     height: null,
     id: newId('op'),
     wallId: wall.id,

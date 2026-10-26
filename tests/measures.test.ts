@@ -32,7 +32,7 @@ function addOpening(scene: Scene, wallId: string, offset: number, width: number,
   const id = newId('o');
   scene.openings[id] = {
     id, wallId, offset, width, kind,
-    flipX: false, flipY: false, sillHeight: null, height: null,
+    flipX: false, flipY: false, sillHeight: null, height: null, bay: null,
     layerId: LAYER_IDS.opening,
     attrs: defaultAttrs(),
   };

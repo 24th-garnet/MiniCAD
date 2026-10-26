@@ -121,7 +121,8 @@ function wallFingerprint(scene: Scene, id: Id): string {
   ];
   for (const o of openingsOnWall(scene, id)) {
     parts.push(o.offset, o.width, o.kind, o.flipX ? 1 : 0, o.flipY ? 1 : 0,
-      o.sillHeight, o.height, isSnappable(scene, { type: 'opening', id: o.id }) ? 1 : 0);
+      o.sillHeight, o.height, isSnappable(scene, { type: 'opening', id: o.id }) ? 1 : 0,
+      o.bay?.shape ?? '-', o.bay?.depth ?? 0, o.bay?.side ?? 0);
   }
   return parts.join(',');
 }

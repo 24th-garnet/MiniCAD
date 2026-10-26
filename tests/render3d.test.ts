@@ -34,6 +34,7 @@ function oneWall(kind: OpeningKind | null, over: Record<string, unknown> = {}): 
       offset: 2000,
       width: 1200,
       kind,
+      bay: null,
       flipX: false,
       flipY: false,
       sillHeight: null,
