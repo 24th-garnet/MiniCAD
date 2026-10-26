@@ -1,8 +1,8 @@
 import { sceneBounds } from '../core/entity.ts';
-import { activeLevel } from '../core/level.ts';
+import { activeLevel, levelOf, wallHeightOf } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
 import { defaultCamera, dolly, frameAll, orbit, pan, type Camera3D } from './camera.ts';
-import { highlightOf, pickEntity, Select3D, type Pointer3D } from './interact.ts';
+import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D } from './interact.ts';
 import { type Face3 } from './mesh.ts';
 import { MeshCache } from './meshCache.ts';
 import { paint } from './paint.ts';
@@ -153,6 +153,22 @@ export class Viewer3D {
   /** いまの状態の説明。ステータスバーが 3D のときに読む */
   status(): string {
     return this.select.status(this.editor);
+  }
+
+  /**
+   * 画面の点に何が当たるか。**開発時の確認と e2e のため**で、描画には使わない。
+   * `window.minicad.viewer.hitAt(x, y)`
+   */
+  hitAt(x: number, y: number): { kind: string; id: string; height: number | null } | null {
+    const ray = screenRay(this.camera, x, y, this.width, this.height);
+    const hit = pickEntity(this.editor, ray, this.mesh, NEAR_PICK);
+    if (!hit?.ref) return null;
+    const wall = hit.ref.type === 'wall' ? this.editor.store.scene.walls[hit.ref.id] : null;
+    return {
+      kind: wall && isWallTop(hit) ? 'wallTop' : hit.ref.type,
+      id: hit.ref.id,
+      height: wall ? wallHeightOf(wall, levelOf(this.editor.store.scene, wall.levelId)) : null,
+    };
   }
 
   /**

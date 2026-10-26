@@ -172,20 +172,23 @@ export function rayPlane(ray: Ray3, plane: Plane3, minCos = 0.05): Vec3 | null {
 }
 
 /**
- * レイと直線の最接近点の、直線側のパラメータ。平行なら null。
+ * `at` を通る鉛直線上の、カーソルが指している高さ。解が無ければ null。
  *
- * 壁の上端のように「1 方向にだけ動かす」操作で使う。
+ * 壁の天端のように「上下にだけ動かす」操作で使う。
+ *
+ * **2 直線の最接近点では足りない。** それだと注視点から離れた軸で 1px ほど
+ * ずれ、掴んだ天端がカーソルから少しずつ逃げる。代わりに
+ * **軸を含んでカメラを向いた平面**を立て、そこにレイを落とす。平面が軸を
+ * 含むので、落ちた点は必ず軸の上に乗り、投影し直すとカーソルにぴたりと戻る。
+ *
+ * 真上・真下から見下ろすと鉛直線は点に潰れ、平面が立たない。そのときは null。
  */
-export function rayAxis(ray: Ray3, origin: Vec3, axis: Vec3): number | null {
-  const d1 = ray.direction;
-  const d2 = normalize3(axis, vec3(0, 0, 1));
-  const w0 = sub3(ray.origin, origin);
-  const b = dot3(d1, d2);
-  const denom = 1 - b * b;
-  if (Math.abs(denom) < 1e-9) return null; // 平行
-  const d = dot3(d1, w0);
-  const e = dot3(d2, w0);
-  // 2 直線の最接近点（a = c = 1 に正規化済み）。符号を取り違えると上下が反転する
-  const t = (e - b * d) / denom;
-  return Number.isFinite(t) ? t : null;
+export function rayVerticalAt(ray: Ray3, at: Vec3, eye: Vec3): number | null {
+  // 軸からカメラへ向かう水平成分が、平面の法線
+  const nx = eye.x - at.x;
+  const ny = eye.y - at.y;
+  const len = Math.hypot(nx, ny);
+  if (len < 1e-6) return null; // 真上から。鉛直線が点に潰れている
+  const hit = rayPlane(ray, { origin: at, normal: vec3(nx / len, ny / len, 0) }, 1e-6);
+  return hit ? hit.z : null;
 }

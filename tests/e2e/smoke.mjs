@@ -1126,6 +1126,68 @@ async function run() {
   assert.deepEqual(afterUndo, beforeDrag, '3D のドラッグが undo 1 回で戻らない');
   console.log('✔ 3D のドラッグを undo 1回で取り消せる');
 
+  // --- 3D で壁の高さを変える ---
+  await page.keyboard.press('F3');
+  await sleep(400);
+
+  // 壁の天端を画面上で探す。レイを飛ばして当たるところを見つける
+  const topSpot = await page.evaluate(() => {
+    const v = window.minicad.viewer;
+    const ed = window.minicad.editorInstance;
+    const rect = document.querySelector('#canvas3d').getBoundingClientRect();
+    for (let y = 20; y < rect.height - 20; y += 6) {
+      for (let x = 20; x < rect.width - 20; x += 6) {
+        const hit = v.hitAt(x, y);
+        if (hit && hit.kind === 'wallTop') {
+          return { x: rect.left + x, y: rect.top + y, wallId: hit.id, height: hit.height };
+        }
+      }
+    }
+    void ed;
+    return null;
+  });
+  assert.ok(topSpot, '壁の天端が画面に出ていない');
+
+  // 直前に undo を通しているので、平面の基準はここで取り直す
+  const planeBefore = await page.evaluate(() =>
+    Object.values(window.minicad.editorInstance.store.scene.nodes)
+      .map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`).join('|'));
+
+  await page.mouse.move(topSpot.x, topSpot.y);
+  await page.mouse.down();
+  await page.mouse.move(topSpot.x, topSpot.y - 70, { steps: 8 });
+  await page.mouse.up();
+  await sleep(300);
+
+  const heightAfter = await page.evaluate(
+    (id) => window.minicad.editorInstance.store.scene.walls[id].height,
+    topSpot.wallId,
+  );
+  assert.ok(heightAfter !== null && Math.abs(heightAfter - topSpot.height) > 1,
+    `壁の高さが変わっていない (${topSpot.height} → ${heightAfter})`);
+  console.log(`✔ 3D で壁の高さを変えられる (${topSpot.height} → ${heightAfter}mm)`);
+
+  // 平面は動いていない＝ノードを触っていない
+  const planeSame = await page.evaluate((before) => {
+    const s = window.minicad.editorInstance.store.scene;
+    return Object.values(s.nodes).map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`).join('|') === before;
+  }, planeBefore);
+  assert.ok(planeSame, '高さを変えたのに平面が動いた');
+  console.log('✔ 高さを変えても平面は動かない');
+
+  // 立面図の書き出しに出る
+  await page.keyboard.press('F3');
+  await sleep(300);
+  const [elevAfter] = await Promise.all([
+    page.waitForEvent('download', { timeout: 5000 }),
+    page.click('button[title="開口のある壁の立面を SVG で書き出す"]'),
+  ]);
+  const elevSvg = await readFile(await elevAfter.path(), 'utf8');
+  assert.ok(elevSvg.includes('<svg'), '立面図が書き出せない');
+  assert.ok(elevSvg.includes(String(Math.round(heightAfter))),
+    `立面図に新しい高さ ${Math.round(heightAfter)} が出ていない`);
+  console.log('✔ 高さの変更が立面図に出る');
+
   // --- 1 フレームの内訳を測って残す ---
   await page.keyboard.press('F3');
   await sleep(400);

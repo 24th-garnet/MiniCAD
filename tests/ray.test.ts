@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultCamera, viewProjection, type Camera3D } from '../src/render3d/camera.ts';
-import { screenRay, rayPointAt, rayFace, rayHits, pickRay, rayPlane, rayAxis, type Ray3 } from '../src/render3d/ray.ts';
+import { cameraBasis, defaultCamera, viewProjection, type Camera3D } from '../src/render3d/camera.ts';
+import { screenRay, rayPointAt, rayFace, rayHits, pickRay, rayPlane, rayVerticalAt, type Ray3 } from '../src/render3d/ray.ts';
 import { buildMesh, type Face3 } from '../src/render3d/mesh.ts';
 import { detectRooms } from '../src/core/rooms.ts';
 import { sampleScene } from '../src/io/sample.ts';
@@ -323,15 +323,44 @@ test('鉛直面との交点が取れる（建具を壁に沿わせる）', () =>
   assert.ok(Math.abs(at.y) < 1e-9, '壁の面から外れた');
 });
 
-test('レイと直線の最接近点が取れる', () => {
-  // 壁の上端を上下に動かすときに使う
-  const ray: Ray3 = { origin: vec3(1000, 1000, 500), direction: normalize3(vec3(-1, -1, 0)) };
-  const t = rayAxis(ray, vec3(0, 0, 0), vec3(0, 0, 1));
-  assert.ok(t !== null);
-  assert.ok(Math.abs(t - 500) < 1e-6, `高さが ${t}`);
+test('鉛直線上の高さが取れる', () => {
+  // 壁の天端を上下に動かすときに使う
+  const eye = vec3(5000, 5000, 3000);
+  const ray: Ray3 = { origin: eye, direction: normalize3(vec3(-5000, -5000, -2500)) };
+  const z = rayVerticalAt(ray, vec3(0, 0, 0), eye);
+  assert.ok(z !== null);
+  assert.ok(Math.abs(z - 500) < 1e-6, `高さが ${z}`);
 });
 
-test('レイが軸と平行なら最接近点を返さない', () => {
-  const ray: Ray3 = { origin: vec3(100, 0, 0), direction: vec3(0, 0, 1) };
-  assert.equal(rayAxis(ray, vec3(0, 0, 0), vec3(0, 0, 1)), null);
+test('真上から見下ろすと鉛直線が点に潰れるので解を返さない', () => {
+  const eye = vec3(0, 0, 9000);
+  const ray: Ray3 = { origin: eye, direction: vec3(0, 0, -1) };
+  assert.equal(rayVerticalAt(ray, vec3(0, 0, 0), eye), null);
+});
+
+test('鉛直の軸に沿ってカーソルを動かすと、高さがぴたりと追従する', () => {
+  // **壁の天端を引き上げるときの手触り。**
+  //
+  // 鉛直線は画面の上では**傾いた線**に写る（透視なので真上ではない）ので、
+  // 追従するのはその線に沿った動き。画面の真下へ引いた動きまで一致させることは
+  // そもそもできない——カーソルが線から外れている以上、そこに乗る高さは無い。
+  const cam = perspective();
+  const axisAt = vec3(4000, 0, 0);
+  const eye = cameraBasis(cam).eye;
+
+  const s0 = toScreen(cam, vec3(4000, 0, 2400))!;
+  const s1 = toScreen(cam, vec3(4000, 0, 3400))!;
+  const len = Math.hypot(s1.x - s0.x, s1.y - s0.y);
+  const dir = { x: (s1.x - s0.x) / len, y: (s1.y - s0.y) / len };
+  assert.ok(Math.abs(dir.x) > 0.01, '前提: 投影された軸は画面上で傾いている');
+
+  for (const k of [20, 70, 150, -40]) {
+    const cx = s0.x + dir.x * k;
+    const cy = s0.y + dir.y * k;
+    const z = rayVerticalAt(screenRay(cam, cx, cy, W, H), axisAt, eye);
+    assert.ok(z !== null, `${k}px で解が無い`);
+    const back = toScreen(cam, vec3(4000, 0, z))!;
+    const off = Math.hypot(back.x - cx, back.y - cy);
+    assert.ok(off < 1e-6, `${k}px でカーソルから ${off.toFixed(4)}px ずれた`);
+  }
 });
