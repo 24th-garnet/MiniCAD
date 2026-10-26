@@ -1,34 +1,16 @@
 import { removeEntities } from '../core/entity.ts';
 import { saveLocal } from '../io/scene.ts';
 import type { Scene } from '../core/types.ts';
-import { BlockInsertTool } from '../tools/block-insert.ts';
-import { MeasureTool } from '../tools/measure.ts';
-import { OpeningTool } from '../tools/opening.ts';
-import { RoomTool } from '../tools/room.ts';
-import { SelectTool } from '../tools/select.ts';
-import { DimensionTool } from '../tools/dimension.ts';
-import { ShapeTool } from '../tools/shape.ts';
-import { ModifyTool } from '../tools/modify.ts';
-import { TransformTool } from '../tools/transform.ts';
-import { WallTool } from '../tools/wall.ts';
 import { CommandInput } from './command-input.ts';
 import { Editor } from './editor.ts';
 import { defaultBindings, installKeymap } from './keymap.ts';
 import type { Panel, PanelContext } from './panel.ts';
+import { buildSections } from './section-registry.ts';
+import { buildTools } from './tool-registry.ts';
 import { FileActions } from './panels/file-actions.ts';
 import { Inspector } from './panels/inspector.ts';
 import { OptionsBar } from './panels/options-bar.ts';
 import { Toolbar } from './panels/toolbar.ts';
-import { BlocksSection } from './panels/sections/blocks.ts';
-import { LayersSection } from './panels/sections/layers.ts';
-import { RoomsSection } from './panels/sections/rooms.ts';
-import { SelectionSection } from './panels/sections/selection.ts';
-import { ConstraintsSection } from './panels/sections/constraints.ts';
-import { SettingsSection } from './panels/sections/settings.ts';
-import { ShortcutsSection } from './panels/sections/shortcuts.ts';
-import { SheetSection } from './panels/sections/sheet.ts';
-import { StandardSection } from './panels/sections/standard.ts';
-import { StatsSection } from './panels/sections/stats.ts';
 import { StatusBar } from './status-bar.ts';
 import { ViewTabs } from './panels/view-tabs.ts';
 import { Viewer3D } from '../render3d/viewer.ts';
@@ -61,29 +43,8 @@ export class App {
     // **ビューの状態は App が持つ。** `Viewer3D.visible` は従属に降りる
     this.view = new ViewState((mode) => this.applyView(mode));
 
-    // 並び順がそのままツールバーの並び。グループが変わるところに区切りが入る
-    for (const tool of [
-      new SelectTool(),
-      new MeasureTool(),
-      new TransformTool('copy', 'copy', '複写', 'Y'),
-      new TransformTool('rotate', 'rotate', '回転', 'R'),
-      new TransformTool('mirror', 'mirror', '鏡像', 'X'),
-      new ModifyTool('offset', 'offset', 'オフセット', 'O'),
-      new ModifyTool('trim', 'trim', 'トリム', 'U'),
-      new ModifyTool('extend', 'extend', '延長', 'E'),
-      new WallTool(),
-      new OpeningTool('door', 'door', 'ドア', 'D'),
-      new OpeningTool('window', 'window', '窓', 'S'),
-      new BlockInsertTool(),
-      new ShapeTool('line', 'line', '線', 'L'),
-      new ShapeTool('arc', 'arc', '円・弧', 'C'),
-      new ShapeTool('point', 'point', '点', 'Q'),
-      new ShapeTool('text', 'text', '文字', 'T'),
-      new DimensionTool(),
-      new RoomTool(),
-    ]) {
-      this.editor.registerTool(tool);
-    }
+    // 何を出すかはレジストリが決める。ここは並べるだけ
+    for (const tool of buildTools()) this.editor.registerTool(tool);
 
     this.ctx = {
       editor: this.editor,
@@ -116,18 +77,7 @@ export class App {
       toolbar,
       fileActions,
       new OptionsBar(shell.options),
-      new Inspector(shell.inspector, [
-        new SelectionSection(),
-        new ConstraintsSection(),
-        new RoomsSection(),
-        new StandardSection(),
-        new SheetSection(),
-        new LayersSection(),
-        new BlocksSection(),
-        new SettingsSection(),
-        new StatsSection(),
-        new ShortcutsSection(bindings),
-      ]),
+      new Inspector(shell.inspector, buildSections({ bindings })),
       this.statusBar,
       commandInput,
       new ViewTabs(shell.viewTabs, this.viewer3d),

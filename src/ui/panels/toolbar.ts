@@ -1,28 +1,7 @@
-import type { ToolGroup, ToolId } from '../../tools/tool.ts';
+import type { ToolGroup } from '../../tools/tool.ts';
+import { TOOL_REGISTRY } from '../tool-registry.ts';
 import { clear, el } from '../dom.ts';
 import type { Panel, PanelContext } from '../panel.ts';
-
-/** ToolId を増やすとここが型エラーになるので、アイコンの付け忘れに気づける */
-const TOOL_GLYPH: Record<ToolId, string> = {
-  select: '↖',
-  measure: '↔',
-  copy: '⧉',
-  rotate: '↻',
-  mirror: '⇄',
-  offset: '⫽',
-  trim: '✂',
-  extend: '⇥',
-  wall: '▬',
-  door: '⌒',
-  window: '▤',
-  block: '▦',
-  line: '／',
-  arc: '○',
-  point: '・',
-  text: 'A',
-  dimension: '↦',
-  room: 'あ',
-};
 
 export class Toolbar implements Panel {
   constructor(private readonly host: HTMLElement) {}
@@ -53,7 +32,7 @@ export class Toolbar implements Panel {
             },
           },
           [
-            el('span', { class: 'glyph' }, [TOOL_GLYPH[tool.id]]),
+            el('span', { class: 'glyph' }, [TOOL_REGISTRY[tool.id].glyph]),
             el('span', {}, [tool.label]),
             el('span', { class: 'key' }, [tool.shortcut]),
           ],
