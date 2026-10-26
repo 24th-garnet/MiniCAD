@@ -52,6 +52,30 @@ export const defaultCamera = (): Camera3D => ({
 
 export const clampPitch = (p: number): number => Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, p));
 
+/**
+ * 画面の縦横比。幅も高さも 0 のときは 1 に落とす。
+ *
+ * **`viewProjection` と `screenRay` が同じ式を使う**ための切り出し。
+ * 別々に書くと、片方だけ直したときに拾う位置が静かにずれる。
+ */
+export const aspectOf = (width: number, height: number): number =>
+  width > 0 && height > 0 ? width / height : 1;
+
+/** カメラの正規直交基底。`pan` も `cameraRight` も `screenRay` もこれを使う */
+export interface CameraBasis {
+  eye: Vec3;
+  forward: Vec3;
+  right: Vec3;
+  up: Vec3;
+}
+
+export function cameraBasis(cam: Camera3D): CameraBasis {
+  const eye = cameraEye(cam);
+  const forward = normalize3(sub3(cam.target, eye));
+  const right = normalize3(cross3(forward, UP), vec3(1, 0, 0));
+  return { eye, forward, right, up: cross3(right, forward) };
+}
+
 export function cameraEye(cam: Camera3D): Vec3 {
   const cp = Math.cos(cam.pitch);
   return vec3(
@@ -75,7 +99,7 @@ export interface View {
 }
 
 export function viewProjection(cam: Camera3D, width: number, height: number): View {
-  const aspect = width > 0 && height > 0 ? width / height : 1;
+  const aspect = aspectOf(width, height);
   const eye = cameraEye(cam);
   const view = mat4LookAt(eye, cam.target, UP);
   const projection =
@@ -103,9 +127,7 @@ export function dolly(cam: Camera3D, factor: number): void {
 /** 画面のピクセル移動を、注視点の面での移動に直す */
 export function pan(cam: Camera3D, dxPx: number, dyPx: number, height: number): void {
   if (height <= 0) return;
-  const forward = normalize3(sub3(cam.target, cameraEye(cam)));
-  const right = normalize3(cross3(forward, UP), vec3(1, 0, 0));
-  const up = cross3(right, forward);
+  const { right, up } = cameraBasis(cam);
   const perPx = (2 * cam.distance * Math.tan(cam.fovY / 2)) / height;
   const move = (v: Vec3, k: number) => {
     cam.target = vec3(cam.target.x + v.x * k, cam.target.y + v.y * k, cam.target.z + v.z * k);
@@ -124,7 +146,6 @@ export function frameAll(cam: Camera3D, bounds: Bounds | null, wallHeight: numbe
   cam.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, (radius * 1.6) / Math.tan(cam.fovY / 2)));
 }
 
-export const cameraRight = (cam: Camera3D): Vec3 =>
-  normalize3(cross3(normalize3(sub3(cam.target, cameraEye(cam))), UP), vec3(1, 0, 0));
+export const cameraRight = (cam: Camera3D): Vec3 => cameraBasis(cam).right;
 
 export { scale3 };
