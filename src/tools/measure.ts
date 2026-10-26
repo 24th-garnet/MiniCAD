@@ -1,4 +1,8 @@
+import { point3, type Measurement } from '../core/annotation.ts';
+import { defaultAttrs } from '../core/attrs.ts';
 import { resolvePoint } from '../core/coord-input.ts';
+import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
+import { newId } from '../core/types.ts';
 import { angleOf, dist, mid, toDeg, type Vec } from '../core/geometry.ts';
 import { drawSnapMarker, type Frame } from '../render/renderer.ts';
 import { fontOf, theme } from '../render/theme.ts';
@@ -6,7 +10,16 @@ import type { Editor } from '../ui/editor.ts';
 import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, PointerInfo, Tool } from './tool.ts';
 
-/** 2点間の距離を測るだけのツール。シーンは一切変更しない */
+/**
+ * 2 点間の距離を測る。**測ったものは残る。**
+ *
+ * 以前は `commit` を一度も呼ばず、ツールを離れた瞬間に消えていた。
+ * ワイヤーは座標・メモ付きの保存を求めている（「距離計測」のフォームに
+ * 座標始点/終点・自動/手動・メモが並ぶ）。
+ *
+ * **図面には出ない。** 寸法（`Shape` の `dimension`）は JIS の記号として
+ * 紙に載るが、計測は打ち合わせの道具で、SVG にも DXF にも出さない。
+ */
 export class MeasureTool implements Tool {
   readonly id = 'measure' as const;
   readonly label = '計測';
@@ -51,7 +64,32 @@ export class MeasureTool implements Tool {
     } else {
       this.to = p.world;
       editor.snapContext = {};
+      this.commit(editor);
     }
+  }
+
+  /** 測り終えたら実体にする。z は階の床（平面で測っているので） */
+  private commit(editor: Editor): void {
+    const a = this.from;
+    const b = this.to;
+    if (!a || !b) return;
+    if (dist(a, b) < 1) return; // 同じ点を 2 度叩いただけ
+    const store = editor.store;
+    const id = newId('ms');
+    const measurement: Measurement = {
+      id,
+      a: point3(a.x, a.y, 0),
+      b: point3(b.x, b.y, 0),
+      manual: null,
+      note: '',
+      layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.draft),
+      levelId: store.scene.activeLevelId,
+      attrs: defaultAttrs(),
+    };
+    store.commit(() => {
+      store.scene.measurements[id] = measurement;
+    });
+    store.setSelection([{ type: 'measurement', id }]);
   }
 
   onKeyDown(editor: Editor, e: KeyboardEvent): boolean {
@@ -73,6 +111,7 @@ export class MeasureTool implements Tool {
         if (!point) return;
         this.to = point;
         ed.snapContext = {};
+        this.commit(ed);
         ed.requestRender();
       },
     };
@@ -126,6 +165,6 @@ export class MeasureTool implements Tool {
   status(): string {
     if (!this.from) return '始点をクリック';
     if (!this.to) return '終点をクリックで確定 / Esc で取り消し';
-    return 'クリックで新しい計測を開始';
+    return '測った結果は残ります。クリックで次の計測を開始';
   }
 }

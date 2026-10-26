@@ -98,6 +98,7 @@ async function run() {
         openings: Object.keys(s.openings).length,
         instances: Object.keys(s.instances).length,
         fixtures: Object.keys(s.fixtures).length,
+        measurements: Object.keys(s.measurements).length,
         fixtureKinds: Object.values(s.fixtures).map((f) => f.kind),
         blocks: Object.keys(s.blocks).length,
         blockLabels: Object.values(s.blocks).map((b) => b.label),
@@ -1084,6 +1085,56 @@ async function run() {
   await sleep(250);
   assert.equal((await state()).fixtures, beforeFixture.fixtures, 'undo で戻らない');
   console.log('✔ 柱と梁を置けて、3D にも立つ');
+
+  // --- 距離計測 ---
+  // **測ったものは残る。** 以前は commit を呼ばず、ツールを離れた瞬間に消えていた
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('m');
+  await sleep(200);
+  const beforeMeasure = await state();
+  await clickWorld(500, 500);
+  await sleep(150);
+  await clickWorld(2500, 500);
+  await sleep(300);
+
+  const measured = await state();
+  assert.equal(measured.measurements, beforeMeasure.measurements + 1, '計測が残っていない');
+  assert.equal(measured.selection, 1, '測った直後に選ばれていない');
+
+  const m = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const got = Object.values(s.measurements);
+    return got[got.length - 1];
+  });
+  assert.equal(m.manual, null, '最初から手入力になっている');
+  assert.equal(m.a.z, 0);
+  assert.ok(Math.abs(Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y) - 2000) < 2, '測った長さが違う');
+
+  // ツールを離れても消えない
+  await page.keyboard.press('v');
+  await sleep(200);
+  assert.equal((await state()).measurements, beforeMeasure.measurements + 1, 'ツールを離れて消えた');
+
+  // 手入力に切り替えると、自動の値は残ったまま上書きされる
+  const manualField = page.locator('.field').filter({ hasText: '手で入れる' }).first();
+  assert.equal(await manualField.count(), 1, '手入力の欄が出ていない');
+  await manualField.locator('input').check();
+  await sleep(250);
+  const withManual = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const got = Object.values(s.measurements);
+    return got[got.length - 1];
+  });
+  assert.equal(withManual.manual, 2000, '手入力の初期値が自動の値になっていない');
+  assert.ok(Math.abs(Math.hypot(withManual.b.x - withManual.a.x, withManual.b.y - withManual.a.y) - 2000) < 2,
+    '手入力にしたら座標が動いた');
+
+  // undo で戻る
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal((await state()).measurements, beforeMeasure.measurements, 'undo で戻らない');
+  console.log('✔ 測った結果が残り、手入力に切り替えても自動の値は消えない');
 
   // --- 出窓 ---
   // **種別は増やさない。** 窓に張り出しを持たせる

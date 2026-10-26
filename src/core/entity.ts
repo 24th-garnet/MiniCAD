@@ -150,6 +150,26 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     },
   },
 
+  measurement: {
+    label: '計測',
+    table: (scene) => scene.measurements,
+    layerIdOf: (scene, id) => scene.measurements[id]?.layerId ?? null,
+    setLayerId: (scene, id, layerId) => {
+      const m = scene.measurements[id];
+      if (!m) return false;
+      m.layerId = layerId;
+      return true;
+    },
+    remove: (scene, id) => {
+      if (!scene.measurements[id]) return false;
+      delete scene.measurements[id];
+      return true;
+    },
+    // **図面範囲には入れない。** 打ち合わせの道具なので、これで
+    // 全体表示の倍率が変わると邪魔になる
+    points: () => [],
+  },
+
   roomLabel: {
     label: '室名',
     table: (scene) => scene.roomLabels,

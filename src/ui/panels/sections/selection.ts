@@ -6,6 +6,7 @@ import { checkboxField, el, numberField, optionalNumberField, readonlyField, sel
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
 import { attrsOf } from '../../../core/material.ts';
+import { measuredDistance } from '../../../core/annotation.ts';
 import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
 import { FIXTURE_SPECS, type Fixture } from '../../../core/fixture.ts';
@@ -223,6 +224,31 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
       const shape = scene.shapes[ref.id];
       if (!shape) return [];
       return shapeFields(shape, edit);
+    }
+    case 'measurement': {
+      const m = scene.measurements[ref.id];
+      if (!m) return [];
+      const auto = measuredDistance(m);
+      const end = (which: 'a' | 'b', label: string) =>
+        (['x', 'y', 'z'] as const).map((axis) =>
+          numberField(`${label} ${axis.toUpperCase()}`, m[which][axis],
+            (v) => edit(() => void (m[which][axis] = v)), { step: 50, suffix: 'mm' }),
+        );
+      return [
+        readonlyField('種類', '計測'),
+        ...end('a', '始点'),
+        ...end('b', '終点'),
+        readonlyField('自動計測', `${Math.round(auto)} mm`),
+        // **自動と手動を畳まない。** 畳むと「測ったら 1234 だった」と
+        // 「1234 だと聞いた」が同じ数字になる
+        checkboxField('手で入れる', m.manual !== null, (v) =>
+          edit(() => void (m.manual = v ? Math.round(auto) : null)),
+        ),
+        m.manual !== null
+          ? numberField('距離', m.manual, (v) => edit(() => void (m.manual = v)), { step: 1, suffix: 'mm' })
+          : null,
+        textField('メモ', m.note, (v) => edit(() => void (m.note = v))),
+      ];
     }
     case 'fixture': {
       const f = scene.fixtures[ref.id];

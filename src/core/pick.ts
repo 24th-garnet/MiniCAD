@@ -86,6 +86,13 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
     if (dist(p, vec(label.x, label.y)) <= tolerance * 3) return ref;
   }
 
+  // 計測はいちばん最後。図面の上に重ねた道具なので、図面の邪魔をしない
+  for (const m of Object.values(scene.measurements)) {
+    const ref: EntityRef = { type: 'measurement', id: m.id };
+    if (!ok(ref)) continue;
+    if (closestOnSegment(p, vec(m.a.x, m.a.y), vec(m.b.x, m.b.y)).dist <= tolerance) return ref;
+  }
+
   return null;
 }
 
@@ -139,6 +146,12 @@ export function pickInRect(
     if (!ok(ref)) continue;
     const corners = outline(f);
     if (crossing ? corners.some(inside) : corners.every(inside)) refs.push(ref);
+  }
+  for (const m of Object.values(scene.measurements)) {
+    const ref: EntityRef = { type: 'measurement', id: m.id };
+    if (!ok(ref)) continue;
+    const ends = [vec(m.a.x, m.a.y), vec(m.b.x, m.b.y)];
+    if (crossing ? ends.some(inside) : ends.every(inside)) refs.push(ref);
   }
   return refs;
 }

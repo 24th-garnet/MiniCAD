@@ -28,6 +28,7 @@ import {
   labelFits,
 } from '../core/block.ts';
 import { bayPrimitives, hasBay } from '../core/bay.ts';
+import { distanceOf, planMid } from '../core/annotation.ts';
 import { fixturePrimitives } from '../core/fixture.ts';
 import { shapePrimitives } from '../core/shapes.ts';
 import { sheetPrimitives } from '../core/sheet.ts';
@@ -63,6 +64,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   // 構造は壁の上に描く。柱は壁に重なって立つので、下に回すと隠れる
   drawFixtures(frame);
   drawShapes(frame);
+  drawMeasurements(frame);
   drawRoomLabels(frame);
   drawNodes(frame);
   drawConstraints(frame);
@@ -343,6 +345,65 @@ function drawShapes(frame: Frame): void {
   }
 }
 
+
+// --- 計測 ---
+
+/**
+ * 距離計測。**紙には出ない。** SVG にも DXF にも出さないので、
+ * `Primitive` を通さずここで直に描く。寸法（JIS の記号）とは別もの。
+ */
+function drawMeasurements(frame: Frame): void {
+  const { ctx, vp, scene, selected, hover } = frame;
+  const list = Object.values(scene.measurements);
+  if (list.length === 0) return;
+
+  ctx.save();
+  for (const m of list) {
+    const layer = layerFor(frame, m.layerId, LAYER_IDS.draft);
+    if (!layer.visible) continue;
+    const accent = selected.has(`measurement:${m.id}`)
+      ? theme.wallSelected
+      : hover?.type === 'measurement' && hover.id === m.id
+        ? theme.wallHover
+        : null;
+    const color = accent ?? theme.snap;
+    const sa = vp.toScreen(vec(m.a.x, m.a.y));
+    const sb = vp.toScreen(vec(m.b.x, m.b.y));
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = accent ? 2 : 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(sa.x, sa.y);
+    ctx.lineTo(sb.x, sb.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const s of [sa, sb]) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    // **手入力なら、そうと分かるように出す。** 測った値と聞いた値を
+    // 同じ見た目にすると、どちらか分からなくなる
+    const text = `${Math.round(distanceOf(m))} mm${m.manual !== null ? '（手入力）' : ''}`
+      + (m.note ? `  ${m.note}` : '');
+    const c = vp.toScreen(planMid(m));
+    ctx.font = fontOf(12);
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillRect(c.x - w / 2 - 6, c.y - 24, w + 12, 19);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(c.x - w / 2 - 6, c.y - 24, w + 12, 19);
+    ctx.fillStyle = theme.dimensionText;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, c.x, c.y - 14.5);
+  }
+  ctx.restore();
+}
 
 // --- ノード ---
 

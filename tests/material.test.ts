@@ -3,25 +3,25 @@ import assert from 'node:assert/strict';
 import { attrsOf, materialRefOf } from '../src/core/material.ts';
 import { sampleScene } from '../src/io/sample.ts';
 import { deserialize, serialize } from '../src/io/scene.ts';
-import { ENTITY_TYPES } from '../src/core/entity.ts';
+import { ENTITY_KINDS, ENTITY_TYPES } from '../src/core/entity.ts';
 import type { EntityRef } from '../src/core/types.ts';
 
-/** シーンから、その種別の実体を 1 つ拾う */
+/**
+ * シーンから、その種別の実体を 1 つ拾う。
+ *
+ * **表は `ENTITY_KINDS` から引く。** ここに手で書いた表を置くと、
+ * 種別を足したときに黙って飛ばされる（実際に一度やった）。
+ */
 function someRef(type: EntityRef['type']) {
   const scene = sampleScene();
-  const table: Record<string, Record<string, unknown>> = {
-    node: scene.nodes, wall: scene.walls, opening: scene.openings,
-    blockInstance: scene.instances, roomLabel: scene.roomLabels,
-    shape: scene.shapes, fixture: scene.fixtures,
-  };
-  const id = Object.keys(table[type])[0];
+  const id = Object.keys(ENTITY_KINDS[type].table(scene))[0];
   return { scene, ref: id ? ({ type, id } as EntityRef) : null };
 }
 
 test('属性を持つ種別と持たない種別がはっきり分かれている', () => {
   // ノードと室名は属性を持たない。表に 2 行「持たない」を書く代わりに、
   // switch が網羅していることを型と、この 1 件で見る
-  const holds = new Set(['wall', 'opening', 'blockInstance', 'shape', 'fixture']);
+  const holds = new Set(['wall', 'opening', 'blockInstance', 'shape', 'fixture', 'measurement']);
   for (const type of ENTITY_TYPES) {
     const { scene, ref } = someRef(type);
     if (!ref) continue;

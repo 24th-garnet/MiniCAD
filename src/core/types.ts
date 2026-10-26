@@ -7,6 +7,7 @@ import type { Shape } from './shapes.ts';
 import type { BlockDef, BlockInstance } from './block.ts';
 import type { Constraint } from './constraints.ts';
 import type { Fixture } from './fixture.ts';
+import type { Measurement } from './annotation.ts';
 import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from './level.ts';
 import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
@@ -160,6 +161,8 @@ export interface Scene {
   shapes: Record<Id, Shape>;
   /** 構造物（柱・梁・階段・スロープ・吹抜）。壁グラフには参加しない */
   fixtures: Record<Id, Fixture>;
+  /** 距離計測。図面ではなく打ち合わせの道具なので、紙には出さない */
+  measurements: Record<Id, Measurement>;
   /** 画層。DXF の LAYER テーブルに対応する */
   layers: Record<LayerId, Layer>;
   /** 線群・尺度・文字高さなどの製図規格。図面の属性なのでシーンと一緒に保存する */
@@ -186,6 +189,7 @@ export function emptyScene(): Scene {
     roomLabels: {},
     shapes: {},
     fixtures: {},
+    measurements: {},
     layers: defaultLayers(),
     standard: jisStandard(),
     sheet: defaultSheet(),
@@ -205,6 +209,7 @@ export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, 'node'>, LayerId> = {
   roomLabel: LAYER_IDS.roomName,
   shape: LAYER_IDS.shape,
   fixture: LAYER_IDS.wall,
+  measurement: LAYER_IDS.draft,
 };
 
 export type EntityType =
@@ -214,7 +219,8 @@ export type EntityType =
   | 'blockInstance'
   | 'roomLabel'
   | 'shape'
-  | 'fixture';
+  | 'fixture'
+  | 'measurement';
 
 export interface EntityRef {
   type: EntityType;

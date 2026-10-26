@@ -16,6 +16,7 @@ import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { FIXTURE_SPECS, isFixtureKind } from '../core/fixture.ts';
 import { isBayShape, type Bay } from '../core/bay.ts';
+import { readPoint3 } from '../core/annotation.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
 import { defaultAttrs, isTakeoffMode, type Attrs } from '../core/attrs.ts';
@@ -193,6 +194,23 @@ export function deserialize(raw: unknown): Scene {
       height: typeof raw.height === 'number' ? raw.height : null,
       label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
       layerId: layerOr(raw.layerId, spec.defaultLayer),
+      levelId: levelOr(raw.levelId),
+      attrs: readAttrs(raw.attrs),
+    };
+  }
+
+  for (const [id, raw] of Object.entries(table<Record<string, unknown>>('measurements'))) {
+    const a = readPoint3(raw?.a);
+    const b = readPoint3(raw?.b);
+    if (!a || !b) continue;
+    scene.measurements[id] = {
+      id,
+      a,
+      b,
+      // 手入力は数値のときだけ。**未入力と 0 を分ける**
+      manual: typeof raw.manual === 'number' && Number.isFinite(raw.manual) ? raw.manual : null,
+      note: typeof raw.note === 'string' ? raw.note : '',
+      layerId: layerOr(raw.layerId, LAYER_IDS.draft),
       levelId: levelOr(raw.levelId),
       attrs: readAttrs(raw.attrs),
     };
