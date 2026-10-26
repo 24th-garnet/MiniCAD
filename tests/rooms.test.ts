@@ -130,3 +130,46 @@ test('階をまたいだ壁は作れない', () => {
   const b = findOrCreateNode(scene, vec(4000, 0), 'lv-2');
   assert.equal(addWall(scene, a, b, 100), null);
 });
+
+test('床に着かない壁は部屋を仕切らない', async () => {
+  // **垂れ壁で部屋が 2 つに割れると、床の数量が合わなくなる。**
+  // 天井は割れるが、それは天井伏図の話で、部屋の床の話ではない
+  const { addWall, findOrCreateNode } = await import('../src/core/ops.ts');
+  const { vec } = await import('../src/core/geometry.ts');
+  const { emptyScene } = await import('../src/core/types.ts');
+
+  // 外周は中間点で分けておく。間仕切りの端点がフェイス探索に参加するように
+  const scene = emptyScene();
+  const ring = [vec(0, 0), vec(3000, 0), vec(6000, 0), vec(6000, 4000), vec(3000, 4000), vec(0, 4000)]
+    .map((p) => findOrCreateNode(scene, p));
+  for (let i = 0; i < ring.length; i++) addWall(scene, ring[i], ring[(i + 1) % ring.length], 100);
+
+  // 真ん中に間仕切りを入れると 2 室になる
+  const divider = addWall(scene, ring[1], ring[4], 100)!;
+  assert.equal(detectRooms(scene).length, 2, '間仕切りで 2 室にならない');
+
+  // 同じ壁を垂れ壁にすると 1 室に戻る
+  divider.base = 1900;
+  const rooms = detectRooms(scene);
+  assert.equal(rooms.length, 1, `垂れ壁で ${rooms.length} 室に割れている`);
+});
+
+test('垂れ壁の既定の高さは天井まで', async () => {
+  const { wallHeightOf } = await import('../src/core/level.ts');
+  const { activeLevel } = await import('../src/core/level.ts');
+  const { addWall, findOrCreateNode } = await import('../src/core/ops.ts');
+  const { vec } = await import('../src/core/geometry.ts');
+  const { emptyScene } = await import('../src/core/types.ts');
+
+  const scene = emptyScene();
+  const level = activeLevel(scene);
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(4000, 0));
+  const wall = addWall(scene, a, b, 100)!;
+
+  assert.equal(wallHeightOf(wall, level), level.wallHeight, '床に着く壁が階高いっぱいでない');
+  wall.base = 1900;
+  // **既定を階高そのものにすると、垂れ壁が天井を突き抜ける**
+  assert.equal(wallHeightOf(wall, level), level.wallHeight - 1900);
+  assert.equal(wall.base + wallHeightOf(wall, level), level.wallHeight, '天井に届いていない');
+});

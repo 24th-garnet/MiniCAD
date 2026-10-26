@@ -54,7 +54,7 @@ export function addWall(scene: Scene, a: Id, b: Id, thickness: number, layerId: 
   if (existing) return existing;
   const id = newId('w');
   const wall: Wall = {
-    id, a, b, thickness, height: null, layerId, levelId: na.levelId, attrs: defaultAttrs(),
+    id, a, b, thickness, height: null, base: 0, layerId, levelId: na.levelId, attrs: defaultAttrs(),
   };
   scene.walls[id] = wall;
   return wall;

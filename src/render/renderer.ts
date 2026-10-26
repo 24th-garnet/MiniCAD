@@ -195,6 +195,12 @@ function drawWalls(frame: Frame): void {
       : hover?.type === 'wall' && hover.id === wall.id
         ? theme.wallHover
         : null;
+    // **床に着かない壁は塗らない。** 切断面より上にあるものなので、
+    // 塗りつぶすと床に着く壁と見分けが付かない
+    if (wall.base > 0) {
+      fillQuad(wallQuad(scene, wall), theme.paper);
+      continue;
+    }
     // 塗らない設定でも、下の部屋塗りを隠すために紙の色で埋める
     fillQuad(wallQuad(scene, wall), fill ? (accent ?? layer.color) : theme.paper);
   }
@@ -206,10 +212,11 @@ function drawWalls(frame: Frame): void {
     fillQuad(openingQuad(f), theme.paper);
   }
 
-  if (fill) return;
-
-  // 輪郭線表示: 壁の両側の線を、開口部を除いて引く
+  // 輪郭線表示: 壁の両側の線を、開口部を除いて引く。
+  // **床に着かない壁は塗りの設定に関わらず輪郭で描く。** 切断面より上の
+  // ものを破線で表すのは製図の作法で、JIS の平面でも同じ
   for (const wall of Object.values(scene.walls)) {
+    if (fill && wall.base === 0) continue;
     const layer = layerFor(frame, wall.layerId, LAYER_IDS.wall);
     if (!layer.visible) continue;
     const accent = selected.has(`wall:${wall.id}`)
@@ -217,9 +224,10 @@ function drawWalls(frame: Frame): void {
       : hover?.type === 'wall' && hover.id === wall.id
         ? theme.wallHover
         : null;
-    applyLayer(frame, layer, accent);
+    applyLayer(frame, layer, accent, wall.base > 0 ? 'hidden' : undefined);
     strokeSegments(frame, wallOutline(scene, wall));
   }
+  ctx.setLineDash([]);
 }
 
 

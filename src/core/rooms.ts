@@ -46,6 +46,10 @@ export function detectRooms(scene: Scene): Room[] {
 
   for (const wall of Object.values(scene.walls)) {
     if (wall.a === wall.b) continue;
+    // **床に着かない壁は部屋を仕切らない。** LDK とキッチンのあいだの垂れ壁で
+    // 部屋が 2 つに割れると、床の数量が合わなくなる。天井は割れるが、
+    // それは天井伏図の話で、部屋の床の話ではない
+    if (wall.base > 0) continue;
     const pa = nodePos(scene, wall.a);
     const pb = nodePos(scene, wall.b);
     if (dist(pa, pb) < 1e-6) continue;

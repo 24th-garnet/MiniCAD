@@ -60,8 +60,15 @@ export function levelsInOrder(scene: Scene): Level[] {
   );
 }
 
+/**
+ * 壁の立ち上がり (mm)。**下端から上へ**の寸法。
+ *
+ * 高さの上書きが無いときは**天井まで届く**。下端が 1900 の垂れ壁なら
+ * 既定は 500 で、階高を変えれば自分で追従する。
+ * 既定を階高そのものにすると、垂れ壁が天井を突き抜ける。
+ */
 export const wallHeightOf = (wall: Wall, level: Level): number =>
-  positiveOr(wall.height, level.wallHeight);
+  positiveOr(wall.height, Math.max(0, level.wallHeight - wall.base));
 
 /** 上書きが有効な数値ならそれを、そうでなければ既定を返す */
 export const positiveOr = (value: number | null | undefined, fallback: number): number =>

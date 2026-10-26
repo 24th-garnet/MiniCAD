@@ -96,6 +96,8 @@ export function deserialize(raw: unknown): Scene {
       b: w.b,
       thickness: numberOr(w.thickness, 120),
       height: finiteOrNull(w.height),
+      // 下端は負にならない。古いファイルには欄が無く、床に着く
+      base: Math.max(0, numberOr(w.base, 0)),
       layerId: layerOr(w.layerId, LAYER_IDS.wall),
       levelId: na.levelId,
       attrs: readAttrs(w.attrs),

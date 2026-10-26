@@ -1,5 +1,6 @@
 import type { Vec } from '../core/geometry.ts';
-import { getLayer, layerDashWorld, layerWeight, type Layer } from '../core/layer.ts';
+import { getLayer, layerDashWorld, layerWeight, lineTypeDashWorld, type Layer } from '../core/layer.ts';
+import type { LineType } from '../core/standard.ts';
 import { PX_PER_MM, paperToScreenPx } from '../core/standard.ts';
 import type { Settings } from '../core/store.ts';
 import type { EntityRef, Room, Scene } from '../core/types.ts';
@@ -37,14 +38,33 @@ export const textPx = (paperMm: number): number => Math.max(8, paperMm * PX_PER_
 
 /** 線種のダッシュを画面のピクセルに直す。ワールド基準なのでズームに追従する */
 export function dashPx(frame: Frame, layer: Layer): number[] {
-  return layerDashWorld(layer, frame.scene.standard).map((mm) => Math.max(1, frame.vp.toScreenLength(mm)));
+  return dashWorldToPx(frame, layerDashWorld(layer, frame.scene.standard));
 }
 
-export function applyLayer(frame: Frame, layer: Layer, overrideColor?: string | null): void {
+const dashWorldToPx = (frame: Frame, mm: number[]): number[] =>
+  mm.map((v) => Math.max(1, frame.vp.toScreenLength(v)));
+
+/**
+ * 画層の見た目を ctx に当てる。
+ *
+ * `overrideLineType` は**そのものが持つ線種**のためにある。切断面より上に
+ * あるもの（垂れ壁）は、画層の線種が何であれ破線で描くのが製図の作法。
+ * `Primitive` の `lineType` と同じ考え方。
+ */
+export function applyLayer(
+  frame: Frame,
+  layer: Layer,
+  overrideColor?: string | null,
+  overrideLineType?: LineType,
+): void {
   const { ctx } = frame;
   ctx.strokeStyle = overrideColor ?? layer.color;
   ctx.lineWidth = strokePx(frame, layer);
-  ctx.setLineDash(dashPx(frame, layer));
+  ctx.setLineDash(
+    overrideLineType
+      ? dashWorldToPx(frame, lineTypeDashWorld(overrideLineType, frame.scene.standard))
+      : dashPx(frame, layer),
+  );
 }
 
 /** beginPath から closePath まで。塗るか描くかは呼び出し側が決める */

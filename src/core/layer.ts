@@ -171,7 +171,12 @@ export function layerWeight(layer: Layer, standard: DrawingStandard): number {
 
 /** 画層のダッシュパターンをワールドの mm に直す。実線なら空配列 */
 export function layerDashWorld(layer: Layer, standard: DrawingStandard): number[] {
-  return LINE_TYPE_PATTERNS[layer.lineType].map((mm) => mm * standard.scale);
+  return lineTypeDashWorld(layer.lineType, standard);
+}
+
+/** 線種のダッシュパターンをワールドの mm に直す */
+export function lineTypeDashWorld(lineType: LineType, standard: DrawingStandard): number[] {
+  return LINE_TYPE_PATTERNS[lineType].map((mm) => mm * standard.scale);
 }
 
 /** 見つからない画層IDに備えた取り出し。壊れたファイルでも描画は止めない */

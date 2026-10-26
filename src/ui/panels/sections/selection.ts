@@ -54,10 +54,18 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
           min: 10,
           suffix: 'mm',
         }),
+        // **ツールを増やさずに垂れ壁・腰壁を出すための欄**（奥谷さんの提案）。
+        // 下端 1900 / 高さ 500 なら垂れ壁、下端 0 / 高さ 900 なら腰壁
+        numberField('下端', wall.base, (v) => edit(() => void (wall.base = Math.max(0, v))), {
+          step: 100, min: 0, suffix: 'mm',
+        }),
+        wall.base > 0
+          ? el('p', { class: 'empty-note' }, ['床に着かない壁は部屋を仕切りません（平面では破線）。'])
+          : null,
         optionalNumberField(
           '高さ',
           wall.height,
-          levelOf(scene, wall.levelId).wallHeight,
+          Math.max(0, levelOf(scene, wall.levelId).wallHeight - wall.base),
           (v) => edit(() => void (wall.height = v === null ? null : Math.max(1, v))),
           { step: 100, min: 1, suffix: 'mm' },
         ),

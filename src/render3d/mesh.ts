@@ -127,7 +127,8 @@ function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): 
   const wall = scene.walls[wallId];
   const ws = wallSpans(scene, wall);
   if (!ws) return;
-  const z0 = level.floorZ;
+  // 下端が 0 でなければ浮く（垂れ壁）。高さは下端からの立ち上がり
+  const z0 = level.floorZ + wall.base;
   const z1 = z0 + wallHeightOf(wall, level);
   const at = (along: number, side: number): Vec => wallPointAt(ws, along, side);
   // 壁ぶんの出どころは 1 つ作って、この壁から出る面すべてで共有する
