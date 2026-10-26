@@ -1,3 +1,4 @@
+import type { Attrs } from './attrs.ts';
 import { add, angleOf, boundsOf, dist, rotate, vec, type Bounds, type Vec } from './geometry.ts';
 import { newId, type Id } from './id.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
@@ -45,6 +46,7 @@ export interface BlockInstance {
   /** 表示名の上書き。null なら定義の label */
   label: string | null;
   levelId: Id;
+  attrs: Attrs;
 }
 
 /** 定義座標系の点をワールドへ。尺度 → 回転 → 平行移動の順 */
@@ -243,6 +245,7 @@ export function defineBlock(scene: Scene, shapeIds: Id[], base: Vec, label: stri
     blockId: defId,
     layerId: shapes[0].layerId,
     levelId: shapes[0].levelId,
+    attrs: { ...shapes[0].attrs },
     x: base.x,
     y: base.y,
     scaleX: 1,
@@ -263,7 +266,8 @@ export function explodeInstance(scene: Scene, instId: Id): Id[] {
   for (const shape of Object.values(def.shapes)) {
     const worldShape = mapShapePoints(shape, (p) => instanceToWorld(inst, p));
     const id = newId('s');
-    scene.shapes[id] = { ...worldShape, id, layerId: inst.layerId };
+    // 分解した図形は挿入側の属性を引き継ぐ（定義の中の属性は意味を持たない）
+    scene.shapes[id] = { ...worldShape, id, layerId: inst.layerId, attrs: { ...inst.attrs } };
     created.push(id);
   }
   delete scene.instances[instId];

@@ -1,6 +1,7 @@
 import { vec, type Vec } from '../core/geometry.ts';
 import type { LayerId } from '../core/layer.ts';
 import type { Shape, ShapeKind } from '../core/shapes.ts';
+import type { Attrs } from '../core/attrs.ts';
 import type { Id } from '../core/types.ts';
 
 type Raw = Record<string, unknown>;
@@ -10,6 +11,7 @@ export interface ShapeBase {
   id: Id;
   layerId: LayerId;
   levelId: Id;
+  attrs: Attrs;
 }
 
 type Reader<K extends ShapeKind> = (base: ShapeBase, raw: Raw) => Extract<Shape, { shape: K }> | null;

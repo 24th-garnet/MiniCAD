@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../core/attrs.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import { dist, dot, mid, norm, perp, sub, type Vec } from '../core/geometry.ts';
 import { dimensionPrimitives } from '../core/dimension.ts';
@@ -91,6 +92,7 @@ export class DimensionTool implements Tool {
         LAYER_IDS.dimension,
       ),
       levelId: editor.store.scene.activeLevelId,
+      attrs: defaultAttrs(),
       a,
       b,
       // クリックした点を通るように、法線方向の成分だけ取る
@@ -154,6 +156,7 @@ export class DimensionTool implements Tool {
       shape: 'dimension',
       layerId: LAYER_IDS.dimension,
       levelId: editor.store.scene.activeLevelId,
+      attrs: defaultAttrs(),
       a,
       b: second,
       offset: 0,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import DxfParser from 'dxf-parser';
 import { emptyScene, type Scene } from '../src/core/types.ts';
 import { SHAPE_GEOMETRY, SHAPE_KINDS, shapeOutline, shapeVertices, type Shape, type ShapeKind } from '../src/core/shapes.ts';
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 import { vec } from '../src/core/geometry.ts';
@@ -22,12 +23,13 @@ import { sceneBounds } from '../src/core/entity.ts';
  * 種別を足してここに書き忘れると型エラーになる。
  */
 const SAMPLES: { [K in ShapeKind]: Extract<Shape, { shape: K }> } = {
-  line: { id: 'sh-line', shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, a: vec(0, 0), b: vec(2000, 1000) },
+  line: { id: 'sh-line', shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), a: vec(0, 0), b: vec(2000, 1000) },
   polyline: {
     id: 'sh-poly',
     shape: 'polyline',
     layerId: LAYER_IDS.shape,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     points: [vec(3000, 0), vec(4000, 0), vec(4000, 1000)],
     closed: false,
   },
@@ -36,29 +38,32 @@ const SAMPLES: { [K in ShapeKind]: Extract<Shape, { shape: K }> } = {
     shape: 'arc',
     layerId: LAYER_IDS.shape,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     center: vec(6000, 0),
     radius: 800,
     startAngle: 0,
     endAngle: Math.PI / 2,
   },
-  circle: { id: 'sh-circle', shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, center: vec(8000, 0), radius: 600 },
+  circle: { id: 'sh-circle', shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), center: vec(8000, 0), radius: 600 },
   text: {
     id: 'sh-text',
     shape: 'text',
     layerId: LAYER_IDS.roomName,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     at: vec(0, 3000),
     text: '注記テキスト',
     height: 3.5,
     angle: 0,
     align: 'center',
   },
-  point: { id: 'sh-point', shape: 'point', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, at: vec(5000, 3000) },
+  point: { id: 'sh-point', shape: 'point', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), at: vec(5000, 3000) },
   dimension: {
     id: 'sh-dim',
     shape: 'dimension',
     layerId: LAYER_IDS.dimension,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     a: { x: 0, y: -2000, nodeId: null },
     b: { x: 3000, y: -2000, nodeId: null },
     offset: -500,

@@ -3,6 +3,7 @@ import { LAYER_IDS } from './layer.ts';
 import { newId } from './id.ts';
 import { nodePos, wallEnds } from './ops.ts';
 import type { Primitive } from './primitive.ts';
+import { defaultAttrs } from './attrs.ts';
 import { dimensionSide, detectRooms } from './rooms.ts';
 import type { Segment } from './shape.ts';
 import type { DimEnd, DimensionShape } from './shapes.ts';
@@ -138,6 +139,7 @@ export function createWallDimensions(scene: Scene): DimensionShape[] {
       shape: 'dimension',
       layerId: LAYER_IDS.dimension,
       levelId: wall.levelId,
+      attrs: defaultAttrs(),
       a: { x: a.x, y: a.y, nodeId: wall.a },
       b: { x: b.x, y: b.y, nodeId: wall.b },
       offset: side * (wall.thickness / 2 + gap),

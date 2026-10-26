@@ -1,3 +1,4 @@
+import type { Attrs } from './attrs.ts';
 import type { Vec } from './geometry.ts';
 import { newId, type Id } from './id.ts';
 import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
@@ -38,6 +39,7 @@ export interface Wall {
   layerId: LayerId;
   /** 乗っている階。**両端ノードと必ず一致する** */
   levelId: Id;
+  attrs: Attrs;
 }
 
 /**
@@ -83,6 +85,7 @@ export interface Opening {
   /** 開口の高さ (mm)。null なら建具種別の既定 */
   height: number | null;
   layerId: LayerId;
+  attrs: Attrs;
 }
 
 /** 部屋名の手動ラベル。部屋ポリゴン自体は壁から自動検出する */

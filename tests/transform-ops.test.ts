@@ -7,6 +7,7 @@ import { detectRooms } from '../src/core/rooms.ts';
 import { doorSwing, openingFrame } from '../src/core/shape.ts';
 import { transformEntities, isNoopTransform } from '../src/core/transformOps.ts';
 import { applyPoint, mirror, rotation, translation } from '../src/core/transform.ts';
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 import { dist, toRad, vec, type Vec } from '../src/core/geometry.ts';
@@ -168,6 +169,7 @@ test('円弧を鏡像すると向きが入れ替わり、掃く範囲が保た�
     shape: 'arc',
     layerId: LAYER_IDS.shape,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     center: vec(1000, 0),
     radius: 500,
     startAngle: 0,
@@ -198,6 +200,7 @@ test('文字は位置と向きが変わるが、内容は変わらない', () =>
     shape: 'text',
     layerId: LAYER_IDS.roomName,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     at: vec(100, 200),
     text: '注記',
     height: 3.5,

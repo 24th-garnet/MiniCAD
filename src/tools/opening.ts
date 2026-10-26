@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../core/attrs.ts';
 import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
 import { clampOpening, wallEnds, wallLength } from '../core/ops.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
@@ -82,6 +83,7 @@ export class OpeningTool implements Tool {
       sillHeight: null,
       height: null,
       layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
+      attrs: defaultAttrs(),
     };
     store.commit(() => {
       store.scene.openings[id] = opening;
@@ -138,6 +140,7 @@ export class OpeningTool implements Tool {
       sillHeight: null,
       height: null,
       layerId: LAYER_IDS.opening,
+      attrs: defaultAttrs(),
     };
     const f = openingFrame(scene, preview);
     if (!f) return;

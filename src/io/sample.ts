@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../core/attrs.ts';
 import { createWallDimensions } from '../core/dimension.ts';
 import { vec } from '../core/geometry.ts';
 import { LAYER_IDS } from '../core/layer.ts';
@@ -58,6 +59,7 @@ export function sampleScene(): Scene {
       sillHeight: null,
       height: null,
       layerId: LAYER_IDS.opening,
+      attrs: defaultAttrs(),
     };
     scene.openings[id] = opening;
   };
@@ -87,6 +89,7 @@ export function sampleScene(): Scene {
       angle,
       label: null,
       levelId: scene.activeLevelId,
+      attrs: defaultAttrs(),
     };
   };
 

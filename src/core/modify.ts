@@ -259,22 +259,24 @@ export function cutterCurves(scene: Scene, exclude: { shapeId?: Id; wallId?: Id 
 function curveToShape(curve: Curve, template: Shape): Shape | null {
   const id = newId('s');
   const { layerId, levelId } = template;
+  const attrs = { ...template.attrs };
   switch (curve.kind) {
     case 'segment':
-      return { id, shape: 'line', layerId, levelId, a: curve.a, b: curve.b };
+      return { id, shape: 'line', layerId, levelId, attrs, a: curve.a, b: curve.b };
     case 'arc':
       return {
         id,
         shape: 'arc',
         layerId,
         levelId,
+        attrs,
         center: curve.arc.center,
         radius: curve.arc.radius,
         startAngle: curve.arc.start,
         endAngle: curve.arc.end,
       };
     case 'circle':
-      return { id, shape: 'circle', layerId, levelId, center: curve.center, radius: curve.radius };
+      return { id, shape: 'circle', layerId, levelId, attrs, center: curve.center, radius: curve.radius };
   }
 }
 

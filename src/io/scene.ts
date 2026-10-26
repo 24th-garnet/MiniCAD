@@ -16,6 +16,7 @@ import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
+import { defaultAttrs, isTakeoffMode, type Attrs } from '../core/attrs.ts';
 import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../core/level.ts';
 
 /**
@@ -95,6 +96,7 @@ export function deserialize(raw: unknown): Scene {
       height: finiteOrNull(w.height),
       layerId: layerOr(w.layerId, LAYER_IDS.wall),
       levelId: na.levelId,
+      attrs: readAttrs(w.attrs),
     };
   }
   for (const [id, o] of Object.entries(table<Record<string, unknown>>('openings'))) {
@@ -112,6 +114,7 @@ export function deserialize(raw: unknown): Scene {
       sillHeight: finiteOrNull(o.sillHeight),
       height: finiteOrNull(o.height),
       layerId: layerOr(o.layerId, LAYER_IDS.opening),
+      attrs: readAttrs(o.attrs),
     };
   }
   for (const [id, b] of Object.entries(table<Record<string, unknown>>('blocks'))) {
@@ -132,12 +135,18 @@ export function deserialize(raw: unknown): Scene {
       angle: numberOr(i.angle, 0),
       label: typeof i.label === 'string' ? i.label : null,
       levelId: levelOr(i.levelId),
+      attrs: readAttrs(i.attrs),
     };
   }
   migrateFurniture(scene, table<Record<string, unknown>>('furniture'), layerOr, scene.activeLevelId);
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('shapes'))) {
     const shape = readShape(
-      { id, layerId: layerOr(raw?.layerId, LAYER_IDS.shape), levelId: levelOr(raw?.levelId) },
+      {
+        id,
+        layerId: layerOr(raw?.layerId, LAYER_IDS.shape),
+        levelId: levelOr(raw?.levelId),
+        attrs: readAttrs(raw?.attrs),
+      },
       raw,
     );
     if (shape) scene.shapes[id] = shape;
@@ -182,7 +191,7 @@ function readBlockDef(id: Id, raw: unknown, scene: Scene): BlockDef | null {
   const rawShapes = typeof b.shapes === 'object' && b.shapes !== null ? (b.shapes as Record<string, unknown>) : {};
   for (const [shapeId, rawShape] of Object.entries(rawShapes)) {
     const shape = readShape(
-      { id: shapeId, layerId: LAYER_IDS.furniture, levelId: DEFAULT_LEVEL_ID },
+      { id: shapeId, layerId: LAYER_IDS.furniture, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs() },
       rawShape,
     );
     if (shape) shapes[shapeId] = shape;
@@ -231,6 +240,7 @@ function migrateFurniture(
       angle: numberOr(f.angle, 0),
       label: name && name !== preset.label ? name : null,
       levelId,
+      attrs: defaultAttrs(),
     };
   }
 }
@@ -306,6 +316,25 @@ function readLevels(scene: Scene, payload: Record<string, unknown>): void {
   // 版 8 以前。単数の level を 1 件の階に読み替える
   scene.levels = { [DEFAULT_LEVEL_ID]: readLevel(DEFAULT_LEVEL_ID, payload.level) };
   scene.activeLevelId = DEFAULT_LEVEL_ID;
+}
+
+/**
+ * 属性の読み取り。**欄ごとに検査する。**
+ *
+ * `takeoff` だけは閉じた語彙なので表引きで弾く。知らない値を黙って通すと、
+ * その行が何を名乗っているか決まらなくなる（`isOpeningKind` と同じ作法）。
+ * 残りはホストの識別子や色文字列で、MiniCAD は中身を解釈しない。
+ */
+function readAttrs(raw: unknown): Attrs {
+  const a = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+  return {
+    groupId: str(a.groupId),
+    color: str(a.color),
+    materialRef: str(a.materialRef),
+    takeoff: isTakeoffMode(a.takeoff) ? a.takeoff : null,
+    symbolId: str(a.symbolId),
+  };
 }
 
 function readLevel(id: Id, raw: unknown): Level {

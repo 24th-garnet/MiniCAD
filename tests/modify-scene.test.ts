@@ -4,6 +4,7 @@ import { emptyScene, type Scene } from '../src/core/types.ts';
 import { addWall, findOrCreateNode, nodePos, openingsOnWall, wallEnds, wallLength } from '../src/core/ops.ts';
 import { extendShape, extendWall, offsetShape, offsetWall, trimShape, trimWall, cutterCurves } from '../src/core/modify.ts';
 import { detectRooms } from '../src/core/rooms.ts';
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 import { dist, vec, type Vec } from '../src/core/geometry.ts';
@@ -15,7 +16,7 @@ const nearPt = (a: Vec, b: Vec, eps = 1e-6) => near(a.x, b.x, eps) && near(a.y, 
 
 function addLine(scene: Scene, ax: number, ay: number, bx: number, by: number): string {
   const id = newId('s');
-  const shape: Shape = { id, shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, a: vec(ax, ay), b: vec(bx, by) };
+  const shape: Shape = { id, shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), a: vec(ax, ay), b: vec(bx, by) };
   scene.shapes[id] = shape;
   return id;
 }
@@ -59,6 +60,7 @@ test('ポリラインはトリムの対象外', () => {
     shape: 'polyline',
     layerId: LAYER_IDS.shape,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     points: [vec(0, 0), vec(100, 0), vec(100, 100)],
     closed: false,
   };
@@ -101,7 +103,7 @@ test('線をオフセットすると平行な線が増える', () => {
 test('円のオフセットは内外で半径が変わる', () => {
   const scene = emptyScene();
   const id = newId('s');
-  scene.shapes[id] = { id, shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, center: vec(0, 0), radius: 500 };
+  scene.shapes[id] = { id, shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), center: vec(0, 0), radius: 500 };
 
   const outer = scene.shapes[offsetShape(scene, id, 100, vec(1000, 0))!];
   assert.equal(outer.shape === 'circle' && outer.radius, 600);
@@ -112,14 +114,14 @@ test('円のオフセットは内外で半径が変わる', () => {
 test('半径より大きく内側へオフセットはできない', () => {
   const scene = emptyScene();
   const id = newId('s');
-  scene.shapes[id] = { id, shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, center: vec(0, 0), radius: 100 };
+  scene.shapes[id] = { id, shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), center: vec(0, 0), radius: 100 };
   assert.equal(offsetShape(scene, id, 200, vec(0, 0)), null);
 });
 
 test('文字と点はオフセットできない', () => {
   const scene = emptyScene();
   const id = newId('s');
-  scene.shapes[id] = { id, shape: 'point', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, at: vec(0, 0) };
+  scene.shapes[id] = { id, shape: 'point', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), at: vec(0, 0) };
   assert.equal(offsetShape(scene, id, 100, vec(100, 100)), null);
 });
 

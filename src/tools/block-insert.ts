@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../core/attrs.ts';
 import { add, angleOf, closestOnSegment, dist, dot, mul, norm, perp, sub, vec, type Vec } from '../core/geometry.ts';
 import { blockOf, instanceSize, instanceVertices, type BlockInstance } from '../core/block.ts';
 import { LAYER_IDS, getLayer, resolveNewLayer } from '../core/layer.ts';
@@ -91,6 +92,7 @@ export class BlockInsertTool implements Tool {
       angle: this.angle,
       label: null,
       levelId: scene.activeLevelId,
+      attrs: defaultAttrs(),
     };
     if (skipWallAlign) return this.snapToGrid(editor, base);
     return alignToNearestWall(editor, base, def.size, this.angle) ?? this.snapToGrid(editor, base);

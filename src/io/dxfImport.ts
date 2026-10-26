@@ -8,6 +8,7 @@
  * 画層 `A-DRAFT` は元々この用途のためにあります。
  */
 
+import { defaultAttrs } from '../core/attrs.ts';
 import { newId } from '../core/id.ts';
 import { dist, vec, type Vec } from '../core/geometry.ts';
 import { addLayer, ACI_COLORS, LAYER_IDS, type LayerId } from '../core/layer.ts';
@@ -401,6 +402,7 @@ function placeInstance(
     blockId,
     layerId,
     levelId: ctx.scene.activeLevelId,
+    attrs: defaultAttrs(),
     x: world.x,
     y: world.y,
     scaleX: e.scaleX,

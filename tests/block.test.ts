@@ -22,6 +22,7 @@ import { deserialize, serialize } from '../src/io/scene.ts';
 import { sceneToDxf } from '../src/io/dxf.ts';
 import { sceneToSvg } from '../src/io/svg.ts';
 import { defaultSettings } from '../src/core/store.ts';
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 import { boundsOf, rotate, toRad, vec, type Vec } from '../src/core/geometry.ts';
@@ -39,7 +40,7 @@ function sceneWithLines() {
     [1000, 0, 1000, 500],
   ]) {
     const id = newId('s');
-    const shape: Shape = { id, shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, a: vec(ax, ay), b: vec(bx, by) };
+    const shape: Shape = { id, shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), a: vec(ax, ay), b: vec(bx, by) };
     scene.shapes[id] = shape;
     ids.push(id);
   }
@@ -79,6 +80,7 @@ test('定義座標からワールドへの変換が尺度・回転・鏡像の�
     blockId: 'box',
     layerId: LAYER_IDS.furniture,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     x: 1000,
     y: 2000,
     scaleX: -2,
@@ -102,6 +104,7 @@ test('尺度を掛けた見かけの寸法', () => {
     blockId: 'bed-single',
     layerId: LAYER_IDS.furniture,
     levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
     x: 0,
     y: 0,
     scaleX: 1.4,

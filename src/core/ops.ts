@@ -1,3 +1,4 @@
+import { defaultAttrs } from './attrs.ts';
 import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
@@ -52,7 +53,9 @@ export function addWall(scene: Scene, a: Id, b: Id, thickness: number, layerId: 
   );
   if (existing) return existing;
   const id = newId('w');
-  const wall: Wall = { id, a, b, thickness, height: null, layerId, levelId: na.levelId };
+  const wall: Wall = {
+    id, a, b, thickness, height: null, layerId, levelId: na.levelId, attrs: defaultAttrs(),
+  };
   scene.walls[id] = wall;
   return wall;
 }
