@@ -1,3 +1,5 @@
+import { defaultAttrs } from '../src/core/attrs.ts';
+import { dxfOpts, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sampleScene } from '../src/io/sample.ts';
@@ -45,6 +47,8 @@ function sceneWith(kind: OpeningKind, width = 1600, flip: Partial<Opening> = {})
   const b = findOrCreateNode(scene, vec(WALL_LENGTH, 0));
   const wall = addWall(scene, a, b, THICKNESS)!;
   const opening: Opening = {
+    sillHeight: null,
+    height: null,
     id: newId('op'),
     wallId: wall.id,
     offset: WALL_LENGTH / 2,
@@ -53,6 +57,7 @@ function sceneWith(kind: OpeningKind, width = 1600, flip: Partial<Opening> = {})
     flipX: false,
     flipY: false,
     layerId: LAYER_IDS.opening,
+    attrs: defaultAttrs(),
     ...flip,
   };
   scene.openings[opening.id] = opening;
@@ -184,7 +189,6 @@ test('ツールの系統で種別を絞り込める', () => {
   assert.ok(doors.includes('door') && windows.includes('window'));
 });
 
-import DxfParser from 'dxf-parser';
 import { sceneToDxf } from '../src/io/dxf.ts';
 import { detectRooms } from '../src/core/rooms.ts';
 import { defaultSettings } from '../src/core/store.ts';
@@ -194,10 +198,10 @@ test('どの種別でも DXF の円弧が 90 度のまま出る', () => {
   // 過去にここを取り違えてドアの軌跡が 270 度になったことがあるので、外部パーサで読み戻して確かめる
   for (const kind of OPENING_KINDS) {
     const { scene } = sceneWith(kind);
-    const dxf = sceneToDxf(scene, detectRooms(scene), defaultSettings(), { escapeUnicode: false });
-    const parsed = new DxfParser().parseSync(dxf)!;
-    for (const e of parsed.entities.filter((x) => x.type === 'ARC')) {
-      const arc = e as { startAngle: number; endAngle: number };
+    const dxf = sceneToDxf(scene, detectRooms(scene), defaultSettings(), dxfOpts());
+    const parsed = parseDxfOracle(dxf);
+    for (const e of oracleEntities(parsed).filter((x) => x.type === 'ARC')) {
+      const arc = e;
       let sweep = arc.endAngle - arc.startAngle;
       while (sweep <= 0) sweep += Math.PI * 2;
       assert.ok(Math.abs(sweep - Math.PI / 2) < 1e-6, `${kind}: 掃き角 ${(sweep * 180) / Math.PI} 度`);
@@ -207,10 +211,10 @@ test('どの種別でも DXF の円弧が 90 度のまま出る', () => {
 
 test('引き込む側のかくれ線が DXF にエンティティ単位の線種として出る', () => {
   const { scene } = sceneWith('slidingPocket');
-  const dxf = sceneToDxf(scene, detectRooms(scene), defaultSettings(), { escapeUnicode: false });
+  const dxf = sceneToDxf(scene, detectRooms(scene), defaultSettings(), dxfOpts());
   // グループコード 6 が画層の線種を上書きする
   assert.match(dxf, /\r\n6\r\nHIDDEN\r\n/);
-  assert.ok(new DxfParser().parseSync(dxf), '線種を入れたら読めなくなった');
+  assert.ok(parseDxfOracle(dxf), '線種を入れたら読めなくなった');
 });
 
 // --- 縦方向の寸法（3D が使う） ---
@@ -236,7 +240,7 @@ test('建具の高さの既定が妥当な範囲に収まる', () => {
 test('開口ごとの上書きが効き、おかしな値は既定に落ちる', () => {
   const level = defaultLevel();
   const base = (over: Partial<Opening>) => {
-    const { scene, opening } = sceneWith('window');
+    const { opening } = sceneWith('window');
     Object.assign(opening, over);
     return openingVertical(opening, level);
   };
@@ -254,7 +258,7 @@ test('開口ごとの上書きが効き、おかしな値は既定に落ちる',
 
 test('床の高さが開口の位置に乗る', () => {
   const { opening } = sceneWith('door');
-  const v = openingVertical(opening, { floorZ: 3000, wallHeight: 2400 });
+  const v = openingVertical(opening, { ...defaultLevel(), floorZ: 3000 });
   assert.deepEqual(v, { sill: 3000, head: 5000 });
 });
 

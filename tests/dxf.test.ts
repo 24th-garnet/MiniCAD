@@ -1,6 +1,7 @@
+import { dxfOpts, headerPoint, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import DxfParser from 'dxf-parser';
+import type { IDxf } from 'dxf-parser';
 import { sampleScene } from '../src/io/sample.ts';
 import { detectRooms } from '../src/core/rooms.ts';
 import { sceneToDxf, type DxfOptions } from '../src/io/dxf.ts';
@@ -19,15 +20,13 @@ function build(options: Partial<DxfOptions> = {}) {
 }
 
 /** 書き出した DXF を外部パーサで読み戻す。自前の思い込みを避けるための検証 */
-function parse(dxf: string) {
-  return new DxfParser().parseSync(dxf);
-}
+const parse = (dxf: string): IDxf => parseDxfOracle(dxf);
 
 test('DXF が外部パーサで読み戻せる', () => {
   const { dxf } = build();
   const parsed = parse(dxf);
   assert.ok(parsed, 'パースに失敗した');
-  assert.ok(parsed.entities.length > 50, `エンティティ数 ${parsed.entities.length}`);
+  assert.ok(oracleEntities(parsed).length > 50, `エンティティ数 ${oracleEntities(parsed).length}`);
 });
 
 test('ヘッダに mm 単位とメートル法が入っている', () => {
@@ -52,7 +51,7 @@ test('エンティティが正しい画層に乗っている', () => {
   const { scene, dxf } = build();
   const parsed = parse(dxf);
   const byLayer = new Map<string, string[]>();
-  for (const e of parsed.entities) {
+  for (const e of oracleEntities(parsed)) {
     const list = byLayer.get(e.layer) ?? [];
     list.push(e.type);
     byLayer.set(e.layer, list);
@@ -66,7 +65,7 @@ test('エンティティが正しい画層に乗っている', () => {
   assert.ok((byLayer.get(openingLayer) ?? []).includes('ARC'), 'ドアの円弧がない');
   assert.ok((byLayer.get(openingLayer) ?? []).includes('LINE'));
   // 室名が TEXT として出ている
-  const texts = parsed.entities.filter((e) => e.type === 'TEXT');
+  const texts = oracleEntities(parsed).filter((e) => e.type === 'TEXT');
   assert.ok(texts.some((t) => t.text === 'LDK'), '室名 LDK が見つからない');
 });
 
@@ -75,7 +74,7 @@ test('開口部の位置に壁の線が通っていない', () => {
   const parsed = parse(dxf);
   const wallLayer = scene.layers[LAYER_IDS.wall].name;
   // 南側の外壁 (y=0 近辺) には offset 2000 / 幅 2600 の窓がある → x 700..3300 が開口
-  const wallLines = parsed.entities.filter(
+  const wallLines = oracleEntities(parsed).filter(
     (e) => e.layer === wallLayer && e.type === 'LINE' && Math.abs(e.vertices[0].y) < 200 && Math.abs(e.vertices[1].y) < 200,
   );
   const spansOpening = wallLines.some((e) => {
@@ -91,29 +90,29 @@ test('開口部の位置に壁の線が通っていない', () => {
 test('座標が有限で、図面範囲がヘッダと矛盾しない', () => {
   const { dxf } = build();
   const parsed = parse(dxf);
-  for (const e of parsed.entities) {
+  for (const e of oracleEntities(parsed)) {
     for (const v of e.vertices ?? []) {
       assert.ok(Number.isFinite(v.x) && Number.isFinite(v.y), `不正な座標 ${JSON.stringify(v)}`);
     }
   }
-  assert.ok(parsed.header['$EXTMAX'].x > parsed.header['$EXTMIN'].x);
-  assert.ok(parsed.header['$EXTMAX'].y > parsed.header['$EXTMIN'].y);
+  assert.ok(headerPoint(parsed, '$EXTMAX').x > headerPoint(parsed, '$EXTMIN').x);
+  assert.ok(headerPoint(parsed, '$EXTMAX').y > headerPoint(parsed, '$EXTMIN').y);
 });
 
 test('Unicode エスケープを選ぶと ASCII だけになる', () => {
-  const plain = build({ escapeUnicode: false }).dxf;
-  const escaped = build({ escapeUnicode: true }).dxf;
+  const plain = build(dxfOpts()).dxf;
+  const escaped = build(dxfOpts({ escapeUnicode: true })).dxf;
   assert.ok(/[^\x00-\x7F]/.test(plain), '通常出力には日本語がそのまま入る');
   assert.ok(!/[^\x00-\x7F]/.test(escaped), 'エスケープ時は ASCII だけになるべき');
   assert.ok(escaped.includes('\\U+'), 'エスケープ表記が見当たらない');
   // エスケープしても構造は壊れない
-  assert.ok(parse(escaped).entities.length > 50);
+  assert.ok(oracleEntities(parse(escaped)).length > 50);
 });
 
 test('ドアの開き軌跡が 90 度の円弧になっている', () => {
   const { scene, dxf } = build();
   const parsed = parse(dxf);
-  const arcs = parsed.entities.filter((e) => e.type === 'ARC');
+  const arcs = oracleEntities(parsed).filter((e) => e.type === 'ARC');
   const doors = Object.values(scene.openings).filter((o) => o.kind === 'door');
   assert.equal(arcs.length, doors.length, `ドア ${doors.length} 枚に対し円弧 ${arcs.length} 本`);
 
@@ -137,7 +136,7 @@ test('ドアの開き軌跡が建具の幅と一致する', () => {
       .filter((o) => o.kind === 'door')
       .map((o) => o.width),
   );
-  for (const arc of parsed.entities.filter((e) => e.type === 'ARC')) {
+  for (const arc of oracleEntities(parsed).filter((e) => e.type === 'ARC')) {
     assert.ok(widths.has(Math.round(arc.radius)), `半径 ${arc.radius} に対応するドアがない`);
   }
 });
@@ -152,15 +151,15 @@ const dimensionsOf = (scene: ReturnType<typeof sampleScene>) =>
 test('寸法が DIMENSION エンティティとして出る', () => {
   const { scene, dxf } = build();
   const parsed = parse(dxf)!;
-  const dims = parsed.entities.filter((e) => e.type === 'DIMENSION');
+  const dims = oracleEntities(parsed).filter((e) => e.type === 'DIMENSION');
   assert.equal(dims.length, dimensionsOf(scene).length);
   assert.ok(dims.length > 0, 'サンプルに寸法が無い');
 });
 
 test('DIMENSION の種別が 33（整列寸法 + 専用ブロック）', () => {
   const { dxf } = build();
-  for (const e of parse(dxf)!.entities.filter((x) => x.type === 'DIMENSION')) {
-    const t = (e as { dimensionType: number }).dimensionType;
+  for (const e of oracleEntities(parse(dxf)).filter((x) => x.type === 'DIMENSION')) {
+    const t = e.dimensionType as number;
     // 下位3bit = 1 は整列寸法。回転寸法(0)だと値が角度への投影で決まり、斜め寸法で実測値と食い違う
     assert.equal(t & 7, 1, `種別 ${t}`);
     assert.equal(t & 32, 32, `無名ブロックのビットが立っていない: ${t}`);
@@ -170,7 +169,7 @@ test('DIMENSION の種別が 33（整列寸法 + 専用ブロック）', () => {
 test('DIMENSION の計測点と実測値が幾何と一致する', () => {
   const { scene, dxf } = build();
   const parsed = parse(dxf)!;
-  const dims = parsed.entities.filter((e) => e.type === 'DIMENSION') as {
+  const dims = oracleEntities(parsed).filter((e) => e.type === 'DIMENSION') as unknown as {
     linearOrAngularPoint1: { x: number; y: number };
     linearOrAngularPoint2: { x: number; y: number };
     actualMeasurement: number;
@@ -194,8 +193,8 @@ test('DIMENSION の計測点と実測値が幾何と一致する', () => {
 test('DIMENSION が参照する無名ブロックに線と文字の実体が入っている', () => {
   const { dxf } = build();
   const parsed = parse(dxf)!;
-  for (const e of parsed.entities.filter((x) => x.type === 'DIMENSION')) {
-    const name = (e as { block: string }).block;
+  for (const e of oracleEntities(parsed).filter((x) => x.type === 'DIMENSION')) {
+    const name = e.block as string;
     assert.match(name, /^\*D\d+$/, `ブロック名 ${name}`);
     const block = parsed.blocks[name];
     assert.ok(block, `${name} が BLOCKS に無い`);
@@ -210,10 +209,10 @@ test('ブロックの中身は画層 0 に置かれ、画層は DIMENSION 側が
   const { scene, dxf } = build();
   const parsed = parse(dxf)!;
   const dimLayer = scene.layers[LAYER_IDS.dimension].name;
-  for (const e of parsed.entities.filter((x) => x.type === 'DIMENSION')) {
+  for (const e of oracleEntities(parsed).filter((x) => x.type === 'DIMENSION')) {
     assert.equal(e.layer, dimLayer);
-    for (const inner of parsed.blocks[(e as { block: string }).block].entities ?? []) {
-      assert.equal((inner as { layer: string }).layer, '0');
+    for (const inner of parsed.blocks[e.block as string].entities ?? []) {
+      assert.equal((inner as { layer?: string }).layer, '0');
     }
   }
 });
@@ -232,10 +231,10 @@ test('DIMSTYLE と $DIM* が入っている', () => {
 test('trueDimension: false なら従来どおり線と文字に落ちる', () => {
   const { scene, dxf } = build({ trueDimension: false });
   const parsed = parse(dxf)!;
-  assert.equal(parsed.entities.filter((e) => e.type === 'DIMENSION').length, 0);
+  assert.equal(oracleEntities(parsed).filter((e) => e.type === 'DIMENSION').length, 0);
 
   const dimLayer = scene.layers[LAYER_IDS.dimension].name;
-  const onLayer = parsed.entities.filter((e) => e.layer === dimLayer);
+  const onLayer = oracleEntities(parsed).filter((e) => e.layer === dimLayer);
   assert.ok(onLayer.some((e) => e.type === 'LINE'), '寸法線が出ていない');
   assert.ok(onLayer.some((e) => e.type === 'TEXT'), '寸法値が出ていない');
   assert.ok(!dxf.includes('*D0'), '無名ブロックが残っている');

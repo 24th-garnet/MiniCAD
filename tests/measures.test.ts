@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyScene } from '../src/core/types.ts';
@@ -33,6 +34,7 @@ function addOpening(scene: Scene, wallId: string, offset: number, width: number,
     id, wallId, offset, width, kind,
     flipX: false, flipY: false, sillHeight: null, height: null,
     layerId: LAYER_IDS.opening,
+    attrs: defaultAttrs(),
   };
   return id;
 }

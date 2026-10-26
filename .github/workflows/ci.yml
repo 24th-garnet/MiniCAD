@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # 型検査が実質の網羅テスト。`Record<Kind, Spec>` の表を埋め忘れるとここで止まる。
+      # src だけでなく tests も対象（対象外だと、テストが書いた不正な実体が
+      # 実行時まで素通りする）
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # 実ブラウザでの通し。コンソールの警告も失敗扱いにしてある
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

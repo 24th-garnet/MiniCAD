@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { vec } from '../src/core/geometry.ts';
@@ -32,7 +33,10 @@ export function wallFixture(
       kind: 'opening',
       flipX: false,
       flipY: false,
+      sillHeight: null,
+      height: null,
       layerId: LAYER_IDS.opening,
+      attrs: defaultAttrs(),
     };
   }
   return { scene, wall };

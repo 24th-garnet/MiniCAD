@@ -1,3 +1,4 @@
+import { dxfOpts } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import DxfParser from 'dxf-parser';
@@ -74,12 +75,12 @@ test('画層の表示を切ると DXF からもそのエンティティが消え
   const settings = defaultSettings();
   const parse = (dxf: string) => new DxfParser().parseSync(dxf)!;
 
-  const before = parse(sceneToDxf(scene, rooms, settings, { escapeUnicode: false }));
+  const before = parse(sceneToDxf(scene, rooms, settings, dxfOpts()));
   const furnitureName = scene.layers[LAYER_IDS.furniture].name;
   assert.ok(before.entities.some((e) => e.layer === furnitureName));
 
   scene.layers[LAYER_IDS.furniture].printable = false;
-  const after = parse(sceneToDxf(scene, rooms, settings, { escapeUnicode: false }));
+  const after = parse(sceneToDxf(scene, rooms, settings, dxfOpts()));
   assert.ok(!after.entities.some((e) => e.layer === furnitureName), '非印刷の画層が書き出されている');
   // 画層テーブル自体は残る
   assert.ok(Object.keys(after.tables.layer.layers).includes(furnitureName));

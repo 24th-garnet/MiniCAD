@@ -1,6 +1,6 @@
+import { dxfOpts, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import DxfParser from 'dxf-parser';
 import { emptyScene, type Scene } from '../src/core/types.ts';
 import { SHAPE_GEOMETRY, SHAPE_KINDS, shapeOutline, shapeVertices, type Shape, type ShapeKind } from '../src/core/shapes.ts';
 import { defaultAttrs } from '../src/core/attrs.ts';
@@ -211,19 +211,19 @@ test('全種別が例外なく描画できる', () => {
 
 test('DXF に LINE / ARC / CIRCLE / TEXT として出る', () => {
   const scene = sceneWithAllShapes();
-  const dxf = sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false });
-  const parsed = new DxfParser().parseSync(dxf)!;
-  const types = new Set(parsed.entities.map((e) => e.type));
+  const dxf = sceneToDxf(scene, [], defaultSettings(), dxfOpts());
+  const parsed = parseDxfOracle(dxf);
+  const types = new Set(oracleEntities(parsed).map((e) => e.type));
   for (const expected of ['LINE', 'ARC', 'CIRCLE', 'TEXT']) {
     assert.ok(types.has(expected), `${expected} が出ていない`);
   }
   // 円弧の掃き角は 90 度
-  const arc = parsed.entities.find((e) => e.type === 'ARC')!;
+  const arc = oracleEntities(parsed).find((e) => e.type === 'ARC')!;
   let sweep = ((arc.endAngle - arc.startAngle) * 180) / Math.PI;
   while (sweep < 0) sweep += 360;
   assert.ok(Math.abs(sweep - 90) < 0.01, `掃き角 ${sweep}`);
   // 文字が正しい画層に乗っている
-  const textEntity = parsed.entities.find((e) => e.type === 'TEXT')!;
+  const textEntity = oracleEntities(parsed).find((e) => e.type === 'TEXT')!;
   assert.equal(textEntity.layer, scene.layers[LAYER_IDS.roomName].name);
   assert.equal(textEntity.text, '注記テキスト');
 });
@@ -242,11 +242,11 @@ test('SVG が妥当なまま図形を含む', () => {
 test('画層を非印刷にすると書き出しから消える', () => {
   const scene = sceneWithAllShapes();
   scene.layers[LAYER_IDS.shape].printable = false;
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = parseDxfOracle(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   const shapeLayer = scene.layers[LAYER_IDS.shape].name;
-  assert.ok(!parsed.entities.some((e) => e.layer === shapeLayer));
+  assert.ok(!oracleEntities(parsed).some((e) => e.layer === shapeLayer));
   // 文字は別画層なので残る
-  assert.ok(parsed.entities.some((e) => e.type === 'TEXT'));
+  assert.ok(oracleEntities(parsed).some((e) => e.type === 'TEXT'));
 });
 
 test('点の大きさは尺度に追従する', () => {

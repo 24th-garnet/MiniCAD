@@ -205,7 +205,10 @@ test('壁のトリムで、切断線をまたぐ開口部は消える', () => {
     kind: 'door',
     flipX: false,
     flipY: false,
+    sillHeight: null,
+    height: null,
     layerId: LAYER_IDS.opening,
+    attrs: defaultAttrs(),
   };
 
   trimWall(scene, target.id, vec(-1000, 0));

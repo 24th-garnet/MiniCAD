@@ -1,3 +1,4 @@
+import { dxfOpts } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import DxfParser from 'dxf-parser';
@@ -124,7 +125,7 @@ test('追加した画層が DXF の LAYER テーブルに出る', () => {
   const extra = addLayer(scene.layers, { name: 'A-SITE' });
   Object.values(scene.walls)[0].layerId = extra.id;
 
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   assert.ok(Object.keys(parsed.tables.layer.layers).includes('A-SITE'));
   assert.ok(parsed.entities.some((e) => e.layer === 'A-SITE'), 'その画層のエンティティが出ていない');
 });
@@ -135,6 +136,6 @@ test('画層名が重複すると DXF のテーブルが壊れるので、重複
   const names = Object.values(scene.layers).map((l) => l.name);
   assert.equal(new Set(names).size, names.length, `重複: ${names}`);
 
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   assert.equal(Object.keys(parsed.tables.layer.layers).length, names.length);
 });

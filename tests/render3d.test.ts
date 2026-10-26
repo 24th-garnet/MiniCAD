@@ -1,3 +1,4 @@
+import { defaultAttrs } from '../src/core/attrs.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sampleScene } from '../src/io/sample.ts';
@@ -38,6 +39,7 @@ function oneWall(kind: OpeningKind | null, over: Record<string, unknown> = {}): 
       sillHeight: null,
       height: null,
       layerId: LAYER_IDS.opening,
+      attrs: defaultAttrs(),
       ...over,
     };
   }

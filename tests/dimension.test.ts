@@ -1,6 +1,6 @@
+import { dxfOpts, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import DxfParser from 'dxf-parser';
 import { sampleScene } from '../src/io/sample.ts';
 import { emptyScene } from '../src/core/types.ts';
 import { createWallDimensions, dimensionGeometry, moveDimension } from '../src/core/dimension.ts';
@@ -194,9 +194,11 @@ test('寸法が JSON 往復で保たれる', () => {
 
 test('寸法が DXF に線と文字として出る', () => {
   const scene = sampleScene();
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  // **分解して出す設定**のときの話。本物の DIMENSION で出すと線も文字も出ない
+  const opts = dxfOpts({ trueDimension: false });
+  const parsed = parseDxfOracle(sceneToDxf(scene, [], defaultSettings(), opts));
   const dimLayer = scene.layers[LAYER_IDS.dimension].name;
-  const onDim = parsed.entities.filter((e) => e.layer === dimLayer);
+  const onDim = oracleEntities(parsed).filter((e) => e.layer === dimLayer);
   assert.ok(onDim.some((e) => e.type === 'LINE'), '寸法線が出ていない');
   assert.ok(onDim.some((e) => e.type === 'TEXT'), '寸法値が出ていない');
   // 壁の長さ 4600 がどこかに出ている

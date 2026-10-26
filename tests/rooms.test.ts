@@ -1,3 +1,4 @@
+import { makeOpening } from './make.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyScene } from '../src/core/types.ts';
@@ -84,8 +85,8 @@ test('壁の分割で開口部が正しい側に引き継がれる', () => {
   const a = findOrCreateNode(scene, vec(0, 0));
   const b = findOrCreateNode(scene, vec(4000, 0));
   const wall = addWall(scene, a, b, 100)!;
-  scene.openings['o1'] = { id: 'o1', wallId: wall.id, offset: 500, width: 800, kind: 'door', flipX: false, flipY: false };
-  scene.openings['o2'] = { id: 'o2', wallId: wall.id, offset: 3000, width: 800, kind: 'window', flipX: false, flipY: false };
+  scene.openings['o1'] = makeOpening(wall.id, { id: 'o1', offset: 500, width: 800, kind: 'door' });
+  scene.openings['o2'] = makeOpening(wall.id, { id: 'o2', offset: 3000, width: 800, kind: 'window' });
   const midId = splitWall(scene, wall.id, vec(2000, 0))!;
   assert.ok(midId);
   assert.equal(scene.openings['o1'].wallId, wall.id);

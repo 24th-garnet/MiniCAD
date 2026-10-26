@@ -1,3 +1,6 @@
+import { defaultAttrs } from '../src/core/attrs.ts';
+import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
+import { dxfOpts } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sampleScene } from '../src/io/sample.ts';
@@ -23,7 +26,7 @@ import {
 /** サンプル間取り → DXF → 取り込み、という往復を1本の関数に */
 function roundTrip(overrides: Partial<ImportOptions> = {}, escapeUnicode = false) {
   const source = sampleScene();
-  const dxf = sceneToDxf(source, detectRooms(source), defaultSettings(), { escapeUnicode });
+  const dxf = sceneToDxf(source, detectRooms(source), defaultSettings(), dxfOpts({ escapeUnicode }));
   const doc = parseDxf(dxf);
   const target = emptyScene();
   const report = importDxfInto(target, doc, { ...defaultImportOptions(doc), ...overrides });
@@ -112,7 +115,7 @@ test('同名の画層を再利用するとき、既存画層の色や線種を�
   // 壁画層を赤・破線で書き出し、取り込み先の既定（黒・実線）が守られるかを見る
   source.layers[LAYER_IDS.wall].aci = 1;
   source.layers[LAYER_IDS.wall].lineType = 'dashed';
-  const dxf = sceneToDxf(source, detectRooms(source), defaultSettings(), { escapeUnicode: false });
+  const dxf = sceneToDxf(source, detectRooms(source), defaultSettings(), dxfOpts());
   const target = emptyScene();
   const before = { ...target.layers[LAYER_IDS.wall] };
   importDxfInto(target, parseDxf(dxf), defaultImportOptions(parseDxf(dxf)));
@@ -203,7 +206,7 @@ test('bulge 1.0 が半円になる', () => {
   const arc = bulgeToArc(vec(0, 0), vec(100, 0), 1)!;
   assert.ok(Math.abs(arc.center.x - 50) < 1e-9 && Math.abs(arc.center.y) < 1e-9);
   assert.ok(Math.abs(arc.radius - 50) < 1e-9);
-  assert.ok(Math.abs(arcSweep({ ...arc, shape: 'arc', id: 'x', layerId: 'y' }) - Math.PI) < 1e-9);
+  assert.ok(Math.abs(arcSweep({ ...arc, shape: 'arc', id: 'x', layerId: 'y', levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs() }) - Math.PI) < 1e-9);
 });
 
 test('bulge が負でも「常に反時計回り」の不変条件を保つ', () => {
@@ -212,7 +215,7 @@ test('bulge が負でも「常に反時計回り」の不変条件を保つ', ()
   // 中心は弦の反対側に出る
   assert.ok(up.center.y > 0 && down.center.y < 0);
   for (const arc of [up, down]) {
-    const sweep = arcSweep({ ...arc, shape: 'arc', id: 'x', layerId: 'y' });
+    const sweep = arcSweep({ ...arc, shape: 'arc', id: 'x', layerId: 'y', levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs() });
     assert.ok(sweep > 0 && sweep < Math.PI * 2, `掃き角 ${sweep}`);
   }
 });

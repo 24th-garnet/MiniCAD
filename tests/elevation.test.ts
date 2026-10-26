@@ -1,3 +1,5 @@
+import { defaultAttrs } from '../src/core/attrs.ts';
+import { makeOpening } from './make.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyScene } from '../src/core/types.ts';
@@ -16,9 +18,7 @@ function wallWith(openings: [number, number, 'door' | 'window'][]): Scene {
   const w = addWall(scene, a, b, 100)!;
   for (const [offset, width, kind] of openings) {
     const id = newId('o');
-    scene.openings[id] = { id, wallId: w.id, offset, width, kind,
-      flipX: false, flipY: false, sillHeight: null, height: null,
-      layerId: LAYER_IDS.opening };
+    scene.openings[id] = makeOpening(w.id, { id, offset, width, kind });
   }
   return scene;
 }
@@ -73,7 +73,7 @@ test('開口のある壁だけを立面にする', () => {
   const id = newId('o');
   scene.openings[id] = { id, wallId: walls[0].id, offset: 2000, width: 800,
     kind: 'door', flipX: false, flipY: false, sillHeight: null, height: null,
-    layerId: LAYER_IDS.opening };
+    layerId: LAYER_IDS.opening, attrs: defaultAttrs() };
   const got = sceneToElevations(scene);
   assert.equal(got.length, 1);
   assert.equal(got[0].wallId, walls[0].id);

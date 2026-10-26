@@ -1,6 +1,6 @@
+import { dxfOpts, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import DxfParser from 'dxf-parser';
 import { sampleScene } from '../src/io/sample.ts';
 import { detectRooms } from '../src/core/rooms.ts';
 import { sceneToDxf } from '../src/io/dxf.ts';
@@ -8,7 +8,7 @@ import { defaultSettings } from '../src/core/store.ts';
 import { parseDxf, parseDxfBytes, stripMtextFormat } from '../src/io/dxfRead.ts';
 import { decodeDxf, DxfFormatError, readTags, splitRecords, splitSections } from '../src/io/dxfTags.ts';
 
-function exported(options = { escapeUnicode: false }) {
+function exported(options = dxfOpts()) {
   const scene = sampleScene();
   return sceneToDxf(scene, detectRooms(scene), defaultSettings(), options);
 }
@@ -66,7 +66,7 @@ test('バイナリ DXF は明示的に断る', () => {
 });
 
 test('MiniCAD 自身が書いた \\U+XXXX エスケープを復号する', () => {
-  const doc = parseDxf(exported({ escapeUnicode: true }));
+  const doc = parseDxf(exported(dxfOpts({ escapeUnicode: true })));
   const texts = doc.entities.filter((e) => e.kind === 'TEXT');
   assert.ok(texts.some((t) => t.kind === 'TEXT' && t.text.includes('LDK')), 'LDK が戻らない');
   assert.ok(
@@ -80,7 +80,7 @@ test('MiniCAD 自身が書いた \\U+XXXX エスケープを復号する', () =>
 test('自前パーサと dxf-parser でエンティティの種別内訳が一致する', () => {
   const dxf = exported();
   const mine = parseDxf(dxf);
-  const theirs = new DxfParser().parseSync(dxf)!;
+  const theirs = parseDxfOracle(dxf);
 
   const tally = (types: string[]) => {
     const m = new Map<string, number>();
@@ -93,11 +93,11 @@ test('自前パーサと dxf-parser でエンティティの種別内訳が一�
 test('自前パーサと dxf-parser で LINE の座標が一致する', () => {
   const dxf = exported();
   const mine = parseDxf(dxf).entities.filter((e) => e.kind === 'LINE');
-  const theirs = new DxfParser().parseSync(dxf)!.entities.filter((e) => e.type === 'LINE');
+  const theirs = oracleEntities(parseDxfOracle(dxf)).filter((e) => e.type === 'LINE');
   assert.equal(mine.length, theirs.length);
   for (let i = 0; i < mine.length; i++) {
     const a = mine[i];
-    const b = theirs[i] as { vertices: { x: number; y: number }[] };
+    const b = theirs[i];
     if (a.kind !== 'LINE') continue;
     assert.ok(Math.abs(a.a.x - b.vertices[0].x) < 1e-6 && Math.abs(a.a.y - b.vertices[0].y) < 1e-6);
     assert.ok(Math.abs(a.b.x - b.vertices[1].x) < 1e-6 && Math.abs(a.b.y - b.vertices[1].y) < 1e-6);
@@ -107,12 +107,12 @@ test('自前パーサと dxf-parser で LINE の座標が一致する', () => {
 test('自前パーサと dxf-parser で ARC の中心・半径・角度が一致する', () => {
   const dxf = exported();
   const mine = parseDxf(dxf).entities.filter((e) => e.kind === 'ARC');
-  const theirs = new DxfParser().parseSync(dxf)!.entities.filter((e) => e.type === 'ARC');
+  const theirs = oracleEntities(parseDxfOracle(dxf)).filter((e) => e.type === 'ARC');
   assert.ok(mine.length > 0, '円弧が1つも出ていない');
   assert.equal(mine.length, theirs.length);
   for (let i = 0; i < mine.length; i++) {
     const a = mine[i];
-    const b = theirs[i] as { center: { x: number; y: number }; radius: number; startAngle: number; endAngle: number };
+    const b = theirs[i];
     if (a.kind !== 'ARC') continue;
     assert.ok(Math.abs(a.center.x - b.center.x) < 1e-6 && Math.abs(a.center.y - b.center.y) < 1e-6);
     assert.ok(Math.abs(a.radius - b.radius) < 1e-6);
@@ -125,7 +125,7 @@ test('自前パーサと dxf-parser で ARC の中心・半径・角度が一致
 test('自前パーサと dxf-parser で画層テーブルが一致する', () => {
   const dxf = exported();
   const mine = parseDxf(dxf).layers;
-  const theirs = new DxfParser().parseSync(dxf)!.tables.layer.layers;
+  const theirs = parseDxfOracle(dxf).tables.layer.layers;
   assert.deepEqual([...mine.keys()].sort(), Object.keys(theirs).sort());
   for (const [name, layer] of mine) {
     assert.equal(layer.aci, Math.abs((theirs[name] as { colorIndex: number }).colorIndex), name);
@@ -135,7 +135,7 @@ test('自前パーサと dxf-parser で画層テーブルが一致する', () =>
 test('自前パーサと dxf-parser でブロック定義が一致する', () => {
   const dxf = exported();
   const mine = parseDxf(dxf).blocks;
-  const theirs = new DxfParser().parseSync(dxf)!.blocks;
+  const theirs = parseDxfOracle(dxf).blocks;
   assert.ok(mine.size > 0, 'ブロックが1つも出ていない');
   assert.deepEqual([...mine.keys()].sort(), Object.keys(theirs).sort());
 });

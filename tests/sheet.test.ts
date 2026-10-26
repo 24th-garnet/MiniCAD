@@ -1,6 +1,6 @@
+import { dxfOpts, headerPoint, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import DxfParser from 'dxf-parser';
 import { sampleScene } from '../src/io/sample.ts';
 import {
   centerSheetOn,
@@ -149,13 +149,13 @@ test('用紙枠を出さなければ、これまで通り図面の範囲で書�
 test('用紙枠が DXF に出る', () => {
   const scene = sampleScene();
   scene.sheet.show = true;
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = parseDxfOracle(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   const sheetLayer = scene.layers[LAYER_IDS.sheet].name;
-  const onSheet = parsed.entities.filter((e) => e.layer === sheetLayer);
+  const onSheet = oracleEntities(parsed).filter((e) => e.layer === sheetLayer);
   assert.ok(onSheet.filter((e) => e.type === 'LINE').length >= 4, '輪郭線が出ていない');
   assert.ok(onSheet.some((e) => e.type === 'TEXT' && e.text === '平面図'), '表題欄の文字が出ていない');
   // 図面範囲が用紙を含む
-  assert.ok(parsed.header['$EXTMAX'].x >= scene.sheet.origin.x + 42000 - 1);
+  assert.ok(headerPoint(parsed, '$EXTMAX').x >= scene.sheet.origin.x + 42000 - 1);
 });
 
 test('印刷用の HTML が用紙の実寸を指定する', () => {

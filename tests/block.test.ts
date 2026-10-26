@@ -1,6 +1,6 @@
+import { dxfOpts, oracleEntities, parseDxfOracle } from './dxf-oracle.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import DxfParser from 'dxf-parser';
 import { sampleScene } from '../src/io/sample.ts';
 import { emptyScene } from '../src/core/types.ts';
 import {
@@ -239,12 +239,12 @@ test('家具が専用エンティティだった頃のファイルがブロッ�
 
 test('DXF に BLOCK と INSERT が出る', () => {
   const scene = sampleScene();
-  const dxf = sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false });
+  const dxf = sceneToDxf(scene, [], defaultSettings(), dxfOpts());
   assert.ok(dxf.includes('\r\nBLOCK\r\n'), 'BLOCK が出ていない');
   assert.ok(dxf.includes('\r\nINSERT\r\n'), 'INSERT が出ていない');
 
-  const parsed = new DxfParser().parseSync(dxf)!;
-  const inserts = parsed.entities.filter((e) => e.type === 'INSERT');
+  const parsed = parseDxfOracle(dxf);
+  const inserts = oracleEntities(parsed).filter((e) => e.type === 'INSERT');
   assert.equal(inserts.length, Object.keys(scene.instances).length, 'INSERT の本数が合わない');
   assert.ok(parsed.blocks && Object.keys(parsed.blocks).length > 0, 'ブロック定義が読めない');
 });
@@ -256,7 +256,7 @@ test('同じブロックを何個置いても定義は1つ', () => {
     const id = newId('i');
     scene.instances[id] = { ...first, id, x: first.x + i * 3000 };
   }
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = parseDxfOracle(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   const names = Object.keys(parsed.blocks ?? {});
   assert.equal(new Set(names).size, names.length, 'ブロック定義が重複している');
 });
@@ -264,9 +264,9 @@ test('同じブロックを何個置いても定義は1つ', () => {
 test('INSERT の挿入点と回転が元のインスタンスと一致する', () => {
   const scene = sampleScene();
   const inst = Object.values(scene.instances).find((i) => i.angle !== 0) ?? Object.values(scene.instances)[0];
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = parseDxfOracle(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   const def = scene.blocks[inst.blockId];
-  const insert = parsed.entities.find(
+  const insert = oracleEntities(parsed).find(
     (e) => e.type === 'INSERT' && e.name === def.name && near(e.position.x, inst.x, 0.01),
   )!;
   assert.ok(insert, '対応する INSERT が見つからない');
@@ -276,7 +276,7 @@ test('INSERT の挿入点と回転が元のインスタンスと一致する', (
 
 test('ブロック定義の中身は画層 0 に置かれる', () => {
   const scene = sampleScene();
-  const parsed = new DxfParser().parseSync(sceneToDxf(scene, [], defaultSettings(), { escapeUnicode: false }))!;
+  const parsed = parseDxfOracle(sceneToDxf(scene, [], defaultSettings(), dxfOpts()))!;
   for (const block of Object.values(parsed.blocks ?? {})) {
     for (const e of block.entities ?? []) {
       assert.equal(e.layer, '0', `ブロックの中身が画層 ${e.layer} に出ている`);
