@@ -90,6 +90,7 @@ export class DimensionTool implements Tool {
         editor.store.settings.currentLayerId,
         LAYER_IDS.dimension,
       ),
+      levelId: editor.store.scene.activeLevelId,
       a,
       b,
       // クリックした点を通るように、法線方向の成分だけ取る
@@ -131,7 +132,7 @@ export class DimensionTool implements Tool {
     const cursor = snap?.point ?? editor.pointerWorld();
     const preview =
       this.ends.length === 1
-        ? this.previewWith({ x: cursor.x, y: cursor.y, nodeId: null }, cursor)
+        ? this.previewWith(editor, { x: cursor.x, y: cursor.y, nodeId: null })
         : this.build(editor, cursor);
     if (!preview) return;
 
@@ -145,13 +146,14 @@ export class DimensionTool implements Tool {
   }
 
   /** 2点目を決めている途中のプレビュー。寸法線は計測線の上に重ねる */
-  private previewWith(second: DimEnd, _cursor: Vec): DimensionShape | null {
+  private previewWith(editor: Editor, second: DimEnd): DimensionShape | null {
     const a = this.ends[0];
     if (!a || dist({ x: a.x, y: a.y }, { x: second.x, y: second.y }) < 1) return null;
     return {
       id: '__preview',
       shape: 'dimension',
       layerId: LAYER_IDS.dimension,
+      levelId: editor.store.scene.activeLevelId,
       a,
       b: second,
       offset: 0,

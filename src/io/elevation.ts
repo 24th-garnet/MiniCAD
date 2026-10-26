@@ -1,4 +1,4 @@
-import { wallHeightOf } from '../core/level.ts';
+import { levelOf, wallHeightOf } from '../core/level.ts';
 import { openingVertical } from '../core/opening.ts';
 import { wallSpans } from '../core/shape.ts';
 import { OPENING_SYMBOLS } from '../core/opening.ts';
@@ -50,7 +50,7 @@ export interface Elevation {
 export function elevationOf(scene: Scene, wall: Wall): Elevation | null {
   const ws = wallSpans(scene, wall);
   if (!ws) return null;
-  const level = scene.level;
+  const level = levelOf(scene, wall.levelId);
   const height = wallHeightOf(wall, level);
 
   const openings = ws.holes.map((hole) => {

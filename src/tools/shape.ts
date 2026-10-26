@@ -125,21 +125,22 @@ export class ShapeTool implements Tool {
       SHAPE_GEOMETRY[shapeKindOf(this.mode, this.arcMode)].defaultLayer,
     );
     const id = newId('s');
+    const levelId = editor.store.scene.activeLevelId;
 
     switch (this.mode) {
       case 'line': {
         const unique = dedupePoints(pts);
         if (unique.length < 2) return null;
-        if (unique.length === 2) return { id, shape: 'line', layerId, a: unique[0], b: unique[1] };
-        return { id, shape: 'polyline', layerId, points: unique, closed: false };
+        if (unique.length === 2) return { id, shape: 'line', layerId, levelId, a: unique[0], b: unique[1] };
+        return { id, shape: 'polyline', layerId, levelId, points: unique, closed: false };
       }
       case 'arc': {
         if (this.arcMode === 'circle') {
           const radius = dist(pts[0], pts[1]);
-          return radius < 1 ? null : { id, shape: 'circle', layerId, center: pts[0], radius };
+          return radius < 1 ? null : { id, shape: 'circle', layerId, levelId, center: pts[0], radius };
         }
         if (dist(pts[0], pts[1]) < 1) return null;
-        return { id, shape: 'arc', layerId, ...arcFromPoints(pts[0], pts[1], pts[2]) };
+        return { id, shape: 'arc', layerId, levelId, ...arcFromPoints(pts[0], pts[1], pts[2]) };
       }
       case 'text': {
         const value = this.text.trim();
@@ -148,6 +149,7 @@ export class ShapeTool implements Tool {
           id,
           shape: 'text',
           layerId,
+          levelId,
           at: pts[0],
           text: value,
           height: this.textHeight,
@@ -156,7 +158,7 @@ export class ShapeTool implements Tool {
         };
       }
       case 'point':
-        return { id, shape: 'point', layerId, at: pts[0] };
+        return { id, shape: 'point', layerId, levelId, at: pts[0] };
     }
   }
 

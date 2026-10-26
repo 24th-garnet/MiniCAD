@@ -5,6 +5,7 @@ import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
 import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
+import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
 import { resolveSelection, selectionCenter } from '../../../core/selection.ts';
 import type { Section, PanelContext } from '../../panel.ts';
@@ -54,7 +55,7 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
         optionalNumberField(
           '高さ',
           wall.height,
-          scene.level.wallHeight,
+          levelOf(scene, wall.levelId).wallHeight,
           (v) => edit(() => void (wall.height = v === null ? null : Math.max(1, v))),
           { step: 100, min: 1, suffix: 'mm' },
         ),

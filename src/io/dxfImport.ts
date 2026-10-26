@@ -400,6 +400,7 @@ function placeInstance(
     id,
     blockId,
     layerId,
+    levelId: ctx.scene.activeLevelId,
     x: world.x,
     y: world.y,
     scaleX: e.scaleX,

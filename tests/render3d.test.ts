@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { sampleScene } from '../src/io/sample.ts';
 import { detectRooms } from '../src/core/rooms.ts';
 import { sceneBounds } from '../src/core/entity.ts';
-import { wallHeightOf } from '../src/core/level.ts';
+import { activeLevel, wallHeightOf } from '../src/core/level.ts';
 import { buildMesh, BUCKET_ORDER, type Face3 } from '../src/render3d/mesh.ts';
 import { paint } from '../src/render3d/paint.ts';
 import { defaultCamera, frameAll, orbit, clampPitch, type Camera3D } from '../src/render3d/camera.ts';
@@ -84,7 +84,7 @@ test('壁の高さの上書きが効く', () => {
   wall.height = 3000;
   const top = Math.max(...meshOf(scene).flatMap((f) => f.points.map((p) => p.z)));
   assert.equal(top, 3000);
-  assert.equal(wallHeightOf(wall, scene.level), 3000);
+  assert.equal(wallHeightOf(wall, activeLevel(scene)), 3000);
 });
 
 test('すべての面で、頂点の順と法線が食い違わない', () => {
@@ -166,7 +166,7 @@ function drawWith(cam: Camera3D, scene = sampleScene()) {
 test('サンプル間取りが 3D で例外なく描ける', () => {
   const scene = sampleScene();
   const cam = defaultCamera();
-  frameAll(cam, sceneBounds(scene), scene.level.wallHeight);
+  frameAll(cam, sceneBounds(scene), activeLevel(scene).wallHeight);
   const calls = drawWith(cam, scene);
   assert.ok(calls.filter((c) => c === 'fill').length > 50, `塗りが ${calls.filter((c) => c === 'fill').length} 回`);
   assert.ok(calls.includes('stroke'), '稜線が描かれていない');
@@ -175,7 +175,7 @@ test('サンプル間取りが 3D で例外なく描ける', () => {
 test('病的なカメラでも有限でない座標を出さない', () => {
   const scene = sampleScene();
   const base = defaultCamera();
-  frameAll(base, sceneBounds(scene), scene.level.wallHeight);
+  frameAll(base, sceneBounds(scene), activeLevel(scene).wallHeight);
 
   const cases: Record<string, Partial<Camera3D>> = {
     真上: { pitch: Math.PI / 2 },
@@ -213,7 +213,7 @@ test('画面の大きさが 0 でも落ちない', () => {
 test('背面は描かれない（箱を外から見ると半分以下）', () => {
   const scene = oneWall(null);
   const cam = defaultCamera();
-  frameAll(cam, sceneBounds(scene), scene.level.wallHeight);
+  frameAll(cam, sceneBounds(scene), activeLevel(scene).wallHeight);
   const fills = drawWith(cam, scene).filter((c) => c === 'fill').length;
   // 壁の箱は6面。外から見えるのは3面まで
   assert.ok(fills <= 3, `${fills} 面が描かれた`);

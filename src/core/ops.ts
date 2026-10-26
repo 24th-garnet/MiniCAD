@@ -20,24 +20,39 @@ export function wallLength(scene: Scene, wall: Wall): number {
   return dist(a, b);
 }
 
-/** 指定座標にノードを作る。既存ノードが十分近ければそれを使い回す */
-export function findOrCreateNode(scene: Scene, p: Vec, tolerance = NODE_MERGE_TOLERANCE): Id {
+/**
+ * 指定座標にノードを作る。既存ノードが十分近ければそれを使い回す。
+ *
+ * **同じ階のノードだけを使い回す。** 階を見ないと、1 階と 2 階の同じ座標の角が
+ * 1 つに溶けて、片方を動かすともう片方も動く。
+ */
+export function findOrCreateNode(
+  scene: Scene,
+  p: Vec,
+  levelId: Id = scene.activeLevelId,
+  tolerance = NODE_MERGE_TOLERANCE,
+): Id {
   for (const n of Object.values(scene.nodes)) {
+    if (n.levelId !== levelId) continue;
     if (dist(p, n) <= tolerance) return n.id;
   }
   const id = newId('n');
-  scene.nodes[id] = { id, x: p.x, y: p.y };
+  scene.nodes[id] = { id, x: p.x, y: p.y, levelId };
   return id;
 }
 
+/** 壁は両端ノードの階に乗る。食い違っていれば作らない */
 export function addWall(scene: Scene, a: Id, b: Id, thickness: number, layerId: LayerId = LAYER_IDS.wall): Wall | null {
   if (a === b) return null;
+  const na = scene.nodes[a];
+  const nb = scene.nodes[b];
+  if (!na || !nb || na.levelId !== nb.levelId) return null;
   const existing = Object.values(scene.walls).find(
     (w) => (w.a === a && w.b === b) || (w.a === b && w.b === a),
   );
   if (existing) return existing;
   const id = newId('w');
-  const wall: Wall = { id, a, b, thickness, height: null, layerId };
+  const wall: Wall = { id, a, b, thickness, height: null, layerId, levelId: na.levelId };
   scene.walls[id] = wall;
   return wall;
 }
@@ -57,7 +72,7 @@ export function splitWall(scene: Scene, wallId: Id, p: Vec, tolerance = 20): Id 
   if (total - atStart <= tolerance) return wall.b;
 
   const midId = newId('n');
-  scene.nodes[midId] = { id: midId, x: point.x, y: point.y };
+  scene.nodes[midId] = { id: midId, x: point.x, y: point.y, levelId: wall.levelId };
 
   const originalB = wall.b;
   wall.b = midId;
@@ -132,7 +147,11 @@ export function moveNodes(scene: Scene, ids: Id[], delta: Vec): void {
   }
 }
 
-/** ドラッグ後に重なったノードを統合する。これがないと壁が繋がって見えても別々のままになる */
+/**
+ * ドラッグ後に重なったノードを統合する。これがないと壁が繋がって見えても別々のままになる。
+ *
+ * **階をまたいでは統合しない。** `findOrCreateNode` と同じ理由。
+ */
 export function mergeNodesAt(scene: Scene, movedIds: Id[], tolerance = 30): boolean {
   let merged = false;
   for (const id of movedIds) {
@@ -140,6 +159,7 @@ export function mergeNodesAt(scene: Scene, movedIds: Id[], tolerance = 30): bool
     if (!node) continue;
     for (const other of Object.values(scene.nodes)) {
       if (other.id === id || movedIds.includes(other.id)) continue;
+      if (other.levelId !== node.levelId) continue;
       if (dist(node, other) > tolerance) continue;
       for (const w of Object.values(scene.walls)) {
         if (w.a === id) w.a = other.id;

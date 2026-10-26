@@ -16,17 +16,22 @@ import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
-import { defaultLevel, type Level } from '../core/level.ts';
+import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../core/level.ts';
 
 /**
  * 1 → 2 で画層と製図規格、2 → 3 で汎用図形、3 → 4 で寸法、4 → 5 で用紙枠、
- * 5 → 6 で家具がブロック、6 → 7 で幾何拘束、7 → 8 で高さ（壁・建具・階）。
+ * 5 → 6 で家具がブロック、6 → 7 で幾何拘束、7 → 8 で高さ（壁・建具・階）、
+ * 8 → 9 で階が複数。
  *
  * `deserialize` は常に `emptyScene()` を土台にフィールド単位で補うので、
  * テーブルが増えるだけなら分岐は要らない。
  * 4 だけは「壁に自動表示していた寸法」を実体に変える必要があるので移行する。
+ *
+ * 8 → 9 も分岐は要らない。単数の `level` を 1 件の `levels` に読み替え、
+ * `levelId` の無い実体は**既定の階に乗せる**だけで済む。
+ * `DEFAULT_LEVEL_ID` が固定値なのはこのため。
  */
-export const FILE_VERSION = 8;
+export const FILE_VERSION = 9;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -65,17 +70,23 @@ export function deserialize(raw: unknown): Scene {
   scene.layers = readLayers(table<Record<string, unknown>>('layers'));
   scene.standard = readStandard(payload.standard);
   scene.sheet = readSheet(payload.sheet);
-  scene.level = readLevel(payload.level);
+  readLevels(scene, payload);
   const layerOr = (v: unknown, fallback: LayerId): LayerId =>
     typeof v === 'string' && scene.layers[v] ? v : fallback;
+  /** 知らない階に乗っている実体は作業中の階へ。宙に浮かせるより直しようがある */
+  const levelOr = (v: unknown): Id =>
+    typeof v === 'string' && scene.levels[v] ? v : scene.activeLevelId;
 
   for (const [id, n] of Object.entries(table<Record<string, unknown>>('nodes'))) {
     if (typeof n?.x !== 'number' || typeof n?.y !== 'number') continue;
-    scene.nodes[id] = { id, x: n.x, y: n.y };
+    scene.nodes[id] = { id, x: n.x, y: n.y, levelId: levelOr(n.levelId) };
   }
   for (const [id, w] of Object.entries(table<Record<string, unknown>>('walls'))) {
     if (typeof w?.a !== 'string' || typeof w?.b !== 'string') continue;
-    if (!scene.nodes[w.a] || !scene.nodes[w.b]) continue;
+    const na = scene.nodes[w.a];
+    const nb = scene.nodes[w.b];
+    // **壁は両端ノードと同じ階に乗る。** 食い違う JSON は壁ごと落とす
+    if (!na || !nb || na.levelId !== nb.levelId) continue;
     scene.walls[id] = {
       id,
       a: w.a,
@@ -83,6 +94,7 @@ export function deserialize(raw: unknown): Scene {
       thickness: numberOr(w.thickness, 120),
       height: finiteOrNull(w.height),
       layerId: layerOr(w.layerId, LAYER_IDS.wall),
+      levelId: na.levelId,
     };
   }
   for (const [id, o] of Object.entries(table<Record<string, unknown>>('openings'))) {
@@ -119,11 +131,15 @@ export function deserialize(raw: unknown): Scene {
       scaleY: numberOr(i.scaleY, 1) || 1,
       angle: numberOr(i.angle, 0),
       label: typeof i.label === 'string' ? i.label : null,
+      levelId: levelOr(i.levelId),
     };
   }
-  migrateFurniture(scene, table<Record<string, unknown>>('furniture'), layerOr);
+  migrateFurniture(scene, table<Record<string, unknown>>('furniture'), layerOr, scene.activeLevelId);
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('shapes'))) {
-    const shape = readShape(id, raw, layerOr(raw?.layerId, LAYER_IDS.shape));
+    const shape = readShape(
+      { id, layerId: layerOr(raw?.layerId, LAYER_IDS.shape), levelId: levelOr(raw?.levelId) },
+      raw,
+    );
     if (shape) scene.shapes[id] = shape;
   }
   migrateDimensions(scene, obj);
@@ -150,12 +166,13 @@ export function deserialize(raw: unknown): Scene {
       y: l.y,
       name: typeof l.name === 'string' ? l.name : '部屋',
       layerId: layerOr(l.layerId, LAYER_IDS.roomName),
+      levelId: levelOr(l.levelId),
     };
   }
   return scene;
 }
 
-/** ブロック定義の読み取り。中身の図形は既定の画層に乗せる */
+/** ブロック定義の読み取り。中身の図形は既定の画層・既定の階に乗せる（どちらも定義の中では意味を持たない） */
 function readBlockDef(id: Id, raw: unknown, scene: Scene): BlockDef | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const b = raw as Record<string, unknown>;
@@ -164,7 +181,10 @@ function readBlockDef(id: Id, raw: unknown, scene: Scene): BlockDef | null {
   const shapes: Record<Id, Shape> = {};
   const rawShapes = typeof b.shapes === 'object' && b.shapes !== null ? (b.shapes as Record<string, unknown>) : {};
   for (const [shapeId, rawShape] of Object.entries(rawShapes)) {
-    const shape = readShape(shapeId, rawShape, LAYER_IDS.furniture);
+    const shape = readShape(
+      { id: shapeId, layerId: LAYER_IDS.furniture, levelId: DEFAULT_LEVEL_ID },
+      rawShape,
+    );
     if (shape) shapes[shapeId] = shape;
   }
   if (Object.keys(shapes).length === 0) return null;
@@ -189,6 +209,7 @@ function migrateFurniture(
   scene: Scene,
   furniture: Record<string, Record<string, unknown>>,
   layerOr: (v: unknown, fallback: LayerId) => LayerId,
+  levelId: Id,
 ): void {
   for (const [id, f] of Object.entries(furniture)) {
     if (typeof f?.x !== 'number' || typeof f?.y !== 'number') continue;
@@ -209,6 +230,7 @@ function migrateFurniture(
       scaleY: numberOr(f.h, def.size.h) / def.size.h,
       angle: numberOr(f.angle, 0),
       label: name && name !== preset.label ? name : null,
+      levelId,
     };
   }
 }
@@ -258,10 +280,40 @@ function readLayers(raw: Record<string, Record<string, unknown>>): Record<LayerI
   return layers;
 }
 
-function readLevel(raw: unknown): Level {
+/**
+ * 階の読み取り。**版 8 までの単数の `level` も受ける。**
+ *
+ * 古いファイルは `level: {floorZ, wallHeight}` を 1 つだけ持つので、
+ * それを `DEFAULT_LEVEL_ID` の階として読む。id が固定値なので、
+ * `levelId` を持たない実体の行き先が一意に決まる。
+ */
+function readLevels(scene: Scene, payload: Record<string, unknown>): void {
+  const raw = payload.levels;
+  const table = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
+
+  if (table && Object.keys(table).length > 0) {
+    const levels: Record<Id, Level> = {};
+    for (const [id, l] of Object.entries(table)) {
+      levels[id] = readLevel(id, l);
+    }
+    scene.levels = levels;
+    const active = payload.activeLevelId;
+    scene.activeLevelId =
+      typeof active === 'string' && levels[active] ? active : levelsInOrder(scene)[0]!.id;
+    return;
+  }
+
+  // 版 8 以前。単数の level を 1 件の階に読み替える
+  scene.levels = { [DEFAULT_LEVEL_ID]: readLevel(DEFAULT_LEVEL_ID, payload.level) };
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+}
+
+function readLevel(id: Id, raw: unknown): Level {
   const base = defaultLevel();
-  const l = (raw ?? {}) as Record<string, unknown>;
+  const l = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   return {
+    id,
+    name: typeof l.name === 'string' && l.name.trim() !== '' ? l.name : base.name,
     floorZ: numberOr(l.floorZ, base.floorZ),
     wallHeight: Math.max(1, numberOr(l.wallHeight, base.wallHeight)),
   };

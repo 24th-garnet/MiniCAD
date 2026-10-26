@@ -1,5 +1,5 @@
 import { blockOf, instanceLabel } from '../core/block.ts';
-import { wallHeightOf } from '../core/level.ts';
+import { levelOf, wallHeightOf } from '../core/level.ts';
 import { openingVertical } from '../core/opening.ts';
 import { openingsOnWall } from '../core/ops.ts';
 import { nestingOf, perimeterOf, roomAt } from '../core/rooms.ts';
@@ -104,10 +104,11 @@ export function sceneToMeasures(
   rooms: Room[],
   options: MeasuresOptions,
 ): MeasuresFile {
-  const level = scene.level;
   const nesting = nestingOf(rooms);
 
   const out: MeasuredRoom[] = rooms.map((room, index) => {
+    // 部屋の壁は同じ階にあるので、階は最初の壁から引ける
+    const level = levelOf(scene, scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId);
     // 入れ子（柱型・PS）を引く。引かないと床も天井も仕上げが多すぎる数になる
     const inner = nesting.get(index) ?? [];
     const holeArea = inner.reduce((sum, i) => sum + rooms[i].innerArea, 0);

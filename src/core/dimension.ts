@@ -137,6 +137,7 @@ export function createWallDimensions(scene: Scene): DimensionShape[] {
       id: newId('dim'),
       shape: 'dimension',
       layerId: LAYER_IDS.dimension,
+      levelId: wall.levelId,
       a: { x: a.x, y: a.y, nodeId: wall.a },
       b: { x: b.x, y: b.y, nodeId: wall.b },
       offset: side * (wall.thickness / 2 + gap),

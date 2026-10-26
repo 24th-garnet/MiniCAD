@@ -1,4 +1,5 @@
 import { sceneBounds } from '../core/entity.ts';
+import { activeLevel } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
 import { defaultCamera, dolly, frameAll, orbit, pan, type Camera3D } from './camera.ts';
 import { buildMesh, type Face3 } from './mesh.ts';
@@ -64,7 +65,7 @@ export class Viewer3D {
   /** 図面全体が入るようにカメラを合わせる */
   fit(): void {
     const scene = this.editor.store.scene;
-    frameAll(this.camera, sceneBounds(scene), scene.level.wallHeight);
+    frameAll(this.camera, sceneBounds(scene), activeLevel(scene).wallHeight);
     this.requestRender();
   }
 

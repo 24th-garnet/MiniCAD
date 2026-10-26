@@ -11,6 +11,7 @@ import { deserialize, serialize, FILE_VERSION } from '../src/io/scene.ts';
 import { sceneToDxf } from '../src/io/dxf.ts';
 import { sceneToSvg } from '../src/io/svg.ts';
 import { defaultSettings } from '../src/core/store.ts';
+import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { LAYER_IDS } from '../src/core/layer.ts';
 import { dist, vec } from '../src/core/geometry.ts';
 import type { DimensionShape } from '../src/core/shapes.ts';
@@ -24,6 +25,7 @@ function sceneWithWall() {
     id: 'd1',
     shape: 'dimension',
     layerId: LAYER_IDS.dimension,
+    levelId: DEFAULT_LEVEL_ID,
     a: { x: 0, y: 0, nodeId: a },
     b: { x: 4000, y: 0, nodeId: b },
     offset: -600,
@@ -86,6 +88,7 @@ test('自由点の寸法のドラッグは、その点ごと動く', () => {
     id: 'd2',
     shape: 'dimension',
     layerId: LAYER_IDS.dimension,
+    levelId: DEFAULT_LEVEL_ID,
     a: { x: 0, y: 1000, nodeId: null },
     b: { x: 2000, y: 1000, nodeId: null },
     offset: 300,

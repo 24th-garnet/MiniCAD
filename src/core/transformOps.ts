@@ -116,7 +116,7 @@ function copyEntities(
     if (!node) continue;
     const p = applyPoint(t, node);
     const newNodeId = newId('n');
-    scene.nodes[newNodeId] = { id: newNodeId, x: p.x, y: p.y };
+    scene.nodes[newNodeId] = { id: newNodeId, x: p.x, y: p.y, levelId: node.levelId };
     nodeMap.set(id, newNodeId);
   }
 

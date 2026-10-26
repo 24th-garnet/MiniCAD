@@ -4,7 +4,7 @@ import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
 import type { Shape } from './shapes.ts';
 import type { BlockDef, BlockInstance } from './block.ts';
 import type { Constraint } from './constraints.ts';
-import { defaultLevel, type Level } from './level.ts';
+import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from './level.ts';
 import { builtinBlocks } from './blockPresets.ts';
 import { defaultSheet, type Sheet } from './sheet.ts';
 import { jisStandard, type DrawingStandard } from './standard.ts';
@@ -12,11 +12,17 @@ import { jisStandard, type DrawingStandard } from './standard.ts';
 export { newId };
 export type { Id };
 
-/** 壁の端点。複数の壁から共有されるので、動かすと接続した壁がすべて追従する */
+/**
+ * 壁の端点。複数の壁から共有されるので、動かすと接続した壁がすべて追従する。
+ *
+ * **階を持つ。** 距離だけで同一視すると、1 階と 2 階の同じ座標の角が
+ * 1 つのノードに溶けて、片方を動かすともう片方も動く。
+ */
 export interface Node {
   id: Id;
   x: number;
   y: number;
+  levelId: Id;
 }
 
 export interface Wall {
@@ -30,6 +36,8 @@ export interface Wall {
   /** 壁の高さ (mm)。null なら階の既定 */
   height: number | null;
   layerId: LayerId;
+  /** 乗っている階。**両端ノードと必ず一致する** */
+  levelId: Id;
 }
 
 /**
@@ -85,6 +93,7 @@ export interface RoomLabel {
   y: number;
   name: string;
   layerId: LayerId;
+  levelId: Id;
 }
 
 export interface Scene {
@@ -106,8 +115,10 @@ export interface Scene {
   instances: Record<Id, BlockInstance>;
   /** 幾何拘束。対象は壁（ノードではない。constraints.ts の冒頭を参照） */
   constraints: Record<Id, Constraint>;
-  /** 階の縦方向の設定。3D の押し出しが使う */
-  level: Level;
+  /** 階。下から順に見たいときは `levelsInOrder` */
+  levels: Record<Id, Level>;
+  /** 作業中の階。新しく描いたものがここに乗る */
+  activeLevelId: Id;
 }
 
 export function emptyScene(): Scene {
@@ -123,7 +134,8 @@ export function emptyScene(): Scene {
     blocks: builtinBlocks(),
     instances: {},
     constraints: {},
-    level: defaultLevel(),
+    levels: defaultLevels(),
+    activeLevelId: DEFAULT_LEVEL_ID,
   };
 }
 

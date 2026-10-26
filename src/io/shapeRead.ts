@@ -4,7 +4,15 @@ import type { Shape, ShapeKind } from '../core/shapes.ts';
 import type { Id } from '../core/types.ts';
 
 type Raw = Record<string, unknown>;
-type Reader<K extends ShapeKind> = (id: Id, raw: Raw, layerId: LayerId) => Extract<Shape, { shape: K }> | null;
+
+/** 図形ごとに違わない欄。読み手が外から与える */
+export interface ShapeBase {
+  id: Id;
+  layerId: LayerId;
+  levelId: Id;
+}
+
+type Reader<K extends ShapeKind> = (base: ShapeBase, raw: Raw) => Extract<Shape, { shape: K }> | null;
 
 const num = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
@@ -30,25 +38,24 @@ const align = (v: unknown): (typeof ALIGNS)[number] =>
  * 種別を足すとここが型エラーになるので、保存だけできて読めない、という事故を防げる。
  */
 export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
-  line: (id, raw, layerId) => {
+  line: (base, raw) => {
     const a = point(raw.a);
     const b = point(raw.b);
-    return a && b ? { id, shape: 'line', layerId, a, b } : null;
+    return a && b ? { ...base, shape: 'line', a, b } : null;
   },
 
-  polyline: (id, raw, layerId) => {
+  polyline: (base, raw) => {
     const pts = points(raw.points);
-    return pts.length >= 2 ? { id, shape: 'polyline', layerId, points: pts, closed: raw.closed === true } : null;
+    return pts.length >= 2 ? { ...base, shape: 'polyline', points: pts, closed: raw.closed === true } : null;
   },
 
-  arc: (id, raw, layerId) => {
+  arc: (base, raw) => {
     const center = point(raw.center);
     const radius = num(raw.radius, 0);
     if (!center || radius <= 0) return null;
     return {
-      id,
+      ...base,
       shape: 'arc',
-      layerId,
       center,
       radius,
       startAngle: num(raw.startAngle, 0),
@@ -56,19 +63,18 @@ export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
     };
   },
 
-  circle: (id, raw, layerId) => {
+  circle: (base, raw) => {
     const center = point(raw.center);
     const radius = num(raw.radius, 0);
-    return center && radius > 0 ? { id, shape: 'circle', layerId, center, radius } : null;
+    return center && radius > 0 ? { ...base, shape: 'circle', center, radius } : null;
   },
 
-  text: (id, raw, layerId) => {
+  text: (base, raw) => {
     const at = point(raw.at);
     if (!at || typeof raw.text !== 'string') return null;
     return {
-      id,
+      ...base,
       shape: 'text',
-      layerId,
       at,
       text: raw.text,
       height: num(raw.height, 3.5),
@@ -77,19 +83,18 @@ export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
     };
   },
 
-  point: (id, raw, layerId) => {
+  point: (base, raw) => {
     const at = point(raw.at);
-    return at ? { id, shape: 'point', layerId, at } : null;
+    return at ? { ...base, shape: 'point', at } : null;
   },
 
-  dimension: (id, raw, layerId) => {
+  dimension: (base, raw) => {
     const a = dimEnd(raw.a);
     const b = dimEnd(raw.b);
     if (!a || !b) return null;
     return {
-      id,
+      ...base,
       shape: 'dimension',
-      layerId,
       a,
       b,
       offset: num(raw.offset, 0),
@@ -106,10 +111,10 @@ function dimEnd(v: unknown): { x: number; y: number; nodeId: Id | null } | null 
 }
 
 /** 知らない種別は黙って捨てる（外から来た JSON を信用しない、という既存の方針） */
-export function readShape(id: Id, raw: unknown, layerId: LayerId): Shape | null {
+export function readShape(base: ShapeBase, raw: unknown): Shape | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const obj = raw as Raw;
   const kind = obj.shape;
   if (typeof kind !== 'string' || !(kind in SHAPE_READERS)) return null;
-  return SHAPE_READERS[kind as ShapeKind](id, obj, layerId);
+  return SHAPE_READERS[kind as ShapeKind](base, obj);
 }

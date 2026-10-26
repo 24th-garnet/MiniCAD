@@ -22,6 +22,14 @@ import type { Id, Scene } from './types.ts';
 interface ShapeBase {
   id: Id;
   layerId: LayerId;
+  /**
+   * 乗っている階。
+   *
+   * **ブロック定義の中の図形では意味を持たない。** 定義はブロック内座標で、
+   * どの階に置かれるかは挿入側（`BlockInstance.levelId`）が決める。
+   * 定義の中で `layerId` が `A-FURN` 固定なのと同じ扱い。
+   */
+  levelId: Id;
 }
 
 export interface LineShape extends ShapeBase {
@@ -103,12 +111,12 @@ export type Shape =
 export type ShapeKind = Shape['shape'];
 
 /**
- * id と画層を除いた図形。図形を組み立てる側（プリセット・DXF 取り込み）が使う。
+ * id・画層・階を除いた図形。図形を組み立てる側（プリセット・DXF 取り込み）が使う。
  * `Omit<Shape, ...>` は共用体にそのまま掛けると各枝に分配されないので、
  * 明示的に分配してから Omit する。
  */
 export type ShapeBody = {
-  [K in ShapeKind]: Omit<Extract<Shape, { shape: K }>, 'id' | 'layerId'>;
+  [K in ShapeKind]: Omit<Extract<Shape, { shape: K }>, 'id' | 'layerId' | 'levelId'>;
 }[ShapeKind];
 
 /**
@@ -399,7 +407,7 @@ export function textBox(s: TextShape, std: DrawingStandard): Vec[] {
 }
 
 /** 2点から円弧を作る（中心・始点・終点）。常に反時計回りになるよう整える */
-export function arcFromPoints(center: Vec, from: Vec, to: Vec): Omit<ArcShape, 'id' | 'layerId' | 'shape'> {
+export function arcFromPoints(center: Vec, from: Vec, to: Vec): Omit<ArcShape, 'id' | 'layerId' | 'levelId' | 'shape'> {
   return {
     center,
     radius: dist(center, from),

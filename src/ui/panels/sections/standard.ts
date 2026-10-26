@@ -5,6 +5,7 @@ import {
   STANDARD_PRESETS,
   lineGroupById,
 } from '../../../core/standard.ts';
+import { activeLevel } from '../../../core/level.ts';
 import { checkboxField, el, numberField, readonlyField, selectField } from '../../dom.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
@@ -13,7 +14,7 @@ export class StandardSection implements Section {
   render(ctx: PanelContext): (HTMLElement | null)[] {
     const scene = ctx.editor.store.scene;
     const std = scene.standard;
-    const level = scene.level;
+    const level = activeLevel(scene);
     const edit = ctx.edit;
     const group = lineGroupById(std.lineGroupId);
 

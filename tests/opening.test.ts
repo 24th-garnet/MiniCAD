@@ -216,7 +216,7 @@ test('引き込む側のかくれ線が DXF にエンティティ単位の線種
 // --- 縦方向の寸法（3D が使う） ---
 
 import { OPENING_PROFILES, openingVertical } from '../src/core/opening.ts';
-import { defaultLevel, wallHeightOf } from '../src/core/level.ts';
+import { DEFAULT_LEVEL_ID, activeLevel, defaultLevel, wallHeightOf } from '../src/core/level.ts';
 
 test('建具の高さの既定が妥当な範囲に収まる', () => {
   const level = defaultLevel();
@@ -265,13 +265,13 @@ test('壁と建具の高さが JSON の往復で保たれる', () => {
   wall.height = 2700;
   opening.sillHeight = 0;
   opening.height = 2000;
-  scene.level = { floorZ: 0, wallHeight: 2500 };
+  activeLevel(scene).wallHeight = 2500;
 
   const back = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
   assert.equal(back.walls[wall.id].height, 2700);
   assert.equal(back.openings[opening.id].sillHeight, 0);
   assert.equal(back.openings[opening.id].height, 2000);
-  assert.deepEqual(back.level, { floorZ: 0, wallHeight: 2500 });
+  assert.equal(activeLevel(back).wallHeight, 2500);
 });
 
 test('高さを持たない旧ファイルは既定値に落ちる', () => {
@@ -283,14 +283,79 @@ test('高さを持たない旧ファイルは既定値に落ちる', () => {
     delete o.height;
   }
   delete raw.scene.level;
+  delete raw.scene.levels;
+  delete raw.scene.activeLevelId;
 
   const back = deserialize(raw);
-  assert.deepEqual(back.level, defaultLevel());
+  assert.deepEqual(activeLevel(back), defaultLevel());
   for (const w of Object.values(back.walls)) assert.equal(w.height, null);
   for (const o of Object.values(back.openings)) {
     assert.equal(o.sillHeight, null);
     assert.equal(o.height, null);
   }
   const wall = Object.values(back.walls)[0];
-  assert.equal(wallHeightOf(wall, back.level), 2400, '既定の壁高に落ちていない');
+  assert.equal(wallHeightOf(wall, activeLevel(back)), 2400, '既定の壁高に落ちていない');
+});
+
+// --- 版 8 → 9（階が複数になる） ----------------------------------------------
+
+test('版 8 の単数の階が 1 件の levels として読める', () => {
+  const scene = sampleScene();
+  const raw = JSON.parse(JSON.stringify(serialize(scene)));
+  // 版 8 の形に戻す
+  raw.version = 8;
+  raw.scene.level = { floorZ: 0, wallHeight: 2500 };
+  delete raw.scene.levels;
+  delete raw.scene.activeLevelId;
+
+  const back = deserialize(raw);
+  assert.deepEqual(Object.keys(back.levels), [DEFAULT_LEVEL_ID], '階が 1 件になっていない');
+  assert.equal(back.activeLevelId, DEFAULT_LEVEL_ID);
+  assert.equal(activeLevel(back).wallHeight, 2500, '旧 level の値が引き継がれていない');
+});
+
+test('版 8 の実体はすべて既定の階に乗る', () => {
+  const scene = sampleScene();
+  const raw = JSON.parse(JSON.stringify(serialize(scene)));
+  raw.version = 8;
+  delete raw.scene.levels;
+  delete raw.scene.activeLevelId;
+  for (const n of Object.values(raw.scene.nodes) as Record<string, unknown>[]) delete n.levelId;
+  for (const w of Object.values(raw.scene.walls) as Record<string, unknown>[]) delete w.levelId;
+  for (const i of Object.values(raw.scene.instances) as Record<string, unknown>[]) delete i.levelId;
+  for (const l of Object.values(raw.scene.roomLabels) as Record<string, unknown>[]) delete l.levelId;
+  for (const s of Object.values(raw.scene.shapes) as Record<string, unknown>[]) delete s.levelId;
+
+  const back = deserialize(raw);
+  const all = [
+    ...Object.values(back.nodes),
+    ...Object.values(back.walls),
+    ...Object.values(back.instances),
+    ...Object.values(back.roomLabels),
+    ...Object.values(back.shapes),
+  ];
+  assert.ok(all.length > 20, '前提: サンプルに十分な実体がある');
+  for (const e of all) assert.equal(e.levelId, DEFAULT_LEVEL_ID, `${e.id} が階に乗っていない`);
+  // 壁が落ちていない＝両端ノードと階が揃っている
+  assert.equal(Object.keys(back.walls).length, Object.keys(scene.walls).length);
+});
+
+test('階が複数あるファイルが往復する', () => {
+  const scene = sampleScene();
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 2400, wallHeight: 2600 };
+  scene.activeLevelId = 'lv-2';
+
+  const back = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
+  assert.deepEqual(back.levels, scene.levels);
+  assert.equal(back.activeLevelId, 'lv-2');
+});
+
+test('知らない階を指す実体は作業中の階に落ちる', () => {
+  const scene = sampleScene();
+  const raw = JSON.parse(JSON.stringify(serialize(scene)));
+  for (const n of Object.values(raw.scene.nodes) as Record<string, unknown>[]) n.levelId = 'lv-nope';
+
+  const back = deserialize(raw);
+  for (const n of Object.values(back.nodes)) assert.equal(n.levelId, back.activeLevelId);
+  assert.equal(Object.keys(back.walls).length, Object.keys(scene.walls).length, '壁が落ちた');
 });

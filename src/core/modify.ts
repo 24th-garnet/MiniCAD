@@ -255,24 +255,26 @@ export function cutterCurves(scene: Scene, exclude: { shapeId?: Id; wallId?: Id 
   return out;
 }
 
-/** 曲線を図形に戻す。元の図形の画層を引き継ぐ */
+/** 曲線を図形に戻す。元の図形の画層と階を引き継ぐ */
 function curveToShape(curve: Curve, template: Shape): Shape | null {
   const id = newId('s');
+  const { layerId, levelId } = template;
   switch (curve.kind) {
     case 'segment':
-      return { id, shape: 'line', layerId: template.layerId, a: curve.a, b: curve.b };
+      return { id, shape: 'line', layerId, levelId, a: curve.a, b: curve.b };
     case 'arc':
       return {
         id,
         shape: 'arc',
-        layerId: template.layerId,
+        layerId,
+        levelId,
         center: curve.arc.center,
         radius: curve.arc.radius,
         startAngle: curve.arc.start,
         endAngle: curve.arc.end,
       };
     case 'circle':
-      return { id, shape: 'circle', layerId: template.layerId, center: curve.center, radius: curve.radius };
+      return { id, shape: 'circle', layerId, levelId, center: curve.center, radius: curve.radius };
   }
 }
 
@@ -376,8 +378,8 @@ export function offsetWall(scene: Scene, id: Id, distance: number, through: Vec)
 
   const aId = newId('n');
   const bId = newId('n');
-  scene.nodes[aId] = { id: aId, x: na.x, y: na.y };
-  scene.nodes[bId] = { id: bId, x: nb.x, y: nb.y };
+  scene.nodes[aId] = { id: aId, x: na.x, y: na.y, levelId: wall.levelId };
+  scene.nodes[bId] = { id: bId, x: nb.x, y: nb.y, levelId: wall.levelId };
   return addWall(scene, aId, bId, wall.thickness, wall.layerId)?.id ?? null;
 }
 

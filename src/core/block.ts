@@ -44,6 +44,7 @@ export interface BlockInstance {
   angle: number;
   /** 表示名の上書き。null なら定義の label */
   label: string | null;
+  levelId: Id;
 }
 
 /** 定義座標系の点をワールドへ。尺度 → 回転 → 平行移動の順 */
@@ -241,6 +242,7 @@ export function defineBlock(scene: Scene, shapeIds: Id[], base: Vec, label: stri
     id: instId,
     blockId: defId,
     layerId: shapes[0].layerId,
+    levelId: shapes[0].levelId,
     x: base.x,
     y: base.y,
     scaleX: 1,

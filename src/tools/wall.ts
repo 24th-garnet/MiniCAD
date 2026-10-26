@@ -148,7 +148,7 @@ function resolveNode(editor: Editor, p: Vec, tolerance: number): Id {
     const split = splitWall(scene, snap.wallId, p, tolerance);
     if (split) return split;
   }
-  return findOrCreateNode(scene, p, tolerance);
+  return findOrCreateNode(scene, p, scene.activeLevelId, tolerance);
 }
 
 /** いまマウスが指している向き（角度スナップ後）。角度を省いた入力で使う */

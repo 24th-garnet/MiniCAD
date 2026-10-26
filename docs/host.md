@@ -146,7 +146,7 @@ interface Capabilities {
 - **積算対象の指定。** 実測 JSON は室ごとの集計までで、面ごと・物ごとには出していない
 - **コメントと計測の保存。** 計測は今その場限りで、保存されない
 - **画層ごとの縮尺と透過。** 縮尺は図面に 1 つ、透過は持っていない
-- **複数階。** `Level` は 1 つだけ
+- **階を切り替える画面。** データは複数階を持てますが、作業中の階を変える UI がまだありません
 
 [qt]: https://github.com/24th-garnet/QuantityTakeoff
 [ie]: https://github.com/24th-garnet/InteriorEstimation

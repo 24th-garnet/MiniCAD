@@ -1,6 +1,6 @@
 import { signedArea, vec, type Vec } from '../core/geometry.ts';
 import { instanceFootprint } from '../core/block.ts';
-import { wallHeightOf, type Level } from '../core/level.ts';
+import { levelOf, wallHeightOf, type Level } from '../core/level.ts';
 import { OPENING_SYMBOLS, openingVertical } from '../core/opening.ts';
 import { doorSwing, openingFrame, wallPointAt, wallSpans } from '../core/shape.ts';
 import { BLOCK_HEIGHTS, DEFAULT_BLOCK_HEIGHT } from '../core/blockPresets.ts';
@@ -34,20 +34,27 @@ export const BUCKET_ORDER: Bucket[] = ['floor', 'wall', 'furniture', 'glass'];
 /** 建具の板の厚み (mm) */
 const PANEL_THICKNESS = 40;
 
+/**
+ * シーン全体を立体にする。**階をまたいで全部立てる。**
+ *
+ * 床の高さ（`Level.floorZ`）が階ごとに違うので、同じ平面に重ならない。
+ * 描く順（`BUCKET_ORDER`）は階に関係なく正しいまま——床が壁と交差しない、
+ * という性質は階の中で閉じているため。
+ */
 export function buildMesh(scene: Scene, rooms: Room[]): Face3[] {
   const out: Face3[] = [];
-  const level = scene.level;
 
   // 床は内法ポリゴン。壁芯で作ると壁と必ず交差し、どうソートしても破綻する
   for (const room of rooms) {
     const poly = room.innerPolygon;
     if (poly.length < 3) continue;
+    const level = levelOf(scene, scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId);
     out.push(flatFace(poly, level.floorZ, theme.floor3d, 'floor'));
   }
 
   for (const wall of Object.values(scene.walls)) {
     if (!isSnappable(scene, { type: 'wall', id: wall.id })) continue;
-    extrudeWall(scene, wall.id, level, out);
+    extrudeWall(scene, wall.id, levelOf(scene, wall.levelId), out);
   }
 
   for (const inst of Object.values(scene.instances)) {
@@ -56,7 +63,8 @@ export function buildMesh(scene: Scene, rooms: Room[]): Face3[] {
     if (!def) continue;
     const height = BLOCK_HEIGHTS[def.id] ?? DEFAULT_BLOCK_HEIGHT;
     if (height <= 0) continue; // 階段のように箱で表すと嘘になるものは立てない
-    extrudePrism(instanceFootprint(scene, inst), level.floorZ, level.floorZ + height, theme.furniture3d, 'furniture', out);
+    const { floorZ } = levelOf(scene, inst.levelId);
+    extrudePrism(instanceFootprint(scene, inst), floorZ, floorZ + height, theme.furniture3d, 'furniture', out);
   }
 
   return out;

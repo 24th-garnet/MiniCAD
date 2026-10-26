@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { emptyScene } from '../src/core/types.ts';
 import { addWall, findOrCreateNode, splitWall, wallLength } from '../src/core/ops.ts';
 import { detectRooms } from '../src/core/rooms.ts';
+import { LAYER_IDS } from '../src/core/layer.ts';
+import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { vec } from '../src/core/geometry.ts';
 
 function rect(scene: ReturnType<typeof emptyScene>, x0: number, y0: number, x1: number, y1: number, t = 100) {
@@ -69,7 +71,10 @@ test('閉じていない壁からは部屋を検出しない', () => {
 test('部屋ラベルは内側に置かれた部屋に結びつく', () => {
   const scene = emptyScene();
   rect(scene, 0, 0, 4000, 3000);
-  scene.roomLabels['L1'] = { id: 'L1', x: 2000, y: 1500, name: 'リビング' };
+  scene.roomLabels['L1'] = {
+    id: 'L1', x: 2000, y: 1500, name: 'リビング',
+    layerId: LAYER_IDS.roomName, levelId: DEFAULT_LEVEL_ID,
+  };
   const rooms = detectRooms(scene);
   assert.equal(rooms[0].name, 'リビング');
 });
@@ -87,4 +92,40 @@ test('壁の分割で開口部が正しい側に引き継がれる', () => {
   assert.equal(scene.openings['o2'].offset, 1000);
   assert.notEqual(scene.openings['o2'].wallId, wall.id);
   assert.ok(Math.abs(wallLength(scene, scene.walls[wall.id]) - 2000) < 1e-9);
+});
+
+test('階が違えば同じ座標でも別の部屋になる', () => {
+  // ノードが階を持つので、壁グラフは階ごとに分かれる。
+  // ここが壊れると 1 階と 2 階の壁が 1 つの部屋として閉じてしまう。
+  const scene = emptyScene();
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 2400, wallHeight: 2400 };
+
+  rect(scene, 0, 0, 4000, 3000);
+  scene.activeLevelId = 'lv-2';
+  rect(scene, 0, 0, 4000, 3000);
+
+  const rooms = detectRooms(scene);
+  assert.equal(rooms.length, 2, '同じ座標の 2 階ぶんが 1 部屋に溶けている');
+  const levels = rooms.map((r) => scene.walls[r.wallIds[0]].levelId).sort();
+  assert.deepEqual(levels, ['lv-1', 'lv-2']);
+});
+
+test('階が違えば同じ座標のノードを使い回さない', () => {
+  const scene = emptyScene();
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 2400, wallHeight: 2400 };
+
+  const a = findOrCreateNode(scene, vec(0, 0), 'lv-1');
+  const b = findOrCreateNode(scene, vec(0, 0), 'lv-2');
+  assert.notEqual(a, b, '階をまたいでノードが融合した');
+
+  const again = findOrCreateNode(scene, vec(0, 0), 'lv-1');
+  assert.equal(again, a, '同じ階では使い回されていない');
+});
+
+test('階をまたいだ壁は作れない', () => {
+  const scene = emptyScene();
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 2400, wallHeight: 2400 };
+  const a = findOrCreateNode(scene, vec(0, 0), 'lv-1');
+  const b = findOrCreateNode(scene, vec(4000, 0), 'lv-2');
+  assert.equal(addWall(scene, a, b, 100), null);
 });

@@ -52,7 +52,7 @@ export class RoomTool implements Tool {
       }
       const id = newId('l');
       const layerId = resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.roomName);
-      store.scene.roomLabels[id] = { id, x: room.center.x, y: room.center.y, name: label, layerId };
+      store.scene.roomLabels[id] = { id, x: room.center.x, y: room.center.y, name: label, layerId, levelId: store.scene.activeLevelId };
       return true;
     });
   }

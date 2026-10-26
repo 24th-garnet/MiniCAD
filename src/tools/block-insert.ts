@@ -90,6 +90,7 @@ export class BlockInsertTool implements Tool {
       scaleY: 1,
       angle: this.angle,
       label: null,
+      levelId: scene.activeLevelId,
     };
     if (skipWallAlign) return this.snapToGrid(editor, base);
     return alignToNearestWall(editor, base, def.size, this.angle) ?? this.snapToGrid(editor, base);

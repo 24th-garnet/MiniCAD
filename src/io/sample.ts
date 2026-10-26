@@ -86,6 +86,7 @@ export function sampleScene(): Scene {
       scaleY: 1,
       angle,
       label: null,
+      levelId: scene.activeLevelId,
     };
   };
 
@@ -99,7 +100,7 @@ export function sampleScene(): Scene {
 
   const label = (x: number, y: number, name: string) => {
     const id = newId('l');
-    scene.roomLabels[id] = { id, x, y, name, layerId: LAYER_IDS.roomName };
+    scene.roomLabels[id] = { id, x, y, name, layerId: LAYER_IDS.roomName, levelId: scene.activeLevelId };
   };
   label(2300, 3000, 'LDK');
   label(6300, 4600, '洋室');
