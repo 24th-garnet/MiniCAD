@@ -1,5 +1,5 @@
 import { BlockInsertTool } from '../../../tools/block-insert.ts';
-import { FIXTURE_KINDS, FIXTURE_SPECS, type FixtureKind } from '../../../core/fixture.ts';
+import { FIXTURE_SPECS, fixtureKindsOf, type FixtureKind } from '../../../core/fixture.ts';
 import { FixtureTool } from '../../../tools/fixture.ts';
 import { OpeningTool } from '../../../tools/opening.ts';
 import type { Bay } from '../../../core/bay.ts';
@@ -41,7 +41,8 @@ export class LibrarySection implements Section {
 
     // **構造を先に出す**（ワイヤーの奥谷さんの指摘）。躯体を決めてから
     // 建具を入れ、最後に家具を置く——実際の手順の順に並べる
-    const fixtures = FIXTURE_KINDS.filter((k) => this.shows(FIXTURE_SPECS[k].uses));
+    // **建築の躯体だけ。** 汎用ソリッドはプロモードの「ソリッド」ツールから出す
+    const fixtures = fixtureKindsOf('structure').filter((k) => this.shows(FIXTURE_SPECS[k].uses));
     if (fixtures.length > 0) {
       out.push(el('h3', { class: 'part-group' }, ['構造']));
       const structure = el('div', { class: 'part-grid' }, []);

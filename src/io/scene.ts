@@ -15,7 +15,7 @@ import { BLOCK_PRESETS } from '../core/blockPresets.ts';
 import type { Shape } from '../core/shapes.ts';
 import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
-import { FIXTURE_SPECS, isFixtureKind } from '../core/fixture.ts';
+import { FIXTURE_SPECS, isFixtureKind, isRoundFixture } from '../core/fixture.ts';
 import { isBayShape, type Bay } from '../core/bay.ts';
 import { readPoint3 } from '../core/annotation.ts';
 import { emptyBody, isEmptyBody, type Assembly } from '../core/assembly.ts';
@@ -212,7 +212,7 @@ export function deserialize(raw: unknown): Scene {
       y: raw.y,
       angle: numberOr(raw.angle, 0),
       // 円柱は直径 1 つで決まる。奥行が別の値で書かれていても直径に揃える
-      size: { w, h: raw.kind === 'roundColumn' ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+      size: { w, h: isRoundFixture(raw.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
       base: typeof raw.base === 'number' ? raw.base : null,
       height: typeof raw.height === 'number' ? raw.height : null,
       label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
@@ -342,7 +342,7 @@ function readAssembly(
     body.fixtures[fid] = {
       id: fid, kind: f.kind, x: f.x, y: f.y,
       angle: numberOr(f.angle, 0),
-      size: { w, h: f.kind === 'roundColumn' ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+      size: { w, h: isRoundFixture(f.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
       base: typeof f.base === 'number' ? f.base : null,
       height: typeof f.height === 'number' ? f.height : null,
       label: typeof f.label === 'string' ? f.label : spec.defaultLabel,

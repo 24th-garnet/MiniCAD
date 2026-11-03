@@ -29,6 +29,7 @@ export type ToolId =
   | 'dimension'
   | 'room'
   | 'fixture'
+  | 'solid'
   | 'assembly'
   | 'comment';
 

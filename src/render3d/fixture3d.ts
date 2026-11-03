@@ -93,6 +93,150 @@ const push = (out: Face3[], points: Vec3[], color: string, src: FaceSource): voi
   out.push(polygonFace(points, color, 'furniture', src));
 };
 
+// ---- ここから汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）----
+//
+// **直方体・三角柱・垂直の円筒は柱と 1 行も違わない。** 底面を押し出すだけなので
+// `extrudePrism` で足りる。あれは**上下が平らな角柱**しか作れないので、
+// 円錐・球・半球と寝かせた円筒だけ、`wedge` と同じく面を直に組む。
+//
+// **バケットは `wall`。** ソリッドは不透明な実体で、家具のように壁を透かしては
+// いけない（`BUCKET_RANK` の経緯——家具を壁より後に塗っていた頃、画素の 2 割が
+// 嘘をついていた）。色は躯体と紛れないように家具の色を使う。
+//
+// **交差させると破れる。** 離して置くぶんには深さ順で正しく並ぶが、2 つを
+// 食い込ませると面ごと入れ替わって見える。面を割る木（BSP）が要る。
+
+const SOLID_COLOR = theme.furniture3d;
+
+/** 回転体の経線の本数。球は 24 × 12 帯 ＝ 288 面になる */
+const MERIDIANS = 24;
+
+/** 球の緯線の帯の数。半球はこの半分 */
+const PARALLELS = 12;
+
+const solidFace = (points: Vec3[], src: FaceSource): Face3 =>
+  polygonFace(points, SOLID_COLOR, 'wall', src);
+
+/** ローカルの水平な円を 1 周。反時計回り（上から見て）なので上面の法線が +z になる */
+function ringOf(f: Fixture, r: number, z: number): Vec3[] {
+  const out: Vec3[] = [];
+  for (let i = 0; i < MERIDIANS; i++) {
+    const a = (i / MERIDIANS) * Math.PI * 2;
+    out.push(p3(toWorld(f, vec(Math.cos(a) * r, Math.sin(a) * r)), z));
+  }
+  return out;
+}
+
+/** 隣と同じ点を落とす。極では四角形が三角形に潰れる */
+function dedupe(points: Vec3[]): Vec3[] {
+  return points.filter((p, i) => {
+    const q = points[(i + points.length - 1) % points.length];
+    return Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) > 1e-6;
+  });
+}
+
+/**
+ * 水平な輪を下から積んで回転体にする。半径 0 の輪は 1 点に潰れ、その帯は三角形になる。
+ *
+ * 円錐・球・半球がこれ 1 本で出る。**蓋は半径が 0 でないときだけ張る**
+ * （円錐の頂点に蓋を張ると、面積 0 の面が 1 枚増えてソートを濁らせる）。
+ */
+function revolve(f: Fixture, rings: { r: number; z: number }[], src: FaceSource, out: Face3[]): void {
+  const rows = rings.map((ring) =>
+    ring.r < 1e-6 ? [p3(toWorld(f, vec(0, 0)), ring.z)] : ringOf(f, ring.r, ring.z));
+
+  for (let j = 0; j + 1 < rows.length; j++) {
+    const lo = rows[j];
+    const hi = rows[j + 1];
+    for (let i = 0; i < MERIDIANS; i++) {
+      const k = (i + 1) % MERIDIANS;
+      const quad = dedupe([
+        lo[i % lo.length], lo[k % lo.length],
+        hi[k % hi.length], hi[i % hi.length],
+      ]);
+      if (quad.length >= 3) out.push(solidFace(quad, src));
+    }
+  }
+
+  // 下の蓋は裏返して法線を -z に向ける。上の蓋はそのまま +z
+  const bottom = rows[0];
+  const top = rows[rows.length - 1];
+  if (bottom.length > 1) out.push(solidFace([...bottom].reverse(), src));
+  if (top.length > 1) out.push(solidFace(top, src));
+}
+
+/** 底面を押し出すだけのソリッド。直方体・三角柱・垂直の円筒 */
+const prismSolid: SolidBuilder = (f, level, src, out) => {
+  const { z0, z1 } = verticalRange(f, level);
+  extrudePrism(outline(f), z0, z1, SOLID_COLOR, 'wall', src, out);
+};
+
+/** 円錐。底の輪 1 つと頂点 1 つ */
+const cone: SolidBuilder = (f, level, src, out) => {
+  const { z0, z1 } = verticalRange(f, level);
+  revolve(f, [{ r: f.size.w / 2, z: z0 }, { r: 0, z: z1 }], src, out);
+};
+
+/**
+ * 球。**水平の径は `size.w`、垂直の径は高さ**なので、高さを変えると回転楕円体になる。
+ * 既定（直径 600・高さ 600）では真球。
+ */
+const sphere: SolidBuilder = (f, level, src, out) => {
+  const { z0, z1 } = verticalRange(f, level);
+  const rh = f.size.w / 2;
+  const rz = (z1 - z0) / 2;
+  const cz = (z0 + z1) / 2;
+  const rings = [];
+  for (let j = 0; j <= PARALLELS; j++) {
+    const phi = -Math.PI / 2 + (Math.PI * j) / PARALLELS;
+    rings.push({ r: rh * Math.cos(phi), z: cz + rz * Math.sin(phi) });
+  }
+  revolve(f, rings, src, out);
+};
+
+/** 半球。底は平らなので、下の蓋が 1 枚張られる */
+const dome: SolidBuilder = (f, level, src, out) => {
+  const { z0, z1 } = verticalRange(f, level);
+  const rh = f.size.w / 2;
+  const bands = PARALLELS / 2;
+  const rings = [];
+  for (let j = 0; j <= bands; j++) {
+    const phi = (Math.PI / 2) * (j / bands);
+    rings.push({ r: rh * Math.cos(phi), z: z0 + (z1 - z0) * Math.sin(phi) });
+  }
+  revolve(f, rings, src, out);
+};
+
+/**
+ * 寝かせた円筒。**断面はローカルの x-z 平面の円で、軸はローカルの y。**
+ *
+ * `Fixture` は z 軸まわりしか回らないので、水平の筒は種別として持つしかない。
+ * 断面の横の径は `size.w`、縦の径は高さ、筒の長さは `size.h`。
+ */
+const lyingCylinder: SolidBuilder = (f, level, src, out) => {
+  const { z0, z1 } = verticalRange(f, level);
+  const rx = f.size.w / 2;
+  const rz = (z1 - z0) / 2;
+  const cz = (z0 + z1) / 2;
+  const half = f.size.h / 2;
+  const ends: Vec3[][] = [[], []];
+  for (let i = 0; i < MERIDIANS; i++) {
+    const a = (i / MERIDIANS) * Math.PI * 2;
+    const x = Math.cos(a) * rx;
+    const z = cz + Math.sin(a) * rz;
+    ends[0].push(p3(toWorld(f, vec(x, -half)), z));
+    ends[1].push(p3(toWorld(f, vec(x, half)), z));
+  }
+  for (let i = 0; i < MERIDIANS; i++) {
+    const k = (i + 1) % MERIDIANS;
+    // 角の増える向きは手前の端から見て時計回りなので、手前 → 奥 の順で外を向く
+    out.push(solidFace([ends[0][i], ends[1][i], ends[1][k], ends[0][k]], src));
+  }
+  // 両端の蓋。向きが逆なので片方だけ裏返す
+  out.push(solidFace(ends[0], src));
+  out.push(solidFace([...ends[1]].reverse(), src));
+};
+
 export const FIXTURE_SOLIDS: Record<FixtureKind, SolidBuilder> = {
   column: structural,
   roundColumn: structural,
@@ -105,6 +249,14 @@ export const FIXTURE_SOLIDS: Record<FixtureKind, SolidBuilder> = {
   void: nothing,
   // 天窓は屋根の穴。この図面に屋根は無いので、3D には何も出ない
   skylight: nothing,
+
+  box: prismSolid,
+  prism: prismSolid,
+  cylinder: prismSolid,
+  cylinderH: lyingCylinder,
+  cone,
+  sphere,
+  dome,
 };
 
 /** 構造物 1 つぶん */

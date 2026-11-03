@@ -10,7 +10,7 @@ import { defineAssembly, restampAssembly, restampReport, updateAssembly } from '
 import { measuredDistance } from '../../../core/annotation.ts';
 import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
-import { FIXTURE_SPECS, type Fixture } from '../../../core/fixture.ts';
+import { FIXTURE_SPECS, isRoundFixture, type Fixture } from '../../../core/fixture.ts';
 import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
 import { resolveSelection, selectionCenter } from '../../../core/selection.ts';
@@ -268,7 +268,7 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
       if (!f) return [];
       const spec = FIXTURE_SPECS[f.kind];
       const level = levelOf(scene, f.levelId);
-      const round = f.kind === 'roundColumn';
+      const round = isRoundFixture(f.kind);
       return [
         readonlyField('種類', spec.label),
         numberField(round ? '直径' : '幅', f.size.w, (v) => edit(() => setSize(f, Math.max(10, v), null)), {
@@ -307,7 +307,7 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
 function setSize(f: Fixture, w: number | null, h: number | null): void {
   if (w !== null) f.size.w = w;
   if (h !== null) f.size.h = h;
-  if (f.kind === 'roundColumn') f.size.h = f.size.w;
+  if (isRoundFixture(f.kind)) f.size.h = f.size.w;
 }
 
 /**

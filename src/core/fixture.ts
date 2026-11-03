@@ -31,9 +31,25 @@ export const FIXTURE_KINDS = [
   'column', 'roundColumn', 'beam',
   'stair', 'stairU', 'stairL', 'stairWinder',
   'slope', 'void', 'skylight',
+  // 汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）。
+  // **柱と円柱の一般化**で、新しい描画の仕組みは要らない
+  'box', 'prism', 'cylinder', 'cylinderH', 'cone', 'sphere', 'dome',
 ] as const;
 
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
+
+/**
+ * 系統。**出し分けにだけ使う札。**
+ *
+ * `structure` は建築の躯体（柱・梁・階段・吹抜）で、通常モードのパーツ一覧に並ぶ。
+ * `solid` はプロモードの汎用ソリッド（直方体・円筒・球…）で、
+ * 「ソリッド」ツールの「種類」欄にだけ並ぶ。
+ *
+ * **図面の中身は 1 つも変わらない。** 平面の記号・3D・ピック・積算・JSON・DXF は
+ * どちらの系統も同じ道を通る。モードの判断を `core/` に持ち込まないために、
+ * 「プロ専用か」ではなく「何の仲間か」で書いてある。
+ */
+export type FixtureFamily = 'structure' | 'solid';
 
 const FIXTURE_KIND_SET: ReadonlySet<string> = new Set<string>(FIXTURE_KINDS);
 
@@ -103,6 +119,8 @@ export interface FixtureSpec {
    * パレットの絞り込みにだけ使う。図面の中身には出ない。
    */
   uses: readonly Use[];
+  /** 建築の躯体か、汎用のソリッドか。どの道具から出すかだけを決める */
+  family: FixtureFamily;
 }
 
 /** 円柱の輪郭を折れ線で近似するときの分割数 */
@@ -124,6 +142,13 @@ const circle = (size: { w: number; h: number }): Vec[] => {
   }
   return out;
 };
+
+/** 三角柱の底面。底辺が幅、頂点が奥側の中央。反時計回り */
+const triangle = (size: { w: number; h: number }): Vec[] => [
+  vec(-size.w / 2, -size.h / 2),
+  vec(size.w / 2, -size.h / 2),
+  vec(0, size.h / 2),
+];
 
 /**
  * L 形の外形。下の走り（左脚）を上がって、上の走り（上辺）へ曲がる。
@@ -357,6 +382,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: true,
     pickPriority: 2,
+    family: 'structure',
     uses: ALL_USES,
   },
   roundColumn: {
@@ -372,6 +398,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: true,
     pickPriority: 2,
+    family: 'structure',
     uses: ALL_USES,
   },
   beam: {
@@ -388,6 +415,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 3,
+    family: 'structure',
     uses: ALL_USES,
   },
   stair: {
@@ -403,6 +431,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
+    family: 'structure',
     uses: ['住'],
   },
   /** コの字階段（COOHOM の U 字型階段）。**左右の流れの間に空間を作らない** */
@@ -419,6 +448,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
+    family: 'structure',
     uses: ['住'],
   },
   /** L 字階段。角は踊り場 1 枚 */
@@ -435,6 +465,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
+    family: 'structure',
     uses: ['住'],
   },
   /** 回り段。L 字の角を 3 枚の扇形に割る */
@@ -451,6 +482,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
+    family: 'structure',
     uses: ['住'],
   },
   slope: {
@@ -466,6 +498,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
+    family: 'structure',
     uses: ALL_USES,
   },
   void: {
@@ -483,6 +516,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 5,
     // 吹抜＜住＞・PS＜住オ店＞・煙道＜オ店＞を 1 つの種別で兼ねるので、絞らない
+    family: 'structure',
     uses: ALL_USES,
   },
 
@@ -511,11 +545,161 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 5,
+    family: 'structure',
     uses: ['住'],
+  },
+  // ---- ここから汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）----
+  //
+  // **柱と円柱の一般化。** 角柱は直方体の、円柱は垂直の円筒の特例になっている。
+  // 平面の輪郭・ピック・積算・JSON・DXF は構造物と同じ道を通るので、
+  // ここと `FIXTURE_SOLIDS`（`render3d/fixture3d.ts`）を埋めるだけで済む。
+  //
+  // **傾きは持たない。** `toWorld` が z 軸まわりの 2 次元回転なので、
+  // 寝かせた円筒は種別として持つ（ワイヤーも「水平」「垂直」と分けて書いている）。
+  // 任意の傾きが要るかは確認事項 13。
+  //
+  // **塗らない。** 柱を塗るのは JIS の決まりで、汎用の立体にその理由は無い。
+  // 塗ると平面で柱と見分けが付かなくなる。
+
+  box: {
+    label: '直方体',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 600 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 600,
+    localOutline: rect,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
+  },
+  prism: {
+    label: '三角柱',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 600 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 600,
+    localOutline: triangle,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
+  },
+  /** 垂直の円筒。`w` が直径で `h` は見ない（円柱と同じ） */
+  cylinder: {
+    label: '円筒(垂直)',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 600 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 600,
+    localOutline: circle,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
+  },
+  /**
+   * 寝かせた円筒。**平面では矩形に見える**——真上から見た寝た筒は矩形だから。
+   * `w` が直径、`h` が長さ、高さ（`height`）が断面の縦の径。
+   */
+  cylinderH: {
+    label: '円筒(水平)',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 1200 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 600,
+    localOutline: rect,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
+  },
+  cone: {
+    label: '円錐',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 600 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 600,
+    localOutline: circle,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
+  },
+  /** 球。既定では高さ＝直径だが、高さを変えれば縦に伸びた回転楕円体になる */
+  sphere: {
+    label: '球',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 600 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 600,
+    localOutline: circle,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
+  },
+  /** 半球（ドーム）。底が平らで、既定の高さは半径 */
+  dome: {
+    label: '半球',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 600, h: 600 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 300,
+    localOutline: circle,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'solid',
+    uses: ALL_USES,
   },
 };
 
+/**
+ * その系統の種別だけ並べる。パレットと「種類」欄が読む。
+ *
+ * **`FIXTURE_KINDS` の順をそのまま保つ。** 表に足した順が画面の順になる。
+ */
+export const fixtureKindsOf = (family: FixtureFamily): FixtureKind[] =>
+  FIXTURE_KINDS.filter((k) => FIXTURE_SPECS[k].family === family);
+
 export const specOf = (f: Fixture): FixtureSpec => FIXTURE_SPECS[f.kind];
+
+/**
+ * 平面の輪郭が円か。**直径 1 つで形が決まる**ので、幅と奥行を分けて持たない。
+ *
+ * 札を 1 つ増やさず、輪郭の関数そのものを見る。種別を足したときに
+ * 書き忘れようがない——`circle` を渡したかどうかが、そのまま答えになる。
+ */
+export const isRoundFixture = (kind: FixtureKind): boolean =>
+  FIXTURE_SPECS[kind].localOutline === circle;
 
 /** ローカル座標をワールドへ */
 export function toWorld(f: Fixture, p: Vec): Vec {
@@ -545,8 +729,8 @@ export function fixtureSnapPoints(f: Fixture): { point: Vec; kind: SnapKind }[] 
   const out: { point: Vec; kind: SnapKind }[] = [
     { point: vec(f.x, f.y), kind: 'center' },
   ];
-  // 円柱の近似多角形の頂点を 32 個ぜんぶ出すと、スナップが重くなるだけで役に立たない
-  if (f.kind !== 'roundColumn') {
+  // 円の近似多角形の頂点を 32 個ぜんぶ出すと、スナップが重くなるだけで役に立たない
+  if (!isRoundFixture(f.kind)) {
     for (const p of outline(f)) out.push({ point: p, kind: 'node' });
   }
   return out;

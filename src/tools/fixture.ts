@@ -1,10 +1,12 @@
 import { defaultAttrs } from '../core/attrs.ts';
 import {
-  FIXTURE_KINDS,
   FIXTURE_SPECS,
+  fixtureKindsOf,
   fixturePrimitives,
+  isRoundFixture,
   outline,
   type Fixture,
+  type FixtureFamily,
   type FixtureKind,
 } from '../core/fixture.ts';
 import type { Vec } from '../core/geometry.ts';
@@ -15,29 +17,48 @@ import { drawPrimitives } from '../render/primitive.ts';
 import { tracePolygon } from '../render/frame.ts';
 import { type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
-import type { OptionField, PointerInfo, Tool } from './tool.ts';
+import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
 /**
- * 構造物を置くツール。柱・梁・階段・スロープ・吹抜を 1 つのツールで扱う。
+ * `Fixture` を置くツール。**置き方がどれも同じ**（向きを決めて 1 点を打つ）なので、
+ * 種別ごとにツールを作らず、「種類」欄で選ぶ。違うのは既定の大きさと記号だけで、
+ * それは `FIXTURE_SPECS` の 1 行に閉じている。建具が `door` と `window` の
+ * 2 つなのは **JIS の平面記号が違う**からで、こちらにはその理由が無い。
  *
- * **種別ごとにツールを作らない。** 置き方はどれも同じ（向きを決めて 1 点を打つ）で、
- * 違うのは既定の大きさと記号だけ。それは `FIXTURE_SPECS` の 1 行に閉じている。
- * ツールを 6 つに割ると `ToolId` と `TOOL_REGISTRY` が 6 行ずつ増え、
- * ツールバーが構造だけで埋まる。建具が `door` と `window` の 2 つなのは、
- * **JIS の平面記号が違う**からで、こちらにはその理由が無い。
+ * **系統（`FixtureFamily`）ごとに 2 つ登録する。**
+ *
+ * | | 出すもの | モード |
+ * |---|---|---|
+ * | `fixture`（構造） | 柱・梁・階段・スロープ・吹抜・天窓 | 両方 |
+ * | `solid`（ソリッド） | 直方体・三角柱・円筒・円錐・球・半球 | プロのみ |
+ *
+ * 同じクラスを 2 回登録するのは `ShapeTool`・`ModifyTool`・`OpeningTool` と同じ形。
+ * 1 つのツールに 17 種別を並べると、通常モードの「種類」欄に**使えるはずのない
+ * 汎用ソリッド**が並ぶ。モードの判断を `core/` に持ち込まずに分けられる。
  */
 export class FixtureTool implements Tool {
-  readonly id = 'fixture' as const;
-  readonly label = '構造';
-  readonly shortcut = 'K';
+  readonly id: ToolId;
+  readonly label: string;
+  readonly shortcut: string;
   readonly cursor = 'crosshair';
   readonly group = 'draw' as const;
 
+  /** この道具が出す種別。系統で絞ってある */
+  private readonly kinds: FixtureKind[];
+
   /** 置こうとしている種別。パレットから変わる */
-  kind: FixtureKind = 'column';
+  kind: FixtureKind;
   /** 手動の回転角 */
   angle = 0;
   private ghost: Fixture | null = null;
+
+  constructor(family: FixtureFamily, id: ToolId, label: string, shortcut: string) {
+    this.id = id;
+    this.label = label;
+    this.shortcut = shortcut;
+    this.kinds = fixtureKindsOf(family);
+    this.kind = this.kinds[0];
+  }
 
   /**
    * 種別ごとに直した大きさ。**`FIXTURE_SPECS` は書き換えない。**
@@ -49,12 +70,12 @@ export class FixtureTool implements Tool {
     return this.sizes.get(kind) ?? { ...FIXTURE_SPECS[kind].defaultSize };
   }
 
-  /** 円柱は直径 1 つで決まるので、幅を直したら奥行も揃える */
+  /** 輪郭が円のものは直径 1 つで決まるので、幅を直したら奥行も揃える */
   private setSize(kind: FixtureKind, w: number | null, h: number | null): void {
     const size = this.sizeOf(kind);
     if (w !== null) size.w = w;
     if (h !== null) size.h = h;
-    if (kind === 'roundColumn') size.h = size.w;
+    if (isRoundFixture(kind)) size.h = size.w;
     this.sizes.set(kind, size);
   }
 
@@ -121,7 +142,7 @@ export class FixtureTool implements Tool {
         kind: 'select',
         label: '種類',
         value: this.kind,
-        options: FIXTURE_KINDS.map((k) => ({ value: k, label: FIXTURE_SPECS[k].label })),
+        options: this.kinds.map((k) => ({ value: k, label: FIXTURE_SPECS[k].label })),
         onChange: (v) => {
           this.kind = v as FixtureKind;
           this.ghost = this.makeGhost(editor, editor.pointerWorld());
@@ -129,7 +150,7 @@ export class FixtureTool implements Tool {
       },
       {
         kind: 'number',
-        label: this.kind === 'roundColumn' ? '直径' : '幅',
+        label: isRoundFixture(this.kind) ? '直径' : '幅',
         value: size.w,
         step: 50,
         min: 10,
@@ -137,7 +158,7 @@ export class FixtureTool implements Tool {
         onChange: (v) => this.setSize(this.kind, Math.max(10, v), null),
       },
     ];
-    if (this.kind !== 'roundColumn') {
+    if (!isRoundFixture(this.kind)) {
       fields.push({
         kind: 'number',
         label: '奥行',
@@ -178,7 +199,7 @@ export class FixtureTool implements Tool {
   status(): string {
     const spec = FIXTURE_SPECS[this.kind];
     const size = this.sizeOf(this.kind);
-    const text = this.kind === 'roundColumn' ? `φ${size.w}` : `${size.w}×${size.h}`;
+    const text = isRoundFixture(this.kind) ? `φ${size.w}` : `${size.w}×${size.h}`;
     return `${spec.label} (${text}) — クリックで配置、R で90°回転`;
   }
 }
