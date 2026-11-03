@@ -330,3 +330,64 @@ test('退化した中心線ではダブルラインを置かない', async () =>
   assert.equal(offsetPolyline([vec(0, 0), vec(0, 0)], 100, false), null);
   assert.equal(offsetPolyline([vec(0, 0)], 100, false), null);
 });
+
+/**
+ * 円弧の描き方は 3 通りあるが、**同じ円弧を指していれば同じものが出る**。
+ * 仕様は「7 通り」と書いているが内訳が無いので、よく使う 3 通りから入れた。
+ */
+test('3 点を通る円の中心と半径が出る', async () => {
+  const { circleThrough } = await import('../src/core/geometry.ts');
+  // 原点中心・半径 1000 の円の上の 3 点
+  const got = circleThrough(vec(1000, 0), vec(0, 1000), vec(-1000, 0));
+  assert.ok(got, '中心が出ていない');
+  assert.ok(dist(got.center, vec(0, 0)) < 1e-6, `中心が ${JSON.stringify(got.center)}`);
+  assert.ok(Math.abs(got.radius - 1000) < 1e-6, `半径が ${got.radius}`);
+
+  // 一直線に並んでいれば円にならない
+  assert.equal(circleThrough(vec(0, 0), vec(1000, 0), vec(2000, 0)), null);
+});
+
+test('始点・終点・半径から中心が出て、左右で裏返る', async () => {
+  const { centerFromChord } = await import('../src/core/geometry.ts');
+  const a = vec(-600, 0);
+  const b = vec(600, 0);
+  const left = centerFromChord(a, b, 1000, true)!;
+  const right = centerFromChord(a, b, 1000, false)!;
+
+  assert.ok(left && right, '中心が出ていない');
+  // どちらも両端から半径ぶん離れている
+  for (const c of [left, right]) {
+    assert.ok(Math.abs(dist(c, a) - 1000) < 1e-6, `始点までが ${dist(c, a)}`);
+    assert.ok(Math.abs(dist(c, b) - 1000) < 1e-6, `終点までが ${dist(c, b)}`);
+  }
+  // 弦をはさんで反対側にある
+  assert.ok(left.y * right.y < 0, '同じ側に出ている');
+
+  // 半径が弦の半分より短ければ、円は作れない
+  assert.equal(centerFromChord(a, b, 500, true), null, '届かない半径で中心が出た');
+});
+
+test('どの描き方でも、同じ 3 点からは同じ円弧が出る', async () => {
+  const { circleThrough, centerFromChord } = await import('../src/core/geometry.ts');
+  const { arcFromPoints } = await import('../src/core/shapes.ts');
+  // 原点中心・半径 1000 の、上半分の円弧
+  const from = vec(1000, 0);
+  const via = vec(0, 1000);
+  const to = vec(-1000, 0);
+
+  // ①中心・始点・終点
+  const byCenter = arcFromPoints(vec(0, 0), from, to);
+  // ②3 点を通る
+  const through = circleThrough(from, via, to)!;
+  const byThree = arcFromPoints(through.center, from, to);
+  // ③始点・終点・半径（左へ膨らませる）
+  const chordCenter = centerFromChord(from, to, 1000, true)!;
+  const byChord = arcFromPoints(chordCenter, from, to);
+
+  for (const [name, got] of [['3 点', byThree], ['弦と半径', byChord]] as const) {
+    assert.ok(dist(got.center, byCenter.center) < 1e-6, `${name}: 中心が違う`);
+    assert.ok(Math.abs(got.radius - byCenter.radius) < 1e-6, `${name}: 半径が違う`);
+    assert.ok(Math.abs(got.startAngle - byCenter.startAngle) < 1e-6, `${name}: 始点が違う`);
+    assert.ok(Math.abs(got.endAngle - byCenter.endAngle) < 1e-6, `${name}: 終点が違う`);
+  }
+});

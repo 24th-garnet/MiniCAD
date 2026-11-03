@@ -1,4 +1,7 @@
-import { dist, mid, offsetPolyline, rectFromDiagonal, splinePoints, type Vec } from '../core/geometry.ts';
+import {
+  centerFromChord, circleThrough, dist, mid, normalizeAngle, offsetPolyline,
+  rectFromDiagonal, splinePoints, type Vec,
+} from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
 import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
@@ -12,6 +15,16 @@ import { defaultAttrs } from '../core/attrs.ts';
 import type { Editor } from '../ui/editor.ts';
 import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
+
+/** 円・円弧の描き方 */
+export type ArcMode = 'circle' | 'arc' | 'three' | 'chord';
+
+const ARC_MODE_LABELS: Record<ArcMode, string> = {
+  circle: '円（中心・半径）',
+  arc: '円弧（中心・始点・終点）',
+  three: '円弧（3 点を通る）',
+  chord: '円弧（始点・終点・半径）',
+};
 
 export type ShapeToolMode =
   | 'line' | 'doubleLine' | 'rect' | 'roundRect' | 'ngon' | 'ellipse'
@@ -72,8 +85,15 @@ export class ShapeTool implements Tool {
   sides = 6;
   /** ダブルラインモード: 2 本の間隔 (mm) */
   lineWidth = 200;
-  /** 円モード: 円か円弧か */
-  arcMode: 'circle' | 'arc' = 'circle';
+  /**
+   * 円モードの描き方。仕様は「7 通り」と書いているが内訳が無いので、
+   * **よく使う 3 通り**から入れる（残りは確認事項）。
+   */
+  arcMode: ArcMode = 'circle';
+  /** 始点・終点・半径で描くときの半径 (mm) */
+  arcRadius = 1000;
+  /** 同上。進行方向の左に膨らませるか */
+  arcLeft = true;
   /** 文字モード */
   text = '文字';
   textHeight = 3.5;
@@ -125,7 +145,7 @@ export class ShapeTool implements Tool {
   private get previewPoints(): number {
     switch (this.mode) {
       case 'arc':
-        return this.arcMode === 'arc' ? 3 : 2;
+        return this.arcMode === 'circle' || this.arcMode === 'chord' ? 2 : 3;
       case 'line':
       case 'doubleLine':
       case 'rect':
@@ -158,7 +178,15 @@ export class ShapeTool implements Tool {
       case 'spline':
         return Infinity;
       case 'arc':
-        return this.arcMode === 'circle' ? 2 : 3;
+        switch (this.arcMode) {
+          case 'circle':
+            return 2;
+          case 'chord':
+            return 2;
+          case 'arc':
+          case 'three':
+            return 3;
+        }
       case 'text':
       case 'point':
         return 1;
@@ -327,12 +355,36 @@ export class ShapeTool implements Tool {
         };
       }
       case 'arc': {
-        if (this.arcMode === 'circle') {
-          const radius = dist(pts[0], pts[1]);
-          return radius < 1 ? null : { id, shape: 'circle', layerId, levelId, attrs, center: pts[0], radius };
+        switch (this.arcMode) {
+          case 'circle': {
+            const radius = dist(pts[0], pts[1]);
+            return radius < 1 ? null : { id, shape: 'circle', layerId, levelId, attrs, center: pts[0], radius };
+          }
+          case 'arc': {
+            if (dist(pts[0], pts[1]) < 1) return null;
+            return { id, shape: 'arc', layerId, levelId, attrs, ...arcFromPoints(pts[0], pts[1], pts[2]) };
+          }
+          // 3 点を通る円弧。真ん中の点を通る向きに回す
+          case 'three': {
+            const got = circleThrough(pts[0], pts[1], pts[2]);
+            if (!got || got.radius < 1) return null;
+            const arc = arcFromPoints(got.center, pts[0], pts[2]);
+            // 始点→終点の反時計回りが真ん中の点を含まないなら、向きを入れ替える
+            const through = arcFromPoints(got.center, pts[0], pts[1]);
+            const sweep = normalizeAngle(arc.endAngle - arc.startAngle);
+            const mid = normalizeAngle(through.endAngle - through.startAngle);
+            return {
+              id, shape: 'arc', layerId, levelId, attrs,
+              ...(mid <= sweep ? arc : { ...arc, startAngle: arc.endAngle, endAngle: arc.startAngle }),
+            };
+          }
+          // 始点・終点と半径。中心は弦の垂直二等分線の上にある
+          case 'chord': {
+            const center = centerFromChord(pts[0], pts[1], this.arcRadius, this.arcLeft);
+            if (!center) return null;
+            return { id, shape: 'arc', layerId, levelId, attrs, ...arcFromPoints(center, pts[0], pts[1]) };
+          }
         }
-        if (dist(pts[0], pts[1]) < 1) return null;
-        return { id, shape: 'arc', layerId, levelId, attrs, ...arcFromPoints(pts[0], pts[1], pts[2]) };
       }
       case 'text': {
         const value = this.text.trim();
@@ -477,12 +529,35 @@ export class ShapeTool implements Tool {
             kind: 'select',
             label: '描き方',
             value: this.arcMode,
-            options: [
-              { value: 'circle', label: '円（中心・半径）' },
-              { value: 'arc', label: '円弧（中心・始点・終点）' },
-            ],
-            onChange: (v) => void (this.arcMode = v === 'arc' ? 'arc' : 'circle'),
+            options: (Object.keys(ARC_MODE_LABELS) as ArcMode[]).map((k) => ({
+              value: k,
+              label: ARC_MODE_LABELS[k],
+            })),
+            onChange: (v) => {
+              this.arcMode = (v in ARC_MODE_LABELS ? v : 'circle') as ArcMode;
+              this.points = [];
+            },
           },
+          // 半径で描くときだけ、半径と膨らむ側を出す
+          ...(this.arcMode === 'chord'
+            ? [
+                {
+                  kind: 'number' as const,
+                  label: '半径',
+                  value: this.arcRadius,
+                  step: 100,
+                  min: 1,
+                  suffix: 'mm',
+                  onChange: (v: number) => void (this.arcRadius = Math.max(1, v)),
+                },
+                {
+                  kind: 'toggle' as const,
+                  label: '左へ膨らませる',
+                  value: this.arcLeft,
+                  onChange: (v: boolean) => void (this.arcLeft = v),
+                },
+              ]
+            : []),
         ];
       case 'leader':
         return [
@@ -561,12 +636,22 @@ export class ShapeTool implements Tool {
           ? 'クリックで次の点 / 数値を打ち込んで Enter / ダブルクリックで終了'
           : 'クリックで終点を指定 / 数値を打ち込んで Enter';
       case 'arc':
-        if (this.arcMode === 'circle') {
-          return this.points.length === 0 ? 'クリックで円の中心を指定' : 'クリックで半径を指定';
+        switch (this.arcMode) {
+          case 'circle':
+            return this.points.length === 0 ? 'クリックで円の中心を指定' : 'クリックで半径を指定';
+          case 'arc':
+            return ['クリックで円弧の中心を指定', 'クリックで始点を指定', 'クリックで終点を指定（反時計回り）'][
+              this.points.length
+            ]!;
+          case 'three':
+            return ['クリックで始点を指定', 'クリックで通る点を指定', 'クリックで終点を指定'][
+              this.points.length
+            ]!;
+          case 'chord':
+            return this.points.length === 0
+              ? `クリックで始点を指定（半径 ${this.arcRadius}mm）`
+              : 'クリックで終点を指定';
         }
-        return ['クリックで円弧の中心を指定', 'クリックで始点を指定', 'クリックで終点を指定（反時計回り）'][
-          this.points.length
-        ]!;
       case 'doubleLine':
         return this.points.length === 0
           ? `クリックで中心線の始点を指定（間隔 ${this.lineWidth}mm）`
@@ -599,7 +684,7 @@ export class ShapeTool implements Tool {
  * そのモードが作る図形の種別。**既定の画層を引くためだけに使う。**
  * 四角形も曲線も折れ線なので、新しい種別は増えない。
  */
-function shapeKindOf(mode: ShapeToolMode, arcMode: 'circle' | 'arc'): Shape['shape'] {
+function shapeKindOf(mode: ShapeToolMode, arcMode: ArcMode): Shape['shape'] {
   switch (mode) {
     case 'line':
       return 'line';
@@ -613,8 +698,9 @@ function shapeKindOf(mode: ShapeToolMode, arcMode: 'circle' | 'arc'): Shape['sha
       return 'regularPolygon';
     case 'ellipse':
       return 'ellipse';
+    // 円だけが `circle`。残りの描き方はどれも円弧になる
     case 'arc':
-      return arcMode;
+      return arcMode === 'circle' ? 'circle' : 'arc';
     case 'leader':
       return 'leader';
     case 'text':

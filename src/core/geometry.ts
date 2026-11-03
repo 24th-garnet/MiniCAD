@@ -327,6 +327,34 @@ export function ellipsePoints(
   return points;
 }
 
+/**
+ * 3 点を通る円の中心。一直線に並んでいれば null。
+ *
+ * 2 本の弦の垂直二等分線の交点。`lineLineIntersection` が無限直線どうしの
+ * 交点を返すので、そこへ投げるだけで済む。
+ */
+export function circleThrough(a: Vec, b: Vec, c: Vec): { center: Vec; radius: number } | null {
+  const m1 = mid(a, b);
+  const m2 = mid(b, c);
+  const n1 = perp(sub(b, a));
+  const n2 = perp(sub(c, b));
+  const hit = lineLineIntersection(m1, add(m1, n1), m2, add(m2, n2));
+  if (!hit) return null;
+  return { center: hit.point, radius: dist(hit.point, a) };
+}
+
+/**
+ * 2 点を通り、半径が決まった円の中心。2 つあるうち `left` が真なら
+ * 進行方向の左側を返す。半径が足りなければ null。
+ */
+export function centerFromChord(a: Vec, b: Vec, radius: number, left: boolean): Vec | null {
+  const half = dist(a, b) / 2;
+  if (half < 1e-9 || radius < half) return null;
+  const out = Math.sqrt(Math.max(0, radius * radius - half * half));
+  const n = perp(norm(sub(b, a)));
+  return add(mid(a, b), mul(n, left ? out : -out));
+}
+
 /** 正多角形の頂点。`angle` は最初の頂点の向き */
 export function regularPolygonPoints(center: Vec, radius: number, sides: number, angle: number): Vec[] {
   const n = Math.max(3, Math.round(sides));
