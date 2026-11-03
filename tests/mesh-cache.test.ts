@@ -155,3 +155,17 @@ test('シーンを丸ごと差し替えても正しい（undo の形）', () => 
   // 戻す（undo に相当）
   assert.ok(sameMesh(cached(cache, before), plain(before)), 'undo 相当のあとで一致しない');
 });
+
+test('建具の枚数を変えるとその壁だけ作り直す', () => {
+  // **指紋に無い欄は、変えても 3D が更新されない。**
+  // 枚数は平面の召し合わせの数を決めるので、3D に効かせるなら指紋に要る
+  const scene = sampleScene();
+  const cache = new MeshCache();
+  cached(cache, scene);
+
+  scene.openings[Object.keys(scene.openings)[0]].leaves = 4;
+  cached(cache, scene);
+  assert.equal(cache.stats.walls, 1, `作り直した壁が ${cache.stats.walls} 本`);
+  assert.equal(cache.stats.instances, 0);
+  assert.equal(cache.stats.floors, 0);
+});
