@@ -16,7 +16,7 @@ import type { Id } from '../core/types.ts';
  * **ここは「置く場所」だけを決める。立体の向きは変えない。** `Fixture` は
  * z 軸まわりにしか回らないので、壁の面を指しても立体は立ったまま、
  * 指した点の高さに置かれる。傾けられるかのように見せるほうが嘘になる
- * （`docs/status.md` の確認事項 11）。
+ * （`docs/questions.md` の 11）。
  */
 export interface WorkPlane {
   origin: Vec3;

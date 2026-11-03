@@ -87,7 +87,7 @@ export class ShapeTool implements Tool {
   lineWidth = 200;
   /**
    * 円モードの描き方。仕様は「7 通り」と書いているが内訳が無いので、
-   * **よく使う 3 通り**から入れる（残りは確認事項）。
+   * **よく使う 3 通り**から入れる（残り 4 つの内訳は `docs/questions.md` の 16）。
    */
   arcMode: ArcMode = 'circle';
   /** 始点・終点・半径で描くときの半径 (mm) */
