@@ -24,7 +24,7 @@ export class Toolbar implements Panel {
           {
             class: 'tool-button',
             type: 'button',
-            title: `${tool.label} (${tool.shortcut})`,
+            title: tool.shortcut ? `${tool.label} (${tool.shortcut})` : tool.label,
             'data-tool': tool.id,
             onclick: () => {
               ctx.selectTool(tool.id);

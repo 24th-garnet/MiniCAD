@@ -315,3 +315,81 @@ test('複写した実体の属性は元と共有しない', () => {
   newOpening.bay!.depth = 900;
   assert.equal(openingBefore.bay!.depth, 450, '複製の出が元に伝わった');
 });
+
+/**
+ * 配列複写。**3D のソリッドとは無関係**で、`transformEntities` の
+ * 繰り返しで済む（ワイヤーでは 3D 作図の節に並んでいるが、2D でも動く）。
+ */
+test('格子状に並べると、行×列ぶん増えて位置が合う', async () => {
+  const { arrayCopy } = await import('../src/core/arrayCopy.ts');
+  const { scene, wallIds } = boxScene();
+  const before = Object.keys(scene.walls).length;
+
+  const placed = arrayCopy(scene, wallRefs(wallIds), {
+    kind: 'grid', rows: 2, cols: 3, rowStep: 5000, colStep: 6000, angle: 0,
+  });
+  // 元を除いて 5 箇所
+  assert.equal(placed, 5, `置いた数が違う (${placed})`);
+  assert.equal(Object.keys(scene.walls).length, before * 6, '壁の数が合わない');
+
+  // 元の矩形は 0..4000 × 0..3000。列は +x、行は +y に伸びる
+  const xs = Object.values(scene.nodes).map((n) => n.x);
+  const ys = Object.values(scene.nodes).map((n) => n.y);
+  assert.ok(Math.abs(Math.max(...xs) - (4000 + 6000 * 2)) < 1e-6, `右端が ${Math.max(...xs)}`);
+  assert.ok(Math.abs(Math.max(...ys) - (3000 + 5000)) < 1e-6, `上端が ${Math.max(...ys)}`);
+});
+
+test('1 行 1 列なら何も増えない', async () => {
+  const { arrayCopy } = await import('../src/core/arrayCopy.ts');
+  const { scene, wallIds } = boxScene();
+  const before = Object.keys(scene.walls).length;
+  const placed = arrayCopy(scene, wallRefs(wallIds), {
+    kind: 'grid', rows: 1, cols: 1, rowStep: 5000, colStep: 6000, angle: 0,
+  });
+  assert.equal(placed, 0, '1×1 なのに増えた');
+  assert.equal(Object.keys(scene.walls).length, before);
+});
+
+test('円周上に一周並べると、等間隔になる', async () => {
+  const { arrayCopy } = await import('../src/core/arrayCopy.ts');
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(2000, 0));
+  const b = findOrCreateNode(scene, vec(3000, 0));
+  const wall = addWall(scene, a, b, 100)!;
+
+  const placed = arrayCopy(scene, [{ type: 'wall', id: wall.id }], {
+    kind: 'radial', center: vec(0, 0), count: 4, sweep: Math.PI * 2,
+  });
+  assert.equal(placed, 3, `置いた数が違う (${placed})`);
+  assert.equal(Object.keys(scene.walls).length, 4, '壁が 4 本にならない');
+
+  // 90 度ずつ回っている。始点は原点から 2000 の円の上に 4 つ
+  // ±180 のどちらに出るかは最下位桁の符号しだいなので、0〜360 に揃えて比べる
+  const starts = Object.values(scene.walls)
+    .map((w) => nodePos(scene, w.a))
+    .map((p) => Math.round((Math.atan2(p.y, p.x) * 180) / Math.PI))
+    .map((deg) => (deg + 360) % 360);
+  assert.deepEqual([...starts].sort((x, y) => x - y), [0, 90, 180, 270]);
+  for (const w of Object.values(scene.walls)) {
+    const p = nodePos(scene, w.a);
+    assert.ok(Math.abs(Math.hypot(p.x, p.y) - 2000) < 1e-6, '半径が変わった');
+  }
+});
+
+test('一周でなければ、端から端まで等分する', async () => {
+  const { arrayCopy } = await import('../src/core/arrayCopy.ts');
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(2000, 0));
+  const b = findOrCreateNode(scene, vec(3000, 0));
+  const wall = addWall(scene, a, b, 100)!;
+
+  arrayCopy(scene, [{ type: 'wall', id: wall.id }], {
+    kind: 'radial', center: vec(0, 0), count: 3, sweep: Math.PI / 2,
+  });
+  const angles = Object.values(scene.walls)
+    .map((w) => nodePos(scene, w.a))
+    .map((p) => Math.round((Math.atan2(p.y, p.x) * 180) / Math.PI))
+    .sort((x, y) => x - y);
+  // 0 / 45 / 90。**端も含めて 3 つ**
+  assert.deepEqual(angles, [0, 45, 90]);
+});

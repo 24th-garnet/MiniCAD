@@ -16,6 +16,7 @@ export type ToolId =
   | 'split'
   | 'corner'
   | 'vertex'
+  | 'array'
   | 'wall'
   | 'door'
   | 'window'

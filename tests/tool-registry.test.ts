@@ -51,10 +51,21 @@ test('ショートカットが重なっていない', () => {
   // 重なると後ろのツールに切り替えられなくなる。今まで誰も見ていなかった
   const seen = new Map<string, string>();
   for (const tool of buildTools('pro', ALL)) {
+    // **キーを持たないツールがあってよい。** A〜Z が全部埋まっていて、
+    // 指の記憶で呼ぶものでなければ、ツールバーのボタンだけで足りる
+    if (tool.shortcut === '') continue;
     const key = tool.shortcut.toLowerCase();
     const other = seen.get(key);
     assert.equal(other, undefined, `${key} が ${other} と ${tool.id} で重なっている`);
     seen.set(key, tool.id);
+  }
+});
+
+test('キーを持たないツールも、ツールバーからは選べる', () => {
+  const keyless = buildTools('pro', ALL).filter((t) => t.shortcut === '');
+  for (const tool of keyless) {
+    assert.ok(TOOL_REGISTRY[tool.id], `${tool.id} が表に無い`);
+    assert.ok(TOOL_REGISTRY[tool.id].glyph.length > 0, `${tool.id} に絵記号が無い`);
   }
 });
 
