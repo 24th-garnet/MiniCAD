@@ -2,3 +2,7 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# 文書の PDF。markdown が唯一の出どころで、置いておくと古くなる
+# （渡すときに `npm run pdf` で作り直す）
+docs/*.pdf
