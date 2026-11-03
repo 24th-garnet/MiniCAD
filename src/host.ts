@@ -132,7 +132,7 @@ export interface LibraryItem {
   category?: string;
   /** 図形だけの部品 */
   block?: BlockDef;
-  /** 壁を含む部品。**まだ挿せない**（画面には出して、挿せないと書く） */
+  /** 壁を含む部品。置くとシンボルとして取り込まれ、壁や建具そのものに展開される */
   scene?: SceneFile;
 }
 
