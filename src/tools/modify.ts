@@ -15,6 +15,15 @@ import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './too
 
 export type ModifyMode = 'offset' | 'trim' | 'extend' | 'split' | 'erase';
 
+/** 「種類」セレクタに出す名前。種別を足して書き忘れると型検査が止まる */
+const MODE_LABELS: Record<ModifyMode, string> = {
+  offset: 'オフセット',
+  trim: 'トリム',
+  extend: '延長',
+  split: '分割（交点で分ける）',
+  erase: '消しゴム（範囲を消す）',
+};
+
 /**
  * オフセット・トリム・延長。
  *
@@ -29,7 +38,13 @@ export class ModifyTool implements Tool {
   readonly cursor = 'crosshair';
   readonly group = 'modify' as const;
 
-  private readonly mode: ModifyMode;
+  /**
+   * 出せるモード。2 つ以上なら `options()` の先頭に「種類」が出る。
+   * 図形ツールと同じ形——**ショートカットの文字が足りない**ので、
+   * 近い操作は 1 つのツールにまとめる。
+   */
+  private readonly modes: readonly ModifyMode[];
+  private mode: ModifyMode;
   /** オフセットの距離 (mm) */
   distance = 500;
   /**
@@ -40,8 +55,14 @@ export class ModifyTool implements Tool {
    */
   private eraseFrom: { at: Vec; target: EntityRef } | null = null;
 
-  constructor(mode: ModifyMode, id: ToolId, label: string, shortcut: string) {
-    this.mode = mode;
+  constructor(
+    modes: ModifyMode | readonly ModifyMode[],
+    id: ToolId,
+    label: string,
+    shortcut: string,
+  ) {
+    this.modes = typeof modes === 'string' ? [modes] : modes;
+    this.mode = this.modes[0];
     this.id = id;
     this.label = label;
     this.shortcut = shortcut;
@@ -145,6 +166,24 @@ export class ModifyTool implements Tool {
   }
 
   options(): OptionField[] {
+    return [...this.modeField(), ...this.modeOptions()];
+  }
+
+  private modeField(): OptionField[] {
+    if (this.modes.length < 2) return [];
+    return [{
+      kind: 'select',
+      label: '種類',
+      value: this.mode,
+      options: this.modes.map((m) => ({ value: m, label: MODE_LABELS[m] })),
+      onChange: (v: string) => {
+        this.mode = this.modes.find((m) => m === v) ?? this.mode;
+        this.eraseFrom = null;
+      },
+    }];
+  }
+
+  private modeOptions(): OptionField[] {
     if (this.mode === 'offset') {
       return [
         {

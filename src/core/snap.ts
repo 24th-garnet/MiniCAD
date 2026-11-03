@@ -35,6 +35,13 @@ export interface SnapOptions {
   excludeNodes?: Id[];
   /** 候補から除外する壁 */
   excludeWalls?: Id[];
+  /**
+   * 候補から除外する図形。
+   *
+   * **無いと頂点をドラッグしたとき自分自身に吸い付いて固まる。**
+   * 動かしている頂点のすぐそばに、その図形自身のスナップ点があるため。
+   */
+  excludeShapes?: Id[];
   /** スナップ判定の半径 (mm) */
   radius: number;
   /** 角度スナップの刻み (度) */
@@ -108,7 +115,9 @@ export function snapPoint(scene: Scene, settings: Settings, p: Vec, opts: SnapOp
   }
 
   if (settings.snapNode) {
+    const excludeShapes = new Set(opts.excludeShapes ?? []);
     for (const shape of Object.values(scene.shapes)) {
+      if (excludeShapes.has(shape.id)) continue;
       if (!isSnappable(scene, { type: 'shape', id: shape.id })) continue;
       for (const candidate of shapeSnapPoints(scene, shape)) {
         // 端点=0 / 中点=1 / 中心=2 と、壁のスナップと同じ優先度帯に乗せる

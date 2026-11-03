@@ -6,6 +6,7 @@ import { FixtureTool } from '../tools/fixture.ts';
 import { MeasureTool } from '../tools/measure.ts';
 import { ModifyTool } from '../tools/modify.ts';
 import { CornerTool } from '../tools/corner.ts';
+import { VertexTool } from '../tools/vertex.ts';
 import { OpeningTool } from '../tools/opening.ts';
 import { RoomTool } from '../tools/room.ts';
 import { SelectTool } from '../tools/select.ts';
@@ -66,9 +67,14 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   offset: { make: () => new ModifyTool('offset', 'offset', 'オフセット', 'O'), glyph: '⫽', modes: PRO_ONLY, edits: true },
   trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), glyph: '✂', modes: PRO_ONLY, edits: true },
   extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), glyph: '⇥', modes: PRO_ONLY, edits: true },
-  split: { make: () => new ModifyTool('split', 'split', '分割', 'P'), glyph: '⨉', modes: PRO_ONLY, edits: true },
-  erase: { make: () => new ModifyTool('erase', 'erase', '消しゴム', 'Z'), glyph: '⌫', modes: PRO_ONLY, edits: true },
+  // 分割と消しゴムは「1 つの対象を切る」で同じなので、1 ツールにまとめた。
+  // ショートカットの文字が足りず、変形に 1 つ空ける必要もあった
+  split: {
+    make: () => new ModifyTool(['split', 'erase'], 'split', '切断', 'P'),
+    glyph: '⨉', modes: PRO_ONLY, edits: true,
+  },
   corner: { make: () => new CornerTool(), glyph: '◝', modes: PRO_ONLY, edits: true },
+  vertex: { make: () => new VertexTool(), glyph: '◆', modes: PRO_ONLY, edits: true },
   wall: { make: () => new WallTool(), glyph: '▬', modes: BOTH_MODES, edits: true },
   // **構造は建具より上に並べる**（ワイヤーの奥谷さんの指摘）。
   // 躯体を決めてから建具を入れるのが実際の手順

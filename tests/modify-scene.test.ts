@@ -472,3 +472,77 @@ test('角になっている壁や、3 本が集まるノードでは繋がない
   addWall(scene2, m, t, 120);
   assert.equal(joinWalls(scene2, s1.id, s2.id), false, '3 本が集まるノードで繋いだ');
 });
+
+/**
+ * 頂点編集。**壁の角はここに来ない**——ノードのピック・スナップ・
+ * ドラッグ・統合・分割は全部あって、選択ツールで既に動く。
+ */
+test('頂点を動かすと図形が追従する', async () => {
+  const { moveVertex } = await import('../src/core/vertexOps.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 1000, 0);
+  const next = moveVertex(scene.shapes[id], 1, vec(1000, 500))!;
+  assert.ok(next && next.shape === 'line', '動かせない');
+  if (next.shape === 'line') {
+    assert.deepEqual([next.b.x, next.b.y], [1000, 500]);
+    assert.deepEqual([next.a.x, next.a.y], [0, 0], '反対の端まで動いた');
+  }
+  // 番号が範囲外なら何もしない
+  assert.equal(moveVertex(scene.shapes[id], 5, vec(0, 0)), null);
+});
+
+test('辺の上に頂点を足すと、線は折れ線になる', async () => {
+  const { insertVertex } = await import('../src/core/vertexOps.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 2000, 0);
+  const next = insertVertex(scene.shapes[id], 0, vec(1000, 400))!;
+  assert.ok(next && next.shape === 'polyline', '折れ線にならない');
+  if (next.shape === 'polyline') {
+    assert.deepEqual(next.points.map((p) => [p.x, p.y]), [[0, 0], [1000, 400], [2000, 0]]);
+    assert.equal(next.id, id, 'id が変わった');
+  }
+});
+
+test('2 点を割る頂点削除はしない（保存すると図形が消えるため）', async () => {
+  const { removeVertex, insertVertex } = await import('../src/core/vertexOps.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 2000, 0);
+  const poly = insertVertex(scene.shapes[id], 0, vec(1000, 400))!;
+
+  const after = removeVertex(poly, 1)!;
+  assert.ok(after && after.shape === 'polyline' && after.points.length === 2, '落とせない');
+  // ここからもう 1 つ落とすと 1 点になる。`shapeRead` が 2 点以上を要求している
+  assert.equal(removeVertex(after, 0), null, '2 点を割って落とした');
+});
+
+test('頂点とその辺を、カーソルの近さで拾える', async () => {
+  const { pickVertex, pickEdge } = await import('../src/core/vertexOps.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 2000, 0);
+
+  const v = pickVertex(scene, vec(1990, 10), 60)!;
+  assert.ok(v, '頂点を拾えない');
+  assert.equal(v.index, 1, '近いほうの頂点でない');
+  assert.equal(pickVertex(scene, vec(1000, 0), 60), null, '辺のまんなかで頂点を拾った');
+
+  const e = pickEdge(scene, vec(1000, 20), 60)!;
+  assert.ok(e, '辺を拾えない');
+  assert.equal(e.shapeId, id);
+  assert.ok(Math.abs(e.at.x - 1000) < 1e-6 && Math.abs(e.at.y) < 1e-6, '辺の上の点が違う');
+});
+
+test('閉じた折れ線では、最後の辺も拾える', async () => {
+  const { pickEdge } = await import('../src/core/vertexOps.ts');
+  const scene = emptyScene();
+  const id = newId('s');
+  scene.shapes[id] = {
+    id, shape: 'polyline', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
+    points: [vec(0, 0), vec(2000, 0), vec(2000, 2000)],
+    closed: true,
+  };
+  // 閉じ辺（最後の点 → 最初の点）の途中
+  const e = pickEdge(scene, vec(1000, 1000), 80);
+  assert.ok(e, '閉じ辺を拾えない');
+  assert.equal(e?.edgeIndex, 2, '閉じ辺の番号が違う');
+});

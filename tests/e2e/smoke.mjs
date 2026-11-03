@@ -118,6 +118,13 @@ async function run() {
         inspectorFields: Array.from(document.querySelectorAll('.field > span'))
           .map((l) => (l.textContent ?? '').trim()),
         optionLabels: (ed.tool.options ? ed.tool.options(ed) : []).map((f) => f.label ?? ''),
+        // 変形のテスト用。真ん中の頂点が元の位置から動いたか
+        movedVertex: (() => {
+          const v = ed.store.scene.shapes.v1;
+          if (!v || !v.points) return null;
+          const p = v.points[1];
+          return Math.abs(p.x - 3000) > 1 || Math.abs(p.y - 9000) > 1;
+        })(),
         // 寸法を除いた作図図形。サンプルが寸法を持つので、数を見るときはこちら
         drawings: Object.values(s.shapes).filter((sh) => sh.shape !== 'dimension').length,
         rooms: ed.rooms.map((r) => ({ name: r.name, area: Number(r.area.toFixed(2)) })),
@@ -188,7 +195,7 @@ async function run() {
   // **既定は通常モード。** ワイヤーが 2 度明記している
   const normal = await state();
   assert.equal(normal.mode, 'normal', '既定が通常モードではない');
-  for (const hidden of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'erase', 'corner']) {
+  for (const hidden of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'corner', 'vertex']) {
     assert.ok(!normal.toolbar.includes(hidden), `通常モードに ${hidden} が出ている`);
   }
   for (const shown of ['select', 'wall', 'door', 'window', 'block', 'room']) {
@@ -206,7 +213,7 @@ async function run() {
   await sleep(250);
   const pro = await state();
   assert.equal(pro.mode, 'pro');
-  for (const shown of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'erase', 'corner']) {
+  for (const shown of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'corner', 'vertex']) {
     assert.ok(pro.toolbar.includes(shown), `プロモードに ${shown} が無い`);
   }
   for (const id of normal.toolbar) {
@@ -393,6 +400,51 @@ async function run() {
     (s) => assert.equal(s.shapes, shapesBeforeCorner, 'undo で戻らない'),
   );
 
+  // --- 変形（頂点編集） ---
+  await step(
+    '頂点を掴んで動かせる',
+    async () => {
+      await page.evaluate(() => {
+        const ed = window.minicad.editorInstance;
+        const s = ed.store.scene;
+        ed.store.commit(() => {
+          s.shapes.v1 = {
+            id: 'v1', shape: 'polyline',
+            layerId: 'shape', levelId: s.activeLevelId,
+            attrs: { groupId: null, stampId: null, color: null, materialRef: null,
+              takeoff: null, symbolId: null, symbolVersion: null },
+            points: [{ x: 1000, y: 9000 }, { x: 3000, y: 9000 }, { x: 3000, y: 10500 }],
+            closed: false,
+          };
+        });
+        ed.zoomToFit();
+      });
+      await sleep(350);
+      await page.keyboard.press('z');
+      await sleep(200);
+      // 真ん中の頂点を掴んで持ち上げる
+      await moveWorld(3000, 9000);
+      await page.mouse.down();
+      const to = await at(3800, 9800);
+      await page.mouse.move(to.x, to.y, { steps: 8 });
+      await page.mouse.up();
+      await sleep(300);
+    },
+    (s) => {
+      assert.equal(s.tool, 'vertex', '変形ツールに切り替わっていない');
+      assert.ok(s.movedVertex, `頂点が動いていない: ${JSON.stringify(s.movedVertex)}`);
+    },
+  );
+
+  await step(
+    '頂点の移動は undo で戻る',
+    async () => {
+      await page.keyboard.press('Meta+z');
+      await sleep(300);
+    },
+    (s) => assert.equal(s.movedVertex, false, 'undo で戻らない'),
+  );
+
   await page.keyboard.press('f');
   await sleep(200);
 
@@ -400,12 +452,13 @@ async function run() {
     '作図は undo で戻る',
     async () => {
       await page.keyboard.press('Escape');
-      // 四角形・曲線・正多角形・辺数の変更で 4 コミット
-      for (let i = 0; i < 4; i++) {
+      // **回数ではなく戻るまで押す。** 途中の手順が増えてもここが壊れない
+      for (let i = 0; i < 12; i++) {
+        if ((await state()).shapes === shapesBeforeDraw) break;
         await page.keyboard.press('Meta+z');
-        await sleep(120);
+        await sleep(140);
       }
-      await sleep(250);
+      await sleep(200);
     },
     (s) => assert.equal(s.shapes, shapesBeforeDraw, 'undo で戻らない'),
   );

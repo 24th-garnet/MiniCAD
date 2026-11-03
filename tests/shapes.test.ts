@@ -420,3 +420,46 @@ test('正多角形は辺の数だけ線分になる', async () => {
     assert.equal(segments.length, sides, `${sides} 角形の辺が ${segments.length} 本`);
   }
 });
+
+/**
+ * 頂点編集に答える種別の表。**`CURVES_INTO` と同じ仕掛け。**
+ *
+ * `SHAPE_GEOMETRY` に足さなかったので（足すと文字・点・寸法・円・円弧に
+ * 無意味な実装を 5 つ書かされる）、`switch` の `default` は型検査で止まらない。
+ * 種別を足すとこの表が型エラーになり、テストが宣言と実挙動を突き合わせる。
+ */
+const HAS_VERTICES: Record<ShapeKind, boolean> = {
+  line: true,
+  polyline: true,
+  // 円弧・円は「真の頂点」を持たない。直すのは中心・半径・角度で、
+  // それはプロパティ欄の仕事
+  arc: false,
+  circle: false,
+  regularPolygon: false,
+  roundRect: false,
+  ellipse: false,
+  // 注釈のたぐいも持たない
+  leader: false,
+  text: false,
+  point: false,
+  dimension: false,
+};
+
+test('頂点を持つと宣言した種別だけが、実際に頂点を返す', async () => {
+  const { editableVertices, hasEditableVertices } = await import('../src/core/vertexOps.ts');
+  for (const kind of SHAPE_KINDS) {
+    const got = editableVertices(SAMPLES[kind]).length > 0;
+    assert.equal(got, HAS_VERTICES[kind], `${kind}: 頂点が${got ? 'ある' : 'ない'}のに表は逆`);
+    assert.equal(hasEditableVertices(kind), HAS_VERTICES[kind], `${kind}: 札と表が食い違う`);
+  }
+});
+
+test('頂点を返すとき、内部の配列をそのまま渡さない', async () => {
+  const { editableVertices } = await import('../src/core/vertexOps.ts');
+  const poly = SAMPLES.polyline;
+  const got = editableVertices(poly);
+  got[0].x = -99999;
+  // **触られても図形が壊れない。** undo が structuredClone 前提なので、
+  // 内部配列を渡すと履歴と噛み合わない
+  assert.notEqual(poly.points[0].x, -99999, '内部の点が書き換わった');
+});

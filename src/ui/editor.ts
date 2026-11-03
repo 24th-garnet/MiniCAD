@@ -19,6 +19,8 @@ export interface SnapContext {
   from?: Vec | null;
   excludeNodes?: string[];
   excludeWalls?: string[];
+  /** 自分自身に吸い付かないように外す図形（頂点のドラッグ中など） */
+  excludeShapes?: string[];
 }
 
 export class Editor {
@@ -172,6 +174,7 @@ export class Editor {
       from: this.snapContext.from ?? null,
       excludeNodes: this.snapContext.excludeNodes ?? [],
       excludeWalls: this.snapContext.excludeWalls ?? [],
+      excludeShapes: this.snapContext.excludeShapes ?? [],
       radius: this.viewport.toWorldLength(SNAP_RADIUS_PX),
     });
   }
