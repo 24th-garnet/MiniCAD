@@ -172,7 +172,7 @@ test('置いた箇所を覚えていて、押し直しの前に何が変わる�
 
   // 1 箇所目を編集して、その形を新しい版にする
   const first = Object.values(target.stamps)[0];
-  const mine = Object.values(target.walls).filter((w) => w.attrs.groupId === first.id);
+  const mine = Object.values(target.walls).filter((w) => w.attrs.stampId === first.id);
   for (const w of mine) w.thickness = 200;
   assert.ok(updateAssembly(target, a.id, mine.map((w) => ({ type: 'wall' as const, id: w.id }))));
   assert.equal(target.assemblies[a.id].version, 2);
@@ -195,7 +195,7 @@ test('押し直すと古い版の箇所がいまの版になる', async () => {
   stampAssembly(target, a, vec(10000, 0), 0, target.activeLevelId);
 
   const first = Object.values(target.stamps)[0];
-  const mine = Object.values(target.walls).filter((w) => w.attrs.groupId === first.id);
+  const mine = Object.values(target.walls).filter((w) => w.attrs.stampId === first.id);
   for (const w of mine) w.thickness = 200;
   updateAssembly(target, a.id, mine.map((w) => ({ type: 'wall' as const, id: w.id })));
 
@@ -243,7 +243,7 @@ test('置いた箇所が JSON の往復を生き延びる', () => {
   assert.equal(st.x, 500);
   assert.equal(st.angle, 0.5);
   // 置かれた実体がその箇所を指している
-  assert.ok(Object.values(back.walls).every((w) => w.attrs.groupId === st.id));
+  assert.ok(Object.values(back.walls).every((w) => w.attrs.stampId === st.id));
 });
 
 test('置き先のシンボルが無い箇所は読み込みで落ちる', () => {
@@ -252,4 +252,74 @@ test('置き先のシンボルが無い箇所は読み込みで落ちる', () =>
     scene: { stamps: { s1: { assemblyId: 'いない', x: 0, y: 0 } } },
   };
   assert.deepEqual(Object.keys(deserialize(raw).stamps), []);
+});
+
+/**
+ * 以前は箇所の id を `groupId` に入れていた。人が作るグループと同じ欄なので、
+ * 人がスタンプ由来の実体をグループ化すると**押し直す相手を見失う**。
+ * 欄を分けたので、人のグループは押し直しに一切影響しない。
+ */
+test('人が作ったグループは、シンボルの押し直しに影響しない', async () => {
+  const { restampReport, restampAssembly, updateAssembly } = await import('../src/core/assembly.ts');
+
+  const { scene, refs } = roomScene();
+  const a = defineAssembly(scene, refs, '2LDK')!;
+  const target = emptyScene();
+  target.assemblies[a.id] = a;
+  stampAssembly(target, a, vec(0, 0), 0, target.activeLevelId);
+  stampAssembly(target, a, vec(10000, 0), 0, target.activeLevelId);
+
+  const first = Object.values(target.stamps)[0];
+  const mine = Object.values(target.walls).filter((w) => w.attrs.stampId === first.id);
+  for (const w of mine) w.thickness = 200;
+  updateAssembly(target, a.id, mine.map((w) => ({ type: 'wall' as const, id: w.id })));
+
+  // **人が全部まとめて 1 グループにする。** 昔はここで箇所の id が消えた
+  for (const w of Object.values(target.walls)) w.attrs.groupId = 'g-by-hand';
+
+  const report = restampReport(target, a.id);
+  assert.equal(report.stamps.length, 2, 'グループ化したら箇所を見失った');
+  assert.ok(report.entities > 0, 'グループ化したら置き換わる実体を見失った');
+  assert.ok(restampAssembly(target, a.id) > 0, 'グループ化したら押し直せなくなった');
+});
+
+test('箇所の id を groupId に入れていた頃のファイルを、stampId に寄せて開く', async () => {
+  const { scene, refs } = roomScene();
+  const a = defineAssembly(scene, refs, '2LDK')!;
+  const target = emptyScene();
+  target.assemblies[a.id] = a;
+  stampAssembly(target, a, vec(0, 0), 0, target.activeLevelId);
+
+  const file = JSON.parse(JSON.stringify(serialize(target)));
+  const stampId = Object.keys(target.stamps)[0];
+  // 当時の書き方に戻す。箇所の id は groupId にあり、stampId は無い
+  const walls = Object.values(file.scene.walls) as { attrs: Record<string, unknown> }[];
+  // 1 本だけ**人が別の用途で使っていた値**にしておく。これは動かしてはいけない
+  const stranger = walls[0];
+  stranger.attrs.groupId = 'g-by-hand';
+  delete stranger.attrs.stampId;
+  let moved = 0;
+  for (const w of walls) {
+    if (w === stranger || w.attrs.stampId !== stampId) continue;
+    w.attrs.groupId = w.attrs.stampId;
+    delete w.attrs.stampId;
+    moved += 1;
+  }
+  assert.ok(moved > 0, '箇所の付いた壁が無い');
+
+  const back = deserialize({ ...file, version: 12 });
+  const marked = Object.values(back.walls).filter((w) => w.attrs.stampId === stampId);
+  assert.equal(marked.length, moved, '箇所の id が stampId に移っていない');
+  assert.ok(marked.every((w) => w.attrs.groupId === null), '移したのに groupId が残っている');
+  assert.equal(
+    Object.values(back.walls).filter((w) => w.attrs.groupId === 'g-by-hand').length, 1,
+    '人が別の用途で使っていた値まで動かした',
+  );
+
+  // いまの版のファイルは触らない
+  const now = deserialize(JSON.parse(JSON.stringify(serialize(target))));
+  assert.equal(
+    Object.values(now.walls).filter((w) => w.attrs.stampId === stampId).length, moved + 1,
+    '現行版のファイルの stampId を動かした',
+  );
 });

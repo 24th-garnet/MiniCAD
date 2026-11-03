@@ -16,8 +16,21 @@ import type { Id } from './id.ts';
  * 分類が増えるたびに図面の形式が変わる。
  */
 export interface Attrs {
-  /** 同じ値を持つものが 1 グループ。null はどのグループにも属さない */
+  /**
+   * 同じ値を持つものが 1 グループ。null はどのグループにも属さない。
+   *
+   * **人が作るグループ専用。** 以前はシンボルを置いた箇所の id もここに入れていて、
+   * 人がスタンプ由来の実体をグループ化すると**一括変更が押し直す相手を見失った**。
+   * 箇所の id は `stampId` に分けてある。
+   */
   groupId: Id | null;
+  /**
+   * どのシンボルの「箇所」として置かれたか（`Scene.stamps` の id）。
+   *
+   * **一括変更はこれで押し直す相手を引く。** `symbolId` が「どのシンボルか」、
+   * こちらが「どの箇所か」。1 つのシンボルを 3 箇所に置けば 3 つの値になる。
+   */
+  stampId: Id | null;
   /** 色の上書き。null なら画層の色に従う */
   color: string | null;
   /** 素材。ホストの識別子を不透明に運ぶ */
@@ -52,6 +65,7 @@ export const isTakeoffMode = (v: unknown): v is TakeoffMode =>
 /** 何も指定されていない状態。**全部 null**で、既定は読む側が決める */
 export const defaultAttrs = (): Attrs => ({
   groupId: null,
+  stampId: null,
   color: null,
   materialRef: null,
   takeoff: null,
@@ -62,6 +76,7 @@ export const defaultAttrs = (): Attrs => ({
 /** 1 つでも指定されているか。インスペクタの見出しを出すかの判断に使う */
 export const hasAttrs = (a: Attrs): boolean =>
   a.groupId !== null ||
+  a.stampId !== null ||
   a.color !== null ||
   a.materialRef !== null ||
   a.takeoff !== null ||

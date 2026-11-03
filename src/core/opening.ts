@@ -466,6 +466,7 @@ const SAME_FIELD: { [K in keyof OpeningIdentity]: (a: OpeningIdentity[K], b: Ope
     a.takeoff === b.takeoff &&
     a.color === b.color &&
     a.groupId === b.groupId &&
+      a.stampId === b.stampId &&
     a.symbolId === b.symbolId &&
     a.symbolVersion === b.symbolVersion,
 };

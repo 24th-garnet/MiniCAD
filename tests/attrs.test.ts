@@ -11,6 +11,7 @@ import { explodeInstance } from '../src/core/block.ts';
 /** 欄を 1 つ足したらここが落ちる。足したことに気づかずに通らないようにする */
 const FILLED: Attrs = {
   groupId: 'g1',
+  stampId: 'sg1',
   color: '#ff0000',
   materialRef: 'host-material-42',
   takeoff: 'excluded',
@@ -22,6 +23,7 @@ test('既定の属性はすべて null', () => {
   const a = defaultAttrs();
   assert.deepEqual(a, {
     groupId: null,
+    stampId: null,
     color: null,
     materialRef: null,
     takeoff: null,

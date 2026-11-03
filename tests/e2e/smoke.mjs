@@ -1551,7 +1551,7 @@ async function run() {
     ed.store.commit(() => {
       s.shapes[id] = {
         id, shape: 'line', layerId: 'shape', levelId: s.activeLevelId,
-        attrs: { groupId: null, color: null, materialRef: null, takeoff: null, symbolId: null, symbolVersion: null },
+        attrs: { groupId: null, stampId: null, color: null, materialRef: null, takeoff: null, symbolId: null, symbolVersion: null },
         a: { x: Math.min(...xs) - 500, y }, b: { x: Math.max(...xs) + 500, y },
       };
     });

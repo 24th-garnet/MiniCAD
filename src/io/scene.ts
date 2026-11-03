@@ -38,7 +38,7 @@ import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../co
  * `levelId` の無い実体は**既定の階に乗せる**だけで済む。
  * `DEFAULT_LEVEL_ID` が固定値なのはこのため。
  */
-export const FILE_VERSION = 12;
+export const FILE_VERSION = 13;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
@@ -51,6 +51,15 @@ const DIMENSIONS_BECAME_ENTITIES = 4;
  * ——保存した図が開いた瞬間に変わる。種別ごとの既定値に寄せて防ぐ。
  */
 const LEAVES_BECAME_REAL = 12;
+
+/**
+ * シンボルを置いた箇所の id が `groupId` に入っていた頃のファイル。
+ *
+ * 人が作るグループと同じ欄を使っていたので、`stampId` に分けた。
+ * 寄せないと**一括変更が押し直す相手を見失う**（`entitiesInStamps` が
+ * `stampId` を見るようになったため）。
+ */
+const STAMP_ID_SPLIT = 13;
 
 export interface SceneFile {
   format: 'minicad';
@@ -232,6 +241,8 @@ export function deserialize(raw: unknown): Scene {
       levelId: levelOr(st.levelId),
     };
   }
+  // **箇所を読んだ後でないと動かせない。** どの id が箇所かを知る必要がある
+  migrateStampIds(scene, obj);
 
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('measurements'))) {
     const a = readPoint3(raw?.a);
@@ -484,6 +495,30 @@ function migrateDimensions(scene: Scene, raw: Record<string, unknown>): void {
 }
 
 /**
+ * シンボルの箇所 id を `groupId` から `stampId` へ移す。
+ *
+ * **`Scene.stamps` に載っている id だけを移す。** 人が別の用途で `groupId` に
+ * 書いた値（当時は作る手段が無かったが、手書きの JSON はありうる）まで
+ * 動かさないため。移したら `groupId` は空ける——同じ値が 2 つの欄に残ると、
+ * グループ解除がスタンプを壊す。
+ */
+function migrateStampIds(scene: Scene, raw: Record<string, unknown>): void {
+  if (raw.format !== 'minicad') return;
+  const version = typeof raw.version === 'number' ? raw.version : 1;
+  if (version >= STAMP_ID_SPLIT) return;
+  const stamps = new Set(Object.keys(scene.stamps));
+  if (stamps.size === 0) return;
+  const move = (attrs: Attrs): void => {
+    if (attrs.groupId === null || !stamps.has(attrs.groupId)) return;
+    attrs.stampId = attrs.groupId;
+    attrs.groupId = null;
+  };
+  for (const w of Object.values(scene.walls)) move(w.attrs);
+  for (const o of Object.values(scene.openings)) move(o.attrs);
+  for (const f of Object.values(scene.fixtures)) move(f.attrs);
+}
+
+/**
  * 枚数を読まなかった頃のファイルの枚数を、種別ごとの既定値に寄せる。
  *
  * `migrateDimensions` と同じく MiniCAD が書いたファイルだけが対象。
@@ -573,6 +608,7 @@ function readAttrs(raw: unknown): Attrs {
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
   return {
     groupId: str(a.groupId),
+    stampId: str(a.stampId),
     color: str(a.color),
     materialRef: str(a.materialRef),
     takeoff: isTakeoffMode(a.takeoff) ? a.takeoff : null,

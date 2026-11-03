@@ -35,8 +35,9 @@ import type { EntityRef } from './types.ts';
  * 正確には戻せない（動かされているかもしれない）。置いた時点の据え付けを
  * そのまま覚えておけば、新しい版を同じところへ押せる。
  *
- * 置かれた実体は `Attrs.groupId` でここを指す。`groupId` は元から
- * 「同じ値を持つものが 1 グループ」という欄なので、新しい意味は足していない。
+ * 置かれた実体は `Attrs.stampId` でここを指す。**人が作るグループ（`groupId`）とは
+ * 別の欄にしてある。** 兼ねていた頃は、スタンプ由来の実体を人がグループ化すると
+ * 押し直す相手を見失った。
  */
 export interface Stamp {
   id: Id;
@@ -160,9 +161,11 @@ export function stampAssembly(
     id: stampId, assemblyId: assembly.id, version: assembly.version,
     x: at.x, y: at.y, angle, levelId,
   };
+  // **`groupId` には触らない。** あれは人が作るグループの欄で、
+  // ここで埋めると人のグループ化と押し直しが同じ欄を奪い合う
   const mark = (attrs: Attrs): Attrs => ({
     ...attrs,
-    groupId: stampId,
+    stampId,
     symbolId: assembly.id,
     symbolVersion: assembly.version,
   });
@@ -324,17 +327,17 @@ export function restampAssembly(scene: Scene, assemblyId: Id): number {
   return removed.length;
 }
 
-/** その箇所で置かれた実体。`groupId` が指している */
+/** その箇所で置かれた実体。`stampId` が指している */
 function entitiesInStamps(scene: Scene, stampIds: Set<Id>): EntityRef[] {
   const out: EntityRef[] = [];
   for (const w of Object.values(scene.walls)) {
-    if (w.attrs.groupId && stampIds.has(w.attrs.groupId)) out.push({ type: 'wall', id: w.id });
+    if (w.attrs.stampId && stampIds.has(w.attrs.stampId)) out.push({ type: 'wall', id: w.id });
   }
   for (const o of Object.values(scene.openings)) {
-    if (o.attrs.groupId && stampIds.has(o.attrs.groupId)) out.push({ type: 'opening', id: o.id });
+    if (o.attrs.stampId && stampIds.has(o.attrs.stampId)) out.push({ type: 'opening', id: o.id });
   }
   for (const f of Object.values(scene.fixtures)) {
-    if (f.attrs.groupId && stampIds.has(f.attrs.groupId)) out.push({ type: 'fixture', id: f.id });
+    if (f.attrs.stampId && stampIds.has(f.attrs.stampId)) out.push({ type: 'fixture', id: f.id });
   }
   return out;
 }
