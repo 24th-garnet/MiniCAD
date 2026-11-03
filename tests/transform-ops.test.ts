@@ -251,3 +251,67 @@ test('複写した矩形の形が保たれる', () => {
     assert.ok(near(length, 4000, 1e-6) || near(length, 3000, 1e-6), `辺の長さが変わった: ${length}`);
   }
 });
+
+/**
+ * 「新しいノードを持つ」のと同じ話が**属性**にもある。`{ ...wall }` は浅い複製なので、
+ * `attrs` と建具の `bay` は放っておくと元と同じオブジェクトを指したままになる。
+ * 複製の素材を変えると元の素材まで変わる、という形で表に出る。
+ */
+test('複写した実体の属性は元と共有しない', () => {
+  const scene = sampleScene();
+  const before = {
+    walls: new Set(Object.keys(scene.walls)),
+    openings: new Set(Object.keys(scene.openings)),
+    instances: new Set(Object.keys(scene.instances)),
+    shapes: new Set(Object.keys(scene.shapes)),
+    fixtures: new Set(Object.keys(scene.fixtures)),
+  };
+
+  // 建具の付いた壁を選ぶ。開口は壁と一緒に複製される
+  const openingBefore = Object.values(scene.openings)[0];
+  const wallId = openingBefore.wallId;
+  openingBefore.bay = { shape: 'box', depth: 450, side: 1 };
+
+  const refs: EntityRef[] = [
+    { type: 'wall', id: wallId },
+    ...Object.keys(scene.instances).slice(0, 1).map((id) => ({ type: 'blockInstance' as const, id })),
+    ...Object.keys(scene.shapes).slice(0, 1).map((id) => ({ type: 'shape' as const, id })),
+    ...Object.keys(scene.fixtures).slice(0, 1).map((id) => ({ type: 'fixture' as const, id })),
+  ];
+  transformEntities(scene, refs, translation(vec(20000, 0)), { copy: true });
+
+  const added = <T extends { attrs: { materialRef: string | null } }>(
+    table: Record<string, T>,
+    known: Set<string>,
+  ): T[] => Object.entries(table).filter(([id]) => !known.has(id)).map(([, v]) => v);
+
+  const pairs: [string, { attrs: { materialRef: string | null } }, { attrs: { materialRef: string | null } }][] = [];
+  const newWall = added(scene.walls, before.walls)[0];
+  assert.ok(newWall, '壁が複製されていない');
+  pairs.push(['壁', scene.walls[wallId], newWall]);
+  const newOpening = added(scene.openings, before.openings)[0];
+  assert.ok(newOpening, '建具が複製されていない');
+  pairs.push(['建具', openingBefore, newOpening]);
+  for (const [label, table, known] of [
+    ['家具', scene.instances, before.instances],
+    ['図形', scene.shapes, before.shapes],
+    ['構造', scene.fixtures, before.fixtures],
+  ] as const) {
+    const copy = added(table as Record<string, { attrs: { materialRef: string | null } }>, known)[0];
+    if (!copy) continue;
+    const origin = Object.entries(table).find(([id]) => known.has(id))![1];
+    pairs.push([label, origin as { attrs: { materialRef: string | null } }, copy]);
+  }
+
+  assert.ok(pairs.length >= 4, `複製されたものが少なすぎる (${pairs.length})`);
+  for (const [label, origin, copy] of pairs) {
+    assert.notEqual(origin.attrs, copy.attrs, `${label}: attrs が元と同じオブジェクト`);
+    copy.attrs.materialRef = 'host:copy-only';
+    assert.notEqual(origin.attrs.materialRef, 'host:copy-only', `${label}: 複製の素材が元に伝わった`);
+  }
+
+  // 張り出しも入れ子のオブジェクト
+  assert.notEqual(openingBefore.bay, newOpening.bay, '建具の張り出しが元と同じオブジェクト');
+  newOpening.bay!.depth = 900;
+  assert.equal(openingBefore.bay!.depth, 450, '複製の出が元に伝わった');
+});

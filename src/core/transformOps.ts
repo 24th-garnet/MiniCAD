@@ -4,6 +4,7 @@ import { transformShape } from './shapes.ts';
 import { applyPoint, directionAngleAfter, isMirror, type Transform } from './transform.ts';
 import { newId, type EntityRef, type Id, type Scene } from './types.ts';
 import { copyConstraints } from './constraintOps.ts';
+import type { Attrs } from './attrs.ts';
 
 export interface TransformResult {
   /** 操作のあと選択しておくべきもの。複写なら複製側 */
@@ -112,6 +113,16 @@ function moveEntities(
   return { refs, nodeMap: new Map(), wallMap: new Map() };
 }
 
+/**
+ * 複製が**属性を元と共有してしまう**のを防ぐ。
+ *
+ * `{ ...wall }` は浅い複製なので、`attrs`（と建具の `bay`）が**元と同じオブジェクト**を
+ * 指したままになる。複製の素材や積算区分を変えると元まで変わり、
+ * グループ化を入れれば「複製を選ぶと元まで選ばれる」になる。
+ * `fixtures` だけは前から複製していたので、残りをそれに揃える。
+ */
+const freshAttrs = (attrs: Attrs): Attrs => ({ ...attrs });
+
 function copyEntities(
   scene: Scene,
   sel: Selection,
@@ -137,7 +148,7 @@ function copyEntities(
     const b = nodeMap.get(wall.b);
     if (!a || !b) continue;
     const newWallId = newId('w');
-    scene.walls[newWallId] = { ...wall, id: newWallId, a, b };
+    scene.walls[newWallId] = { ...wall, id: newWallId, a, b, attrs: freshAttrs(wall.attrs) };
     wallMap.set(wall.id, newWallId);
     refs.push({ type: 'wall', id: newWallId });
   }
@@ -153,6 +164,9 @@ function copyEntities(
       wallId: newWallId,
       // 鏡像では法線の向きが反転するので、見た目どおりに開かせるには flipY を反転する
       flipY: mirrored ? !op.flipY : op.flipY,
+      // 張り出しも入れ子のオブジェクト。共有すると複製の出を変えて元が動く
+      bay: op.bay ? { ...op.bay } : null,
+      attrs: freshAttrs(op.attrs),
     };
   }
 
@@ -168,6 +182,7 @@ function copyEntities(
       y: p.y,
       angle: directionAngleAfter(t, inst.angle),
       scaleX: mirrored ? -inst.scaleX : inst.scaleX,
+      attrs: freshAttrs(inst.attrs),
     };
     refs.push({ type: 'blockInstance', id: newInstanceId });
   }
@@ -185,7 +200,11 @@ function copyEntities(
     const s = scene.shapes[id];
     if (!s) continue;
     const newShapeId = newId('s');
-    scene.shapes[newShapeId] = { ...transformShape(scene, s, t, nodeMap), id: newShapeId };
+    scene.shapes[newShapeId] = {
+      ...transformShape(scene, s, t, nodeMap),
+      id: newShapeId,
+      attrs: freshAttrs(s.attrs),
+    };
     refs.push({ type: 'shape', id: newShapeId });
   }
 
@@ -201,7 +220,7 @@ function copyEntities(
       y: p.y,
       angle: directionAngleAfter(t, f.angle),
       size: { ...f.size },
-      attrs: { ...f.attrs },
+      attrs: freshAttrs(f.attrs),
     };
     refs.push({ type: 'fixture', id: newFixtureId });
   }
