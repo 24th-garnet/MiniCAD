@@ -45,6 +45,45 @@ export const SHAPE_FIELDS: { [K in ShapeKind]: Fields<Extract<Shape, { shape: K 
     }),
   ],
 
+  // **ここが型で持つ理由。** 辺数も角の R も比も、置いたあとに直せる
+  regularPolygon: (s, edit) => [
+    readonlyField('種類', '正多角形'),
+    numberField('中心 X', s.center.x, (v) => edit(() => void (s.center = { ...s.center, x: v })), MM),
+    numberField('中心 Y', s.center.y, (v) => edit(() => void (s.center = { ...s.center, y: v })), MM),
+    numberField('外接円の半径', s.radius, (v) => edit(() => void (s.radius = Math.max(1, v))), MM),
+    numberField('辺の数', s.sides, (v) => edit(() => void (s.sides = Math.max(3, Math.min(64, Math.round(v))))), {
+      step: 1,
+      min: 3,
+      max: 64,
+    }),
+    numberField('向き', toDeg(s.angle), (v) => edit(() => void (s.angle = toRad(v))), { step: 15, suffix: '°' }),
+  ],
+
+  roundRect: (s, edit) => [
+    readonlyField('種類', '角丸四角形'),
+    numberField('中心 X', s.center.x, (v) => edit(() => void (s.center = { ...s.center, x: v })), MM),
+    numberField('中心 Y', s.center.y, (v) => edit(() => void (s.center = { ...s.center, y: v })), MM),
+    numberField('幅', s.w, (v) => edit(() => void (s.w = Math.max(1, v))), MM),
+    numberField('高さ', s.h, (v) => edit(() => void (s.h = Math.max(1, v))), MM),
+    // 短辺の半分を超える丸めは描けないので、入れた値をその場で頭打ちにする
+    numberField('角の R', s.radius, (v) => edit(() => void (
+      s.radius = Math.max(0, Math.min(v, Math.min(s.w, s.h) / 2))
+    )), MM),
+    numberField('向き', toDeg(s.angle), (v) => edit(() => void (s.angle = toRad(v))), { step: 15, suffix: '°' }),
+  ],
+
+  ellipse: (s, edit) => [
+    readonlyField('種類', '楕円'),
+    readonlyField('出力', '折れ線で出ます（DXF R12 に楕円がありません）'),
+    numberField('中心 X', s.center.x, (v) => edit(() => void (s.center = { ...s.center, x: v })), MM),
+    numberField('中心 Y', s.center.y, (v) => edit(() => void (s.center = { ...s.center, y: v })), MM),
+    numberField('長半径', s.major, (v) => edit(() => void (s.major = Math.max(1, v))), MM),
+    numberField('短半径', s.major * s.ratio, (v) => edit(() => void (
+      s.ratio = Math.max(1e-3, Math.min(1, Math.max(1, v) / Math.max(1, s.major)))
+    )), MM),
+    numberField('向き', toDeg(s.angle), (v) => edit(() => void (s.angle = toRad(v))), { step: 15, suffix: '°' }),
+  ],
+
   circle: (s, edit) => [
     readonlyField('種類', '円'),
     numberField('中心 X', s.center.x, (v) => edit(() => void (s.center = { ...s.center, x: v })), MM),

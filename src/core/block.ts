@@ -334,6 +334,33 @@ function mapShapePoints(shape: Shape, f: (p: Vec) => Vec): Shape {
       const edge = f(add(shape.center, vec(shape.radius, 0)));
       return { ...shape, center, radius: dist(center, edge) };
     }
+    // 中心と「半径を測るための 1 点」を写し、距離から大きさを取り直す。
+    // 円と同じやり方なので、非一様な尺度では歪まずに平均の大きさになる
+    case 'regularPolygon': {
+      const center = f(shape.center);
+      const edge = f(add(shape.center, vec(shape.radius, 0)));
+      return { ...shape, center, radius: dist(center, edge) };
+    }
+    case 'ellipse': {
+      const center = f(shape.center);
+      const edge = f(add(shape.center, vec(shape.major, 0)));
+      return { ...shape, center, major: dist(center, edge) };
+    }
+    case 'roundRect': {
+      const center = f(shape.center);
+      const right = f(add(shape.center, vec(shape.w / 2, 0)));
+      const up = f(add(shape.center, vec(0, shape.h / 2)));
+      const sx = dist(center, right) / Math.max(1e-9, Math.abs(shape.w) / 2);
+      const sy = dist(center, up) / Math.max(1e-9, Math.abs(shape.h) / 2);
+      return {
+        ...shape,
+        center,
+        w: shape.w * sx,
+        h: shape.h * sy,
+        // 角の丸めは縦横のうち小さいほうに合わせる。楕円の角は作れない
+        radius: shape.radius * Math.min(sx, sy),
+      };
+    }
     case 'text':
       return { ...shape, at: f(shape.at) };
     case 'point':

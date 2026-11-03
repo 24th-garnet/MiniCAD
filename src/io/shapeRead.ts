@@ -65,6 +65,53 @@ export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
     };
   },
 
+  regularPolygon: (base, raw) => {
+    const center = point(raw.center);
+    const radius = num(raw.radius, 0);
+    if (!center || radius <= 0) return null;
+    return {
+      ...base,
+      shape: 'regularPolygon',
+      center,
+      radius,
+      // 3 辺を割ると多角形にならない。64 は画面で辺が見分けられる上限
+      sides: Math.max(3, Math.min(64, Math.round(num(raw.sides, 6)))),
+      angle: num(raw.angle, 0),
+    };
+  },
+
+  roundRect: (base, raw) => {
+    const center = point(raw.center);
+    const w = num(raw.w, 0);
+    const h = num(raw.h, 0);
+    if (!center || w <= 0 || h <= 0) return null;
+    return {
+      ...base,
+      shape: 'roundRect',
+      center,
+      w,
+      h,
+      // 短辺の半分を超える丸めは描けない。0 なら普通の四角形になる
+      radius: Math.max(0, Math.min(num(raw.radius, 0), Math.min(w, h) / 2)),
+      angle: num(raw.angle, 0),
+    };
+  },
+
+  ellipse: (base, raw) => {
+    const center = point(raw.center);
+    const major = num(raw.major, 0);
+    if (!center || major <= 0) return null;
+    return {
+      ...base,
+      shape: 'ellipse',
+      center,
+      major,
+      // 比が 1 を超えると長短が入れ替わる。長半径を長いほうと決めておく
+      ratio: Math.max(1e-3, Math.min(1, num(raw.ratio, 0.5))),
+      angle: num(raw.angle, 0),
+    };
+  },
+
   circle: (base, raw) => {
     const center = point(raw.center);
     const radius = num(raw.radius, 0);

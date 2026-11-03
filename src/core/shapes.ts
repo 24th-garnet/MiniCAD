@@ -4,6 +4,8 @@ import {
   arcPointAt,
   arcPolyline,
   closestOnSegment,
+  ellipsePoints,
+  regularPolygonPoints,
   dist,
   mid,
   normalizeAngle,
@@ -47,6 +49,55 @@ export interface PolylineShape extends ShapeBase {
   /** 2点以上。矩形や多角形は closed: true で表す（専用の型は作らない） */
   points: Vec[];
   closed: boolean;
+}
+
+/**
+ * 正多角形。**辺数を後から直せるようにするために型で持つ。**
+ *
+ * 折れ線に落としてしまうと「3 角形を 6 角形にする」ができなくなる。
+ * 四角形や自由曲線を `polyline` で表しているのと対照的で、
+ * **置いたあとに直したい値があるかどうか**で分けている。
+ */
+export interface RegularPolygonShape extends ShapeBase {
+  shape: 'regularPolygon';
+  center: Vec;
+  /** 外接円の半径 */
+  radius: number;
+  /** 辺の数。3 以上 */
+  sides: number;
+  /** 最初の頂点の向き（ラジアン） */
+  angle: number;
+}
+
+/**
+ * 隅の丸い四角形。**近似ではない。**
+ * 直線 4 本と円弧 4 本に落ちるので、DXF にも本物の LINE / ARC で出る。
+ */
+export interface RoundRectShape extends ShapeBase {
+  shape: 'roundRect';
+  center: Vec;
+  w: number;
+  h: number;
+  /** 角の丸めの半径。短辺の半分で頭打ちにする */
+  radius: number;
+  angle: number;
+}
+
+/**
+ * 楕円（長円）。**折れ線に落として出す。**
+ *
+ * `Primitive` に楕円は無く、R12 DXF にも ELLIPSE が無い。
+ * それでも型として持つのは、長半径と比を後から直せるようにするため。
+ */
+export interface EllipseShape extends ShapeBase {
+  shape: 'ellipse';
+  center: Vec;
+  /** 長半径 */
+  major: number;
+  /** 短半径 ÷ 長半径。0 より大きく 1 以下 */
+  ratio: number;
+  /** 長軸の向き（ラジアン） */
+  angle: number;
 }
 
 export interface ArcShape extends ShapeBase {
@@ -107,6 +158,9 @@ export interface DimensionShape extends ShapeBase {
 export type Shape =
   | LineShape
   | PolylineShape
+  | RegularPolygonShape
+  | RoundRectShape
+  | EllipseShape
   | ArcShape
   | CircleShape
   | TextShape
@@ -157,6 +211,64 @@ export function arcSweep(s: ArcShape): number {
   const sweep = normalizeAngle(s.endAngle - s.startAngle);
   // 始点と終点が一致する円弧は「全周」とみなす
   return sweep < 1e-9 ? Math.PI * 2 : sweep;
+}
+
+/** 角の丸めの半径。短辺の半分を超えないよう頭打ちにする */
+export function roundRectRadius(s: RoundRectShape): number {
+  return Math.max(0, Math.min(s.radius, Math.min(Math.abs(s.w), Math.abs(s.h)) / 2));
+}
+
+interface RoundRectParts {
+  /** 角と角のあいだの直線 4 本 */
+  sides: Segment[];
+  /** 角の円弧 4 つ。start から end へ反時計回り */
+  corners: { center: Vec; radius: number; startAngle: number; endAngle: number }[];
+}
+
+/**
+ * 隅の丸い四角形を、直線 4 本と円弧 4 つに割る。
+ *
+ * **折れ線で近似しない。** `Primitive` に `arc` があり、DXF にも本物の ARC で
+ * 落ちるので、正確な形のまま出せる。描画・SVG・DXF は 1 行も触らずに済む。
+ */
+export function roundRectParts(s: RoundRectShape): RoundRectParts {
+  const r = roundRectRadius(s);
+  const hw = Math.abs(s.w) / 2;
+  const hh = Math.abs(s.h) / 2;
+  const ix = hw - r;
+  const iy = hh - r;
+  const at = (x: number, y: number): Vec => add(s.center, rotate(vec(x, y), s.angle));
+
+  const sides: Segment[] = [
+    { a: at(-ix, -hh), b: at(ix, -hh) },
+    { a: at(hw, -iy), b: at(hw, iy) },
+    { a: at(ix, hh), b: at(-ix, hh) },
+    { a: at(-hw, iy), b: at(-hw, -iy) },
+  ];
+  const corners = r < 1e-9 ? [] : ([
+    [ix, -iy, -Math.PI / 2],
+    [ix, iy, 0],
+    [-ix, iy, Math.PI / 2],
+    [-ix, -iy, Math.PI],
+  ] as const).map(([x, y, from]) => ({
+    center: at(x, y),
+    radius: r,
+    startAngle: from + s.angle,
+    endAngle: from + s.angle + Math.PI / 2,
+  }));
+  return { sides, corners };
+}
+
+/** 角丸四角形の輪郭を折れ線に。当たり判定と範囲に使う */
+function roundRectPolyline(s: RoundRectShape): Vec[] {
+  const { sides, corners } = roundRectParts(s);
+  if (corners.length === 0) return sides.map((seg) => seg.a);
+  const out: Vec[] = [];
+  for (let i = 0; i < 4; i++) {
+    out.push(sides[i].a, sides[i].b);
+    out.push(...arcPolyline(corners[i].center, corners[i].radius, corners[i].startAngle, Math.PI / 2));
+  }
+  return out;
 }
 
 function chain(points: Vec[], closed: boolean): Segment[] {
@@ -249,6 +361,84 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
     ],
     primitives: (_scene, s) => [{ kind: 'circle', center: s.center, radius: s.radius }],
     transform: (_scene, s, t) => ({ ...s, center: applyPoint(t, s.center) }),
+  },
+
+  regularPolygon: {
+    label: '正多角形',
+    defaultLayer: LAYER_IDS.shape,
+    pickPriority: 5,
+    vertices: (_scene, s) => regularPolygonPoints(s.center, s.radius, s.sides, s.angle),
+    outline: (_scene, s) => chain(regularPolygonPoints(s.center, s.radius, s.sides, s.angle), true),
+    snapPoints: (_scene, s) => [
+      { point: s.center, kind: 'center' },
+      ...regularPolygonPoints(s.center, s.radius, s.sides, s.angle).map((p) => ({
+        point: p, kind: 'node' as const,
+      })),
+      ...segmentMidpoints(regularPolygonPoints(s.center, s.radius, s.sides, s.angle), true),
+    ],
+    primitives: (_scene, s) => [
+      { kind: 'segments', segments: chain(regularPolygonPoints(s.center, s.radius, s.sides, s.angle), true) },
+    ],
+    transform: (_scene, s, t) => ({
+      ...s,
+      center: applyPoint(t, s.center),
+      // 鏡像でも辺の数と外接円は変わらない。向きだけが入れ替わる
+      angle: directionAngleAfter(t, s.angle),
+    }),
+  },
+
+  roundRect: {
+    label: '角丸四角形',
+    defaultLayer: LAYER_IDS.shape,
+    pickPriority: 5,
+    vertices: (_scene, s) => roundRectPolyline(s),
+    outline: (_scene, s) => chain(roundRectPolyline(s), true),
+    snapPoints: (_scene, s) => [
+      { point: s.center, kind: 'center' },
+      ...roundRectParts(s).sides.flatMap((seg) => [
+        { point: seg.a, kind: 'node' as const },
+        { point: mid(seg.a, seg.b), kind: 'midpoint' as const },
+      ]),
+    ],
+    // **折れ線で近似しない。** 直線 4 本と円弧 4 つで正確に出す
+    primitives: (_scene, s) => {
+      const { sides, corners } = roundRectParts(s);
+      return [
+        { kind: 'segments', segments: sides },
+        ...corners.map((c) => ({ kind: 'arc' as const, ...c })),
+      ];
+    },
+    transform: (_scene, s, t) => ({
+      ...s,
+      center: applyPoint(t, s.center),
+      angle: directionAngleAfter(t, s.angle),
+    }),
+  },
+
+  ellipse: {
+    label: '楕円',
+    defaultLayer: LAYER_IDS.shape,
+    pickPriority: 5,
+    vertices: (_scene, s) => ellipsePoints(s.center, s.major, s.ratio, s.angle),
+    outline: (_scene, s) => chain(ellipsePoints(s.center, s.major, s.ratio, s.angle), true),
+    snapPoints: (_scene, s) => [
+      { point: s.center, kind: 'center' },
+      // 長軸と短軸の端。円の四分点に当たる
+      ...[0, Math.PI].map((a) => ({ point: add(s.center, rotate(vec(Math.cos(a) * s.major, 0), s.angle)), kind: 'node' as const })),
+      ...[1, -1].map((k) => ({
+        point: add(s.center, rotate(vec(0, k * s.major * s.ratio), s.angle)),
+        kind: 'node' as const,
+      })),
+    ],
+    // **楕円を表す `Primitive` は無い。** R12 DXF にも ELLIPSE が無いので折れ線で出す
+    primitives: (_scene, s) => [
+      { kind: 'segments', segments: chain(ellipsePoints(s.center, s.major, s.ratio, s.angle), true) },
+    ],
+    transform: (_scene, s, t) => ({
+      ...s,
+      center: applyPoint(t, s.center),
+      angle: directionAngleAfter(t, s.angle),
+    }),
   },
 
   text: {

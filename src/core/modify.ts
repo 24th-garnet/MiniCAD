@@ -8,6 +8,7 @@ import {
   circleCircleIntersection,
   closestOnSegment,
   dist,
+  ellipsePoints,
   lineCircleIntersection,
   lineLineIntersection,
   mul,
@@ -16,6 +17,7 @@ import {
   offsetPolyline,
   offsetSegment,
   projectParam,
+  regularPolygonPoints,
   sideOfLine,
   sub,
   vec,
@@ -24,7 +26,7 @@ import {
 } from './geometry.ts';
 import { newId } from './id.ts';
 import { addWall, mergeNodesAt, splitWall, wallEnds } from './ops.ts';
-import type { Shape } from './shapes.ts';
+import { roundRectParts, type Shape } from './shapes.ts';
 import type { Id, Scene, Wall } from './types.ts';
 
 /**
@@ -35,6 +37,15 @@ export type Curve =
   | { kind: 'segment'; a: Vec; b: Vec }
   | { kind: 'arc'; arc: Arc }
   | { kind: 'circle'; center: Vec; radius: number };
+
+/** 閉じた点の環を、辺ごとの線分にする */
+function ringCurves(points: Vec[]): Curve[] {
+  const out: Curve[] = [];
+  for (let i = 0; i < points.length; i++) {
+    out.push({ kind: 'segment', a: points[i], b: points[(i + 1) % points.length] });
+  }
+  return out;
+}
 
 export function shapeCurves(shape: Shape): Curve[] {
   switch (shape.shape) {
@@ -56,6 +67,23 @@ export function shapeCurves(shape: Shape): Curve[] {
       ];
     case 'circle':
       return [{ kind: 'circle', center: shape.center, radius: shape.radius }];
+    // 正多角形は辺そのものが線分
+    case 'regularPolygon':
+      return ringCurves(regularPolygonPoints(shape.center, shape.radius, shape.sides, shape.angle));
+    // **角丸は折らない。** 直線 4 本と円弧 4 つをそのまま曲線にする
+    case 'roundRect': {
+      const { sides, corners } = roundRectParts(shape);
+      return [
+        ...sides.map((seg) => ({ kind: 'segment' as const, a: seg.a, b: seg.b })),
+        ...corners.map((c) => ({
+          kind: 'arc' as const,
+          arc: { center: c.center, radius: c.radius, start: c.startAngle, end: c.endAngle },
+        })),
+      ];
+    }
+    // 楕円は曲線として表せないので折れ線になる。トリムの刃としては十分
+    case 'ellipse':
+      return ringCurves(ellipsePoints(shape.center, shape.major, shape.ratio, shape.angle));
     default:
       return [];
   }
@@ -339,6 +367,35 @@ export function offsetShape(scene: Scene, id: Id, distance: number, through: Vec
       const radius = shape.radius + (outward ? distance : -distance);
       if (radius <= 1) return null;
       scene.shapes[newShapeId] = { ...shape, id: newShapeId, radius };
+      return newShapeId;
+    }
+    // 外接円・長半径を伸び縮みさせる。**形はそのまま一回り大きく（小さく）なる**
+    case 'regularPolygon': {
+      const outward = dist(through, shape.center) > shape.radius;
+      const radius = shape.radius + (outward ? distance : -distance);
+      if (radius <= 1) return null;
+      scene.shapes[newShapeId] = { ...shape, id: newShapeId, radius };
+      return newShapeId;
+    }
+    case 'ellipse': {
+      const outward = dist(through, shape.center) > shape.major * shape.ratio;
+      const major = shape.major + (outward ? distance : -distance);
+      if (major <= 1) return null;
+      scene.shapes[newShapeId] = { ...shape, id: newShapeId, major };
+      return newShapeId;
+    }
+    case 'roundRect': {
+      // 角丸は縦横に同じだけ太らせる。角の R も一緒に動かさないと
+      // 「外側に等距離」にならない
+      const inside = Math.abs(through.x - shape.center.x) < Math.abs(shape.w) / 2
+        && Math.abs(through.y - shape.center.y) < Math.abs(shape.h) / 2;
+      const d = inside ? -distance : distance;
+      const w = shape.w + d * 2;
+      const h = shape.h + d * 2;
+      if (w <= 1 || h <= 1) return null;
+      scene.shapes[newShapeId] = {
+        ...shape, id: newShapeId, w, h, radius: Math.max(0, shape.radius + d),
+      };
       return newShapeId;
     }
     default:

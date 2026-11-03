@@ -45,6 +45,42 @@ const SAMPLES: { [K in ShapeKind]: Extract<Shape, { shape: K }> } = {
     endAngle: Math.PI / 2,
   },
   circle: { id: 'sh-circle', shape: 'circle', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), center: vec(8000, 0), radius: 600 },
+  // 既存のものと重ならない帯（x = 10000 以降）に置く。
+  // `probes` が別の図形を拾ってしまうため
+  regularPolygon: {
+    id: 'sh-ngon',
+    shape: 'regularPolygon',
+    layerId: LAYER_IDS.shape,
+    levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
+    center: vec(10000, 0),
+    radius: 700,
+    sides: 6,
+    angle: 0,
+  },
+  roundRect: {
+    id: 'sh-rrect',
+    shape: 'roundRect',
+    layerId: LAYER_IDS.shape,
+    levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
+    center: vec(12500, 0),
+    w: 1600,
+    h: 1000,
+    radius: 200,
+    angle: 0,
+  },
+  ellipse: {
+    id: 'sh-ellipse',
+    shape: 'ellipse',
+    layerId: LAYER_IDS.shape,
+    levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
+    center: vec(15000, 0),
+    major: 900,
+    ratio: 0.5,
+    angle: 0,
+  },
   text: {
     id: 'sh-text',
     shape: 'text',
@@ -153,6 +189,12 @@ test('全種別がクリックで拾える', () => {
     polyline: vec(3500, 0),
     arc: vec(6000 + 800 * Math.cos(Math.PI / 4), 800 * Math.sin(Math.PI / 4)),
     circle: vec(8600, 0),
+    // 正 6 角形は最初の頂点が右端。そこを突く
+    regularPolygon: vec(10700, 0),
+    // 角丸の下辺のまんなか
+    roundRect: vec(12500, -500),
+    // 楕円の長軸の端
+    ellipse: vec(15900, 0),
     text: vec(0, 3000),
     point: vec(5000, 3000),
     // 寸法線の上（端点から offset だけ離れた位置）
@@ -277,6 +319,10 @@ const CURVES_INTO: Record<ShapeKind, boolean> = {
   polyline: true,
   arc: true,
   circle: true,
+  // 閉じた形は辺ごとの線分に落ちる。トリムもオフセットも効く
+  regularPolygon: true,
+  roundRect: true,
+  ellipse: true,
   // 注釈のたぐいは線ではないので、曲線にならないのが正しい
   text: false,
   point: false,
@@ -303,5 +349,54 @@ test('曲線に落ちる種別は、オフセットにも反応する', async ()
     const made = offsetShape(scene, SAMPLES[kind].id, 200, vec(9000, 9000));
     assert.ok(made, `${kind}: オフセットが無反応`);
     assert.ok(scene.shapes[made], `${kind}: オフセットの結果が図面に入っていない`);
+  }
+});
+
+/**
+ * **角丸四角形は折れ線で近似しない。** 直線 4 本と円弧 4 つで正確に出る。
+ * `Primitive` に `arc` があり DXF にも本物の ARC で落ちるので、
+ * 描画・SVG・DXF を 1 行も触らずに正しい形が出せる。
+ */
+test('角丸四角形は直線 4 本と円弧 4 つで出る', async () => {
+  const { SHAPE_GEOMETRY, roundRectRadius } = await import('../src/core/shapes.ts');
+  const scene = sceneWithAllShapes();
+  const s = SAMPLES.roundRect;
+  const prims = SHAPE_GEOMETRY.roundRect.primitives(scene, s, scene.standard);
+
+  const segments = prims.flatMap((p) => (p.kind === 'segments' ? p.segments : []));
+  const arcs = prims.filter((p) => p.kind === 'arc');
+  assert.equal(segments.length, 4, '直線が 4 本でない');
+  assert.equal(arcs.length, 4, '円弧が 4 つでない');
+  for (const a of arcs) {
+    assert.equal(a.kind === 'arc' && Math.round(a.radius), s.radius, '角の半径が違う');
+  }
+  // 直線の長さは、辺から角の R を両側ぶん引いたもの
+  const lengths = segments.map((g) => Math.round(Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y))).sort((x, y) => x - y);
+  assert.deepEqual(lengths, [
+    s.h - s.radius * 2, s.h - s.radius * 2, s.w - s.radius * 2, s.w - s.radius * 2,
+  ].sort((x, y) => x - y));
+
+  // 角の R は短辺の半分で頭打ち
+  assert.equal(roundRectRadius({ ...s, radius: 99999 }), Math.min(s.w, s.h) / 2);
+});
+
+test('楕円は折れ線で出る（R12 DXF に楕円が無い）', async () => {
+  const { SHAPE_GEOMETRY } = await import('../src/core/shapes.ts');
+  const scene = sceneWithAllShapes();
+  const prims = SHAPE_GEOMETRY.ellipse.primitives(scene, SAMPLES.ellipse, scene.standard);
+  assert.ok(prims.every((p) => p.kind === 'segments'), '折れ線以外が出ている');
+  const segments = prims.flatMap((p) => (p.kind === 'segments' ? p.segments : []));
+  assert.ok(segments.length > 16, `粗すぎる (${segments.length})`);
+});
+
+test('正多角形は辺の数だけ線分になる', async () => {
+  const { SHAPE_GEOMETRY } = await import('../src/core/shapes.ts');
+  const scene = sceneWithAllShapes();
+  for (const sides of [3, 5, 12]) {
+    const prims = SHAPE_GEOMETRY.regularPolygon.primitives(
+      scene, { ...SAMPLES.regularPolygon, sides }, scene.standard,
+    );
+    const segments = prims.flatMap((p) => (p.kind === 'segments' ? p.segments : []));
+    assert.equal(segments.length, sides, `${sides} 角形の辺が ${segments.length} 本`);
   }
 });

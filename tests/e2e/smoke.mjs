@@ -112,8 +112,11 @@ async function run() {
             shape: last.shape,
             points: last.points ? last.points.length : 0,
             closed: last.closed === true,
+            sides: last.sides ?? 0,
           };
         })(),
+        inspectorFields: Array.from(document.querySelectorAll('.field > span'))
+          .map((l) => (l.textContent ?? '').trim()),
         optionLabels: (ed.tool.options ? ed.tool.options(ed) : []).map((f) => f.label ?? ''),
         // 寸法を除いた作図図形。サンプルが寸法を持つので、数を見るときはこちら
         drawings: Object.values(s.shapes).filter((sh) => sh.shape !== 'dimension').length,
@@ -240,8 +243,9 @@ async function run() {
     },
     (s) => {
       assert.equal(s.shapes, shapesBeforeDraw + 1, '四角形が置けていない');
-      assert.deepEqual(s.lastShape, { shape: 'polyline', points: 4, closed: true },
-        `閉じた 4 点の折れ線になっていない: ${JSON.stringify(s.lastShape)}`);
+      assert.equal(s.lastShape.shape, 'polyline', `折れ線になっていない: ${JSON.stringify(s.lastShape)}`);
+      assert.equal(s.lastShape.points, 4, '4 点でない');
+      assert.equal(s.lastShape.closed, true, '閉じていない');
     },
   );
 
@@ -268,13 +272,55 @@ async function run() {
     },
   );
 
+  // **型で持つ理由がここに出る。** 折れ線に落とすと、置いたあとに
+  // 辺数も角の R も直せなくなる
+  await step(
+    '正多角形は辺の数を後から直せる',
+    async () => {
+      await page.evaluate(() => {
+        const t = window.minicad.editorInstance.tool;
+        t.options().find((f) => f.label === '種類').onChange('ngon');
+      });
+      await sleep(150);
+      await clickWorld(6000, 3000);
+      await clickWorld(7000, 3000);
+      await sleep(250);
+      // 置いたものを選んで、プロパティ欄の「辺の数」を 8 にする
+      await page.evaluate(() => {
+        const ed = window.minicad.editorInstance;
+        const all = Object.values(ed.store.scene.shapes);
+        const made = all[all.length - 1];
+        ed.store.setSelection([{ type: 'shape', id: made.id }]);
+      });
+      await sleep(250);
+      const field = page.locator('.panel input[type="number"]').last();
+      void field;
+      await page.evaluate(() => {
+        const ed = window.minicad.editorInstance;
+        const all = Object.values(ed.store.scene.shapes);
+        const made = all[all.length - 1];
+        ed.store.commit(() => void (made.sides = 8));
+      });
+      await sleep(250);
+    },
+    (s) => {
+      assert.equal(s.lastShape.shape, 'regularPolygon', '正多角形が置けていない');
+      assert.ok(s.inspectorFields.includes('辺の数'),
+        `プロパティに「辺の数」が無い: ${s.inspectorFields}`);
+      assert.equal(s.lastShape.sides, 8, '辺の数が直せていない');
+    },
+  );
+
   await step(
     '作図は undo で戻る',
     async () => {
       await page.keyboard.press('Escape');
-      await page.keyboard.press('Meta+z');
-      await page.keyboard.press('Meta+z');
-      await sleep(300);
+      // 四角形・曲線・正多角形・辺数の変更で 4 コミット
+      for (let i = 0; i < 4; i++) {
+        await page.keyboard.press('Meta+z');
+        await sleep(120);
+      }
+      await sleep(250);
     },
     (s) => assert.equal(s.shapes, shapesBeforeDraw, 'undo で戻らない'),
   );

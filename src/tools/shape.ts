@@ -1,4 +1,4 @@
-import { dist, rectFromDiagonal, splinePoints, type Vec } from '../core/geometry.ts';
+import { dist, mid, rectFromDiagonal, splinePoints, type Vec } from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
@@ -13,7 +13,8 @@ import type { Editor } from '../ui/editor.ts';
 import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
-export type ShapeToolMode = 'line' | 'rect' | 'spline' | 'arc' | 'text' | 'point';
+export type ShapeToolMode =
+  | 'line' | 'rect' | 'roundRect' | 'ngon' | 'ellipse' | 'spline' | 'arc' | 'text' | 'point';
 
 /**
  * 「種類」セレクタに出す名前。**`Record<ShapeToolMode, string>` なので、
@@ -22,6 +23,9 @@ export type ShapeToolMode = 'line' | 'rect' | 'spline' | 'arc' | 'text' | 'point
 const MODE_LABELS: Record<ShapeToolMode, string> = {
   line: '直線・折れ線',
   rect: '四角形',
+  roundRect: '角丸四角形',
+  ngon: '正多角形',
+  ellipse: '楕円',
   spline: '曲線',
   arc: '円・円弧',
   text: '文字',
@@ -59,6 +63,10 @@ export class ShapeTool implements Tool {
   chain = false;
   /** 線モード: 最後の点と始点を結んで閉じた多角形にする */
   closed = false;
+  /** 角丸モード: 角の R (mm) */
+  cornerRadius = 200;
+  /** 正多角形モード: 辺の数 */
+  sides = 6;
   /** 円モード: 円か円弧か */
   arcMode: 'circle' | 'arc' = 'circle';
   /** 文字モード */
@@ -115,6 +123,9 @@ export class ShapeTool implements Tool {
         return this.arcMode === 'arc' ? 3 : 2;
       case 'line':
       case 'rect':
+      case 'roundRect':
+      case 'ngon':
+      case 'ellipse':
       case 'spline':
       case 'text':
       case 'point':
@@ -127,8 +138,12 @@ export class ShapeTool implements Tool {
     switch (this.mode) {
       case 'line':
         return this.chain ? Infinity : 2;
-      // 四角形は対角の 2 点。曲線は Enter / ダブルクリックで終える
+      // 四角形・角丸は対角の 2 点、正多角形と楕円は中心と外接円の 1 点。
+      // 曲線は Enter / ダブルクリックで終える
       case 'rect':
+      case 'roundRect':
+      case 'ngon':
+      case 'ellipse':
         return 2;
       case 'spline':
         return Infinity;
@@ -202,6 +217,47 @@ export class ShapeTool implements Tool {
         return points === null
           ? null
           : { id, shape: 'polyline', layerId, levelId, attrs, points, closed: true };
+      }
+      case 'roundRect': {
+        const corners = rectFromDiagonal(pts[0], pts[1]);
+        if (corners === null) return null;
+        const w = Math.abs(pts[1].x - pts[0].x);
+        const h = Math.abs(pts[1].y - pts[0].y);
+        return {
+          id, shape: 'roundRect', layerId, levelId, attrs,
+          center: mid(pts[0], pts[1]),
+          w,
+          h,
+          radius: Math.min(this.cornerRadius, Math.min(w, h) / 2),
+          angle: 0,
+        };
+      }
+      case 'ngon': {
+        const radius = dist(pts[0], pts[1]);
+        if (radius < 1) return null;
+        return {
+          id, shape: 'regularPolygon', layerId, levelId, attrs,
+          center: pts[0],
+          radius,
+          sides: this.sides,
+          // 2 点目の向きを最初の頂点にする。打った方向に頂点が来る
+          angle: Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x),
+        };
+      }
+      case 'ellipse': {
+        const dx = Math.abs(pts[1].x - pts[0].x);
+        const dy = Math.abs(pts[1].y - pts[0].y);
+        if (dx < 1 || dy < 1) return null;
+        // 対角 2 点に内接する楕円。長いほうを長半径にする
+        const major = Math.max(dx, dy) / 2;
+        const minor = Math.min(dx, dy) / 2;
+        return {
+          id, shape: 'ellipse', layerId, levelId, attrs,
+          center: mid(pts[0], pts[1]),
+          major,
+          ratio: minor / major,
+          angle: dx >= dy ? 0 : Math.PI / 2,
+        };
       }
       case 'spline': {
         const unique = dedupePoints(pts);
@@ -299,6 +355,37 @@ export class ShapeTool implements Tool {
         ];
       case 'rect':
         return [{ kind: 'note', text: '対角の 2 点をクリック' }];
+      case 'roundRect':
+        return [
+          {
+            kind: 'number',
+            label: '角の R',
+            value: this.cornerRadius,
+            step: 50,
+            min: 0,
+            suffix: 'mm',
+            onChange: (v: number) => void (this.cornerRadius = Math.max(0, v)),
+          },
+          { kind: 'note', text: '対角の 2 点をクリック' },
+        ];
+      case 'ngon':
+        return [
+          {
+            kind: 'number',
+            label: '辺の数',
+            value: this.sides,
+            step: 1,
+            min: 3,
+            max: 64,
+            onChange: (v: number) => void (this.sides = Math.max(3, Math.min(64, Math.round(v)))),
+          },
+          { kind: 'note', text: '中心 → 最初の頂点の順にクリック' },
+        ];
+      case 'ellipse':
+        return [
+          { kind: 'note', text: '対角の 2 点をクリック（その四角に内接します）' },
+          { kind: 'note', text: 'DXF には折れ線で出ます（R12 に楕円がありません）' },
+        ];
       case 'spline':
         return [{ kind: 'note', text: '通る点を順にクリック / Enter・ダブルクリックで終了' }];
       case 'arc':
@@ -386,7 +473,13 @@ export class ShapeTool implements Tool {
           this.points.length
         ]!;
       case 'rect':
-        return this.points.length === 0 ? 'クリックで四角形の一隅を指定' : 'クリックで対角を指定';
+      case 'roundRect':
+      case 'ellipse':
+        return this.points.length === 0 ? 'クリックで一隅を指定' : 'クリックで対角を指定';
+      case 'ngon':
+        return this.points.length === 0
+          ? `クリックで正 ${this.sides} 角形の中心を指定`
+          : 'クリックで最初の頂点を指定';
       case 'spline':
         return this.points.length === 0
           ? 'クリックで曲線の始点を指定'
@@ -410,6 +503,12 @@ function shapeKindOf(mode: ShapeToolMode, arcMode: 'circle' | 'arc'): Shape['sha
     case 'rect':
     case 'spline':
       return 'polyline';
+    case 'roundRect':
+      return 'roundRect';
+    case 'ngon':
+      return 'regularPolygon';
+    case 'ellipse':
+      return 'ellipse';
     case 'arc':
       return arcMode;
     case 'text':
