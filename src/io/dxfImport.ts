@@ -10,7 +10,7 @@
 
 import { defaultAttrs } from '../core/attrs.ts';
 import { newId } from '../core/id.ts';
-import { dist, vec, type Vec } from '../core/geometry.ts';
+import { dist, ellipsePoints, vec, type Vec } from '../core/geometry.ts';
 import { addLayer, ACI_COLORS, LAYER_IDS, type LayerId } from '../core/layer.ts';
 import { sanitizeBlockName } from '../core/block.ts';
 import { arcFromPoints, shapeVertices, transformShape, type Shape, type ShapeBody } from '../core/shapes.ts';
@@ -76,9 +76,6 @@ const LINE_TYPE_FROM_DXF: Record<string, LineType> = {
 
 /** 入れ子ブロックの展開はここで打ち切る。循環参照のあるファイルが実在する */
 const MAX_EXPLODE_DEPTH = 8;
-/** 楕円・円弧を折れ線に落とすときの刻み。shapes.ts の ARC_STEP と同じ */
-const ARC_STEP = Math.PI / 16;
-
 export function defaultImportOptions(doc: DxfDocument): ImportOptions {
   return {
     unitScale: unitScaleOf(doc).scale,
@@ -371,17 +368,11 @@ function addEllipse(
   }
 
   const sweep = full ? Math.PI * 2 : e.endParam - e.startParam;
-  const steps = Math.max(2, Math.ceil(Math.abs(sweep) / ARC_STEP));
-  const cos = e.major.x / major;
-  const sin = e.major.y / major;
-  const points: Vec[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const p = e.startParam + (sweep * i) / steps;
-    const x = major * Math.cos(p);
-    const y = major * e.ratio * Math.sin(p);
-    points.push(vec(e.center.x + x * cos - y * sin, e.center.y + x * sin + y * cos));
-  }
-  if (full) points.pop();
+  // **折り方は 1 箇所（core/geometry.ts）。** 以前はここに同じ式があり、
+  // 刻みを変えると取り込みと図形で滑らかさが食い違った
+  const points = ellipsePoints(
+    e.center, major, e.ratio, Math.atan2(e.major.y, e.major.x), e.startParam, sweep,
+  );
   add(ctx, { shape: 'polyline', points, closed: full }, t, layerId);
 }
 

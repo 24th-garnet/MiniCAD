@@ -254,3 +254,53 @@ test('制御点が 2 つ以下なら、曲げようがないのでそのまま�
   assert.equal(splinePoints([vec(0, 0)]).length, 1);
   assert.equal(splinePoints([]).length, 0);
 });
+
+/**
+ * 円弧・楕円を折れ線に落とす式は **`core/geometry.ts` の 1 箇所**にある。
+ * 以前は `core/shapes.ts` と `io/dxfImport.ts` に同じものが 1 つずつあり、
+ * 刻みを変えると図形と DXF 取り込みで滑らかさが食い違った。
+ */
+test('楕円の折れ線は、全周なら始点を重ねない', async () => {
+  const { ellipsePoints, ARC_STEP } = await import('../src/core/geometry.ts');
+  const full = ellipsePoints(vec(0, 0), 1000, 0.5, 0);
+  assert.equal(Math.round(Math.PI * 2 / ARC_STEP), full.length, '刻みと点の数が合わない');
+  assert.ok(dist(full[0], full[full.length - 1]) > 1, '始点と終点が重なっている');
+
+  // 弧なら両端を持つ
+  const arc = ellipsePoints(vec(0, 0), 1000, 0.5, 0, 0, Math.PI);
+  assert.ok(dist(arc[0], vec(1000, 0)) < 1e-6, '長軸の端から始まっていない');
+  assert.ok(dist(arc[arc.length - 1], vec(-1000, 0)) < 1e-6, '長軸の反対端で終わっていない');
+});
+
+test('楕円は長半径と比のとおりの大きさになる', async () => {
+  const { ellipsePoints } = await import('../src/core/geometry.ts');
+  const pts = ellipsePoints(vec(500, 200), 1000, 0.4, 0);
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  assert.ok(Math.abs(Math.max(...xs) - 1500) < 1, `長軸が合わない (${Math.max(...xs)})`);
+  assert.ok(Math.abs(Math.max(...ys) - 600) < 1, `短軸が合わない (${Math.max(...ys)})`);
+
+  // 90 度傾けると長短が入れ替わる
+  const tilted = ellipsePoints(vec(0, 0), 1000, 0.4, Math.PI / 2);
+  assert.ok(Math.abs(Math.max(...tilted.map((p) => p.y)) - 1000) < 1, '傾けた長軸が合わない');
+});
+
+test('正多角形は外接円の上に等間隔で並ぶ', async () => {
+  const { regularPolygonPoints } = await import('../src/core/geometry.ts');
+  const pts = regularPolygonPoints(vec(0, 0), 1000, 6, 0);
+  assert.equal(pts.length, 6);
+  for (const p of pts) assert.ok(Math.abs(dist(p, vec(0, 0)) - 1000) < 1e-6, '外接円の上にない');
+  // 隣どうしの距離が揃う＝等間隔
+  const edge = dist(pts[0], pts[1]);
+  for (let i = 0; i < 6; i++) {
+    assert.ok(Math.abs(dist(pts[i], pts[(i + 1) % 6]) - edge) < 1e-6, '辺の長さが揃っていない');
+  }
+  // 6 角形の辺は半径と同じ長さ
+  assert.ok(Math.abs(edge - 1000) < 1e-6, `6 角形の辺が半径と違う (${edge})`);
+});
+
+test('辺の数は 3 未満にならない', async () => {
+  const { regularPolygonPoints } = await import('../src/core/geometry.ts');
+  assert.equal(regularPolygonPoints(vec(0, 0), 1000, 2, 0).length, 3);
+  assert.equal(regularPolygonPoints(vec(0, 0), 1000, 0, 0).length, 3);
+});

@@ -275,6 +275,67 @@ export function offsetPolyline(points: Vec[], d: number, closed: boolean): Vec[]
 
 /** 点が直線のどちら側か。オフセットの向きを決めるのに使う */
 /**
+ * 円弧を折れ線に分割するときの最大の刻み（ラジアン）。約 11.25 度。
+ *
+ * **ここが唯一の出どころ。** 以前は `core/shapes.ts` と `io/dxfImport.ts` に
+ * 同じ値が 1 つずつあり、片方を直すと図形と取り込みで滑らかさが食い違った。
+ */
+export const ARC_STEP = Math.PI / 16;
+
+/** 中心・半径・角度から円周上の点 */
+export function arcPointAt(center: Vec, radius: number, angle: number): Vec {
+  return add(center, vec(Math.cos(angle) * radius, Math.sin(angle) * radius));
+}
+
+/** 円弧を折れ線に。`sweep` は符号つきで、負なら時計回り */
+export function arcPolyline(center: Vec, radius: number, start: number, sweep: number): Vec[] {
+  const steps = Math.max(2, Math.ceil(Math.abs(sweep) / ARC_STEP));
+  const points: Vec[] = [];
+  for (let i = 0; i <= steps; i++) {
+    points.push(arcPointAt(center, radius, start + (sweep * i) / steps));
+  }
+  return points;
+}
+
+/**
+ * 楕円の弧を折れ線に。`major` は長半径、`ratio` は短半径 / 長半径、
+ * `tilt` は長軸の向き。全周のときは最後の点（＝始点と同じ）を落とす。
+ *
+ * **楕円を表す `Primitive` は無く、R12 DXF にも ELLIPSE が無い。**
+ * 画面も SVG も DXF も折れ線で出すので、ここで一度だけ折る。
+ */
+export function ellipsePoints(
+  center: Vec,
+  major: number,
+  ratio: number,
+  tilt: number,
+  startParam = 0,
+  sweep = Math.PI * 2,
+): Vec[] {
+  const full = Math.abs(sweep) >= Math.PI * 2 - 1e-6;
+  const steps = Math.max(2, Math.ceil(Math.abs(sweep) / ARC_STEP));
+  const cos = Math.cos(tilt);
+  const sin = Math.sin(tilt);
+  const points: Vec[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = startParam + (sweep * i) / steps;
+    const x = major * Math.cos(a);
+    const y = major * ratio * Math.sin(a);
+    points.push(vec(center.x + x * cos - y * sin, center.y + x * sin + y * cos));
+  }
+  if (full) points.pop();
+  return points;
+}
+
+/** 正多角形の頂点。`angle` は最初の頂点の向き */
+export function regularPolygonPoints(center: Vec, radius: number, sides: number, angle: number): Vec[] {
+  const n = Math.max(3, Math.round(sides));
+  const out: Vec[] = [];
+  for (let i = 0; i < n; i++) out.push(arcPointAt(center, radius, angle + (Math.PI * 2 * i) / n));
+  return out;
+}
+
+/**
  * 対角の 2 点から四角形の 4 隅（反時計回りではなく、打った順に沿う並び）。
  * 潰れていれば null——幅か高さが 1mm 未満の「四角形」は図形として意味がない。
  */

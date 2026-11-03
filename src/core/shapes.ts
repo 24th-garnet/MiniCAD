@@ -1,6 +1,8 @@
 import {
   add,
   angleOf,
+  arcPointAt,
+  arcPolyline,
   closestOnSegment,
   dist,
   mid,
@@ -145,29 +147,16 @@ export interface ShapeGeometry<S extends Shape = Shape> {
   transform(scene: Scene, s: S, t: Transform, nodeMap: Map<Id, Id> | null): S;
 }
 
-/** 円弧を折れ線に分割するときの最大の刻み（ラジアン）。約11.25度 */
-const ARC_STEP = Math.PI / 16;
-
 /** 点を表す十字の腕の長さ（紙の上の mm） */
 const POINT_MARK_PAPER_MM = 1.5;
+
+/** 円周上の点。出どころは `core/geometry.ts`。ここからも引けるようにしておく */
+export { arcPointAt };
 
 export function arcSweep(s: ArcShape): number {
   const sweep = normalizeAngle(s.endAngle - s.startAngle);
   // 始点と終点が一致する円弧は「全周」とみなす
   return sweep < 1e-9 ? Math.PI * 2 : sweep;
-}
-
-export function arcPointAt(center: Vec, radius: number, angle: number): Vec {
-  return add(center, vec(Math.cos(angle) * radius, Math.sin(angle) * radius));
-}
-
-function arcPolyline(center: Vec, radius: number, start: number, sweep: number): Vec[] {
-  const steps = Math.max(2, Math.ceil(Math.abs(sweep) / ARC_STEP));
-  const points: Vec[] = [];
-  for (let i = 0; i <= steps; i++) {
-    points.push(arcPointAt(center, radius, start + (sweep * i) / steps));
-  }
-  return points;
 }
 
 function chain(points: Vec[], closed: boolean): Segment[] {
