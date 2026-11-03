@@ -1,7 +1,7 @@
 import { sceneBounds } from '../../../core/entity.ts';
 import { centerSheetOn, fitsInFrame, jisMargins, paperDimensions } from '../../../core/sheet.ts';
 import { PAPER_SIZES } from '../../../core/standard.ts';
-import { checkboxField, el, readonlyField, selectField, textField } from '../../dom.ts';
+import { checkboxField, el, numberField, readonlyField, selectField, textField } from '../../dom.ts';
 import type { Section, PanelContext } from '../../panel.ts';
 
 /** 用紙枠と表題欄。図面の属性なので変更は履歴に残す */
@@ -57,6 +57,21 @@ export class SheetSection implements Section {
         },
         ['図面の中央に用紙を合わせる'],
       ),
+      // **用紙を好きな位置へ動かす**（ワイヤー 7 枚目の「用紙移動」）。
+      // これまでは「図面の中央に合わせる」しか無く、中央が気に入らないときに
+      // 動かす手段が無かった。`Sheet.origin` は前からあるので、欄を出すだけ。
+      //
+      // **ドラッグではなく数値で動かす。** 用紙枠を掴めるようにすると、
+      // 選択ツールが「掴んで動かす」ものをもう 1 つ持つことになり、
+      // **図面を動かすつもりが用紙を動かしていた**という取り違えが起きる
+      // （頂点編集を別ツールにしたのと同じ理由）。用紙の位置は一度決めたら
+      // ほとんど動かさないので、数値のほうが合っている。
+      numberField('用紙の左下 X', sheet.origin.x, (v) => edit(() => void (sheet.origin.x = v)), {
+        step: 10, suffix: 'mm',
+      }),
+      numberField('用紙の左下 Y', sheet.origin.y, (v) => edit(() => void (sheet.origin.y = v)), {
+        step: 10, suffix: 'mm',
+      }),
 
       checkboxField('表題欄を出す', sheet.titleBlock.enabled, (v) =>
         edit(() => void (sheet.titleBlock.enabled = v)),

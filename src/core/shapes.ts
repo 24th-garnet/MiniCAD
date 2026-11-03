@@ -495,9 +495,19 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
     transform: (_scene, s, t) => ({ ...s, at: applyPoint(t, s.at), angle: directionAngleAfter(t, s.angle) }),
   },
 
+  /**
+   * 基準点（ワイヤー 7 枚目の「2D 基準点」）。
+   *
+   * **印刷に出ない画層に置く。** 作図の目印なので、図面には出したくない。
+   * `LAYER_IDS.draft`（`printable: false`）は計測が既に使っていて、
+   * SVG も DXF も印刷も `visible && printable` で見ているので、
+   * **既定の画層を変えるだけ**で「画面には出るが紙には出ない」になる。
+   *
+   * スナップは画層の `visible` と `locked` しか見ないので、拾えるまま。
+   */
   point: {
     label: '点',
-    defaultLayer: LAYER_IDS.shape,
+    defaultLayer: LAYER_IDS.draft,
     pickPriority: 0,
     vertices: (_scene, s) => [s.at],
     outline: (_scene, s) => [{ a: s.at, b: s.at }],
