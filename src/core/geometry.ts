@@ -274,6 +274,48 @@ export function offsetPolyline(points: Vec[], d: number, closed: boolean): Vec[]
 }
 
 /** 点が直線のどちら側か。オフセットの向きを決めるのに使う */
+/**
+ * 対角の 2 点から四角形の 4 隅（反時計回りではなく、打った順に沿う並び）。
+ * 潰れていれば null——幅か高さが 1mm 未満の「四角形」は図形として意味がない。
+ */
+export function rectFromDiagonal(a: Vec, b: Vec): Vec[] | null {
+  if (Math.abs(a.x - b.x) < 1 || Math.abs(a.y - b.y) < 1) return null;
+  return [a, vec(b.x, a.y), b, vec(a.x, b.y)];
+}
+
+/** 自由曲線の滑らかさ。制御点 1 区間あたりの分割数 */
+export const SPLINE_STEPS = 12;
+
+/**
+ * Catmull-Rom で制御点をなめらかに繋ぐ。両端は折り返して接線を作る。
+ *
+ * **制御点そのものを通る。** ベジエの制御点と違って「引っぱられる」位置が無いので、
+ * 打った点の上を通る曲線になり、描いている最中の見た目と結果が一致する。
+ *
+ * 曲線そのものを持つ型は作らない。`Primitive` に曲線が無く、R12 DXF にも
+ * SPLINE が無いので、どのみち折れ線で出すことになる。
+ */
+export function splinePoints(control: Vec[]): Vec[] {
+  if (control.length < 3) return control;
+  const at = (i: number): Vec => control[Math.max(0, Math.min(control.length - 1, i))];
+  const out: Vec[] = [control[0]];
+  for (let i = 0; i < control.length - 1; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    for (let k = 1; k <= SPLINE_STEPS; k++) {
+      const t = k / SPLINE_STEPS;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const f = (w: number, x: number, y: number, z: number): number =>
+        0.5 * ((2 * x) + (y - w) * t + (2 * w - 5 * x + 4 * y - z) * t2 + (-w + 3 * x - 3 * y + z) * t3);
+      out.push(vec(f(p0.x, p1.x, p2.x, p3.x), f(p0.y, p1.y, p2.y, p3.y)));
+    }
+  }
+  return out;
+}
+
 export function sideOfLine(a: Vec, b: Vec, p: Vec): 1 | -1 {
   return cross(sub(b, a), sub(p, a)) >= 0 ? 1 : -1;
 }

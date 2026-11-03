@@ -1,4 +1,4 @@
-import { dist, type Vec } from '../core/geometry.ts';
+import { dist, rectFromDiagonal, splinePoints, type Vec } from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
@@ -13,7 +13,7 @@ import type { Editor } from '../ui/editor.ts';
 import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
-export type ShapeToolMode = 'line' | 'arc' | 'text' | 'point';
+export type ShapeToolMode = 'line' | 'rect' | 'spline' | 'arc' | 'text' | 'point';
 
 /**
  * 「種類」セレクタに出す名前。**`Record<ShapeToolMode, string>` なので、
@@ -21,6 +21,8 @@ export type ShapeToolMode = 'line' | 'arc' | 'text' | 'point';
  */
 const MODE_LABELS: Record<ShapeToolMode, string> = {
   line: '直線・折れ線',
+  rect: '四角形',
+  spline: '曲線',
   arc: '円・円弧',
   text: '文字',
   point: '基準点',
@@ -55,6 +57,8 @@ export class ShapeTool implements Tool {
 
   /** 線モード: 連続して引いてポリラインにする */
   chain = false;
+  /** 線モード: 最後の点と始点を結んで閉じた多角形にする */
+  closed = false;
   /** 円モード: 円か円弧か */
   arcMode: 'circle' | 'arc' = 'circle';
   /** 文字モード */
@@ -110,6 +114,8 @@ export class ShapeTool implements Tool {
       case 'arc':
         return this.arcMode === 'arc' ? 3 : 2;
       case 'line':
+      case 'rect':
+      case 'spline':
       case 'text':
       case 'point':
         return 2;
@@ -121,6 +127,11 @@ export class ShapeTool implements Tool {
     switch (this.mode) {
       case 'line':
         return this.chain ? Infinity : 2;
+      // 四角形は対角の 2 点。曲線は Enter / ダブルクリックで終える
+      case 'rect':
+        return 2;
+      case 'spline':
+        return Infinity;
       case 'arc':
         return this.arcMode === 'circle' ? 2 : 3;
       case 'text':
@@ -179,8 +190,27 @@ export class ShapeTool implements Tool {
       case 'line': {
         const unique = dedupePoints(pts);
         if (unique.length < 2) return null;
+        // 閉じるには 3 点要る。2 点で「閉じる」は線が往復するだけ
+        const shut = this.closed && this.chain && unique.length > 2;
         if (unique.length === 2) return { id, shape: 'line', layerId, levelId, attrs, a: unique[0], b: unique[1] };
-        return { id, shape: 'polyline', layerId, levelId, attrs, points: unique, closed: false };
+        return { id, shape: 'polyline', layerId, levelId, attrs, points: unique, closed: shut };
+      }
+      // 対角 2 点から 4 隅。**専用の型は作らない**——`polyline.closed` が
+      // 「矩形や多角形は closed: true で表す」と宣言済み（core/shapes.ts）
+      case 'rect': {
+        const points = rectFromDiagonal(pts[0], pts[1]);
+        return points === null
+          ? null
+          : { id, shape: 'polyline', layerId, levelId, attrs, points, closed: true };
+      }
+      case 'spline': {
+        const unique = dedupePoints(pts);
+        if (unique.length < 2) return null;
+        // 2 点では曲がりようがないので直線になる
+        return {
+          id, shape: 'polyline', layerId, levelId, attrs,
+          points: splinePoints(unique), closed: false,
+        };
       }
       case 'arc': {
         if (this.arcMode === 'circle') {
@@ -256,13 +286,26 @@ export class ShapeTool implements Tool {
       case 'line':
         return [
           { kind: 'toggle', label: '連続して引く（ポリライン）', value: this.chain, onChange: (v) => void (this.chain = v) },
+          // 閉じた多角形。**専用の型は作らない**——`polyline.closed` で表す
+          ...(this.chain
+            ? [{
+                kind: 'toggle' as const,
+                label: '閉じる（多角形）',
+                value: this.closed,
+                onChange: (v: boolean) => void (this.closed = v),
+              }]
+            : []),
           { kind: 'note', text: 'Enter / ダブルクリックで終了' },
         ];
+      case 'rect':
+        return [{ kind: 'note', text: '対角の 2 点をクリック' }];
+      case 'spline':
+        return [{ kind: 'note', text: '通る点を順にクリック / Enter・ダブルクリックで終了' }];
       case 'arc':
         return [
           {
             kind: 'select',
-            label: '種類',
+            label: '描き方',
             value: this.arcMode,
             options: [
               { value: 'circle', label: '円（中心・半径）' },
@@ -342,6 +385,12 @@ export class ShapeTool implements Tool {
         return ['クリックで円弧の中心を指定', 'クリックで始点を指定', 'クリックで終点を指定（反時計回り）'][
           this.points.length
         ]!;
+      case 'rect':
+        return this.points.length === 0 ? 'クリックで四角形の一隅を指定' : 'クリックで対角を指定';
+      case 'spline':
+        return this.points.length === 0
+          ? 'クリックで曲線の始点を指定'
+          : 'クリックで通る点を足す / Enter・ダブルクリックで終了';
       case 'text':
         return `「${this.text || '(空)'}」を置く位置をクリック`;
       case 'point':
@@ -350,10 +399,23 @@ export class ShapeTool implements Tool {
   }
 }
 
+/**
+ * そのモードが作る図形の種別。**既定の画層を引くためだけに使う。**
+ * 四角形も曲線も折れ線なので、新しい種別は増えない。
+ */
 function shapeKindOf(mode: ShapeToolMode, arcMode: 'circle' | 'arc'): Shape['shape'] {
-  if (mode === 'line') return 'line';
-  if (mode === 'arc') return arcMode;
-  return mode;
+  switch (mode) {
+    case 'line':
+      return 'line';
+    case 'rect':
+    case 'spline':
+      return 'polyline';
+    case 'arc':
+      return arcMode;
+    case 'text':
+    case 'point':
+      return mode;
+  }
 }
 
 /** 同じ場所を2回クリックしたときに退化した図形を作らないようにする */

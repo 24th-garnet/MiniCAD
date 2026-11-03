@@ -103,6 +103,18 @@ async function run() {
         blocks: Object.keys(s.blocks).length,
         blockLabels: Object.values(s.blocks).map((b) => b.label),
         shapes: Object.keys(s.shapes).length,
+        // いちばん最後に置かれた図形の形。作図の結果を見るのに使う
+        lastShape: (() => {
+          const all = Object.values(s.shapes);
+          const last = all[all.length - 1];
+          if (!last) return null;
+          return {
+            shape: last.shape,
+            points: last.points ? last.points.length : 0,
+            closed: last.closed === true,
+          };
+        })(),
+        optionLabels: (ed.tool.options ? ed.tool.options(ed) : []).map((f) => f.label ?? ''),
         // 寸法を除いた作図図形。サンプルが寸法を持つので、数を見るときはこちら
         drawings: Object.values(s.shapes).filter((sh) => sh.shape !== 'dimension').length,
         rooms: ed.rooms.map((r) => ({ name: r.name, area: Number(r.area.toFixed(2)) })),
@@ -173,7 +185,7 @@ async function run() {
   // **既定は通常モード。** ワイヤーが 2 度明記している
   const normal = await state();
   assert.equal(normal.mode, 'normal', '既定が通常モードではない');
-  for (const hidden of ['offset', 'trim', 'extend', 'point']) {
+  for (const hidden of ['offset', 'trim', 'extend', 'point', 'shape']) {
     assert.ok(!normal.toolbar.includes(hidden), `通常モードに ${hidden} が出ている`);
   }
   for (const shown of ['select', 'wall', 'door', 'window', 'block', 'room']) {
@@ -191,7 +203,7 @@ async function run() {
   await sleep(250);
   const pro = await state();
   assert.equal(pro.mode, 'pro');
-  for (const shown of ['offset', 'trim', 'extend', 'point']) {
+  for (const shown of ['offset', 'trim', 'extend', 'point', 'shape']) {
     assert.ok(pro.toolbar.includes(shown), `プロモードに ${shown} が無い`);
   }
   for (const id of normal.toolbar) {
@@ -200,6 +212,75 @@ async function run() {
   assert.ok(pro.inspectorHeads.includes('まだ無いもの'),
     'プロモードに「まだ無いもの」が出ていない');
   console.log('✔ 既定は通常モード、プロモードで CAD 寄りの道具が増える');
+
+  // --- プロモードの作図（四角形・曲線） ---
+  // **専用の型は作らない。** どちらも閉じ方の違う折れ線として落ちる
+  await step(
+    'プロモードの作図ツールが「種類」で切り替わる',
+    async () => {
+      await page.keyboard.press('f');
+      await sleep(200);
+    },
+    (s) => {
+      assert.equal(s.tool, 'shape', '作図ツールに切り替わっていない');
+      assert.ok(s.optionLabels.includes('種類'), `「種類」が出ていない: ${s.optionLabels}`);
+    },
+  );
+
+  let shapesBeforeDraw = 0;
+  await step(
+    '四角形を 2 点で引ける',
+    async () => {
+      shapesBeforeDraw = (await state()).shapes;
+      await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+      await sleep(250);
+      await clickWorld(1000, 500);
+      await clickWorld(3000, 2000);
+      await sleep(250);
+    },
+    (s) => {
+      assert.equal(s.shapes, shapesBeforeDraw + 1, '四角形が置けていない');
+      assert.deepEqual(s.lastShape, { shape: 'polyline', points: 4, closed: true },
+        `閉じた 4 点の折れ線になっていない: ${JSON.stringify(s.lastShape)}`);
+    },
+  );
+
+  await step(
+    '曲線は打った点より細かい折れ線になる',
+    async () => {
+      await page.evaluate(() => {
+        const t = window.minicad.editorInstance.tool;
+        t.options().find((f) => f.label === '種類').onChange('spline');
+      });
+      await sleep(150);
+      await clickWorld(1000, 3000);
+      await clickWorld(2000, 4000);
+      await clickWorld(3000, 3000);
+      await clickWorld(4000, 4000);
+      await page.keyboard.press('Enter');
+      await sleep(250);
+    },
+    (s) => {
+      assert.equal(s.shapes, shapesBeforeDraw + 2, '曲線が置けていない');
+      assert.equal(s.lastShape.shape, 'polyline');
+      assert.equal(s.lastShape.closed, false, '曲線が閉じている');
+      assert.ok(s.lastShape.points > 16, `細かくなっていない (${s.lastShape.points})`);
+    },
+  );
+
+  await step(
+    '作図は undo で戻る',
+    async () => {
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Meta+z');
+      await page.keyboard.press('Meta+z');
+      await sleep(300);
+    },
+    (s) => assert.equal(s.shapes, shapesBeforeDraw, 'undo で戻らない'),
+  );
+
+  await page.keyboard.press('v');
+  await sleep(150);
 
   await step('サンプル間取りが読み込まれる', async () => {}, (s) => {
     assert.equal(s.walls, 10);

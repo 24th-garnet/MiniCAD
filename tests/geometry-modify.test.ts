@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   arcContainsAngle,
+  dist,
   arcSweepAngle,
   circleCircleIntersection,
   lineCircleIntersection,
@@ -201,4 +202,55 @@ test('曲線どうしの交点は、既定では実体の上だけを返す', ()
   const beyond = seg(200, -50, 200, 50);
   assert.equal(curveIntersections(target, beyond).length, 0, '線分の外を拾っている');
   assert.equal(curveIntersections(target, beyond, true).length, 1, '無限直線としては交わる');
+});
+
+/**
+ * 四角形も曲線も**折れ線に落とす**。`src/core/shapes.ts` のコメント自身が
+ * 「矩形や多角形は `closed: true` で表す（専用の型は作らない）」と宣言していて、
+ * 置いたあとに直せる値も「頂点を動かす」以外に無い。
+ * 型・幾何・スナップ・入出力は既にあるので、足したのは描く導線だけ。
+ */
+test('対角 2 点から四角形の 4 隅が出る', async () => {
+  const { rectFromDiagonal } = await import('../src/core/geometry.ts');
+  const got = rectFromDiagonal(vec(0, 0), vec(3000, 2000));
+  assert.deepEqual(got?.map((p) => [p.x, p.y]), [[0, 0], [3000, 0], [3000, 2000], [0, 2000]]);
+
+  // 逆向きに取っても 4 隅は同じ場所に出る（並びは打った順に沿う）
+  const back = rectFromDiagonal(vec(3000, 2000), vec(0, 0));
+  assert.deepEqual(
+    new Set(back?.map((p) => `${p.x},${p.y}`)),
+    new Set(got?.map((p) => `${p.x},${p.y}`)),
+  );
+});
+
+test('潰れた四角形は作らない', async () => {
+  const { rectFromDiagonal } = await import('../src/core/geometry.ts');
+  assert.equal(rectFromDiagonal(vec(0, 0), vec(0, 2000)), null, '幅 0 の四角形ができた');
+  assert.equal(rectFromDiagonal(vec(0, 0), vec(3000, 0)), null, '高さ 0 の四角形ができた');
+  assert.equal(rectFromDiagonal(vec(0, 0), vec(0.5, 2000)), null, '幅 0.5mm の四角形ができた');
+});
+
+test('自由曲線は打った点の上を通り、点より細かい折れ線になる', async () => {
+  const { splinePoints } = await import('../src/core/geometry.ts');
+  const control = [vec(0, 0), vec(1000, 1000), vec(2000, 0), vec(3000, 1000)];
+  const got = splinePoints(control);
+
+  assert.ok(got.length > control.length * 4, `細かくなっていない (${got.length})`);
+  // **制御点そのものを通る**（Catmull-Rom。ベジエと違って引っぱられない）
+  for (const c of control) {
+    assert.ok(
+      got.some((p) => dist(p, c) < 1e-6),
+      `制御点 (${c.x},${c.y}) の上を通っていない`,
+    );
+  }
+  // 始点と終点は制御点そのもの
+  assert.ok(dist(got[0], control[0]) < 1e-6);
+  assert.ok(dist(got[got.length - 1], control[control.length - 1]) < 1e-6);
+});
+
+test('制御点が 2 つ以下なら、曲げようがないのでそのまま返す', async () => {
+  const { splinePoints } = await import('../src/core/geometry.ts');
+  assert.equal(splinePoints([vec(0, 0), vec(1000, 0)]).length, 2);
+  assert.equal(splinePoints([vec(0, 0)]).length, 1);
+  assert.equal(splinePoints([]).length, 0);
 });

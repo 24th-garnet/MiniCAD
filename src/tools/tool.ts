@@ -18,6 +18,7 @@ export type ToolId =
   | 'window'
   | 'block'
   | 'line'
+  | 'shape'
   | 'arc'
   | 'point'
   | 'text'
