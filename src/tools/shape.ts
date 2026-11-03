@@ -1,5 +1,5 @@
-import { dist, mid, rectFromDiagonal, splinePoints, type Vec } from '../core/geometry.ts';
-import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
+import { dist, mid, offsetPolyline, rectFromDiagonal, splinePoints, type Vec } from '../core/geometry.ts';
+import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
 import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import type { TextAlign } from '../core/primitive.ts';
@@ -14,7 +14,8 @@ import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
 export type ShapeToolMode =
-  | 'line' | 'rect' | 'roundRect' | 'ngon' | 'ellipse' | 'spline' | 'arc' | 'text' | 'point';
+  | 'line' | 'doubleLine' | 'rect' | 'roundRect' | 'ngon' | 'ellipse'
+  | 'spline' | 'arc' | 'text' | 'point';
 
 /**
  * 「種類」セレクタに出す名前。**`Record<ShapeToolMode, string>` なので、
@@ -22,6 +23,7 @@ export type ShapeToolMode =
  */
 const MODE_LABELS: Record<ShapeToolMode, string> = {
   line: '直線・折れ線',
+  doubleLine: 'ダブルライン',
   rect: '四角形',
   roundRect: '角丸四角形',
   ngon: '正多角形',
@@ -67,6 +69,8 @@ export class ShapeTool implements Tool {
   cornerRadius = 200;
   /** 正多角形モード: 辺の数 */
   sides = 6;
+  /** ダブルラインモード: 2 本の間隔 (mm) */
+  lineWidth = 200;
   /** 円モード: 円か円弧か */
   arcMode: 'circle' | 'arc' = 'circle';
   /** 文字モード */
@@ -122,6 +126,7 @@ export class ShapeTool implements Tool {
       case 'arc':
         return this.arcMode === 'arc' ? 3 : 2;
       case 'line':
+      case 'doubleLine':
       case 'rect':
       case 'roundRect':
       case 'ngon':
@@ -138,6 +143,9 @@ export class ShapeTool implements Tool {
     switch (this.mode) {
       case 'line':
         return this.chain ? Infinity : 2;
+      // ダブルラインは常に連続。Enter / ダブルクリックで終える
+      case 'doubleLine':
+        return Infinity;
       // 四角形・角丸は対角の 2 点、正多角形と楕円は中心と外接円の 1 点。
       // 曲線は Enter / ダブルクリックで終える
       case 'rect':
@@ -181,16 +189,58 @@ export class ShapeTool implements Tool {
   }
 
   private commit(editor: Editor): void {
-    const shape = this.build(editor);
+    const shapes = this.build(editor);
     this.reset(editor);
-    if (!shape) return;
+    if (shapes.length === 0) return;
     const store = editor.store;
+    // **1 コミットにまとめる。** ダブルラインは 2 本の図形になるので、
+    // 別々に置くと undo が 2 回要る
     store.commit(() => {
-      store.scene.shapes[shape.id] = shape;
+      for (const shape of shapes) store.scene.shapes[shape.id] = shape;
     });
   }
 
-  private build(editor: Editor): Shape | null {
+  /**
+   * いまの点で置くもの。**0 個・1 個・2 個のいずれか。**
+   * ダブルラインだけが 2 本の図形になる（1 つの実体としては持たない）。
+   */
+  private build(editor: Editor): Shape[] {
+    if (this.mode !== 'doubleLine') {
+      const one = this.buildOne(editor);
+      return one ? [one] : [];
+    }
+    const unique = dedupePoints(this.points);
+    if (unique.length < 2) return [];
+    const half = this.lineWidth / 2;
+    const out: Shape[] = [];
+    for (const side of [half, -half]) {
+      const points = offsetPolyline(unique, side, this.closed);
+      // **退化したら置かない。** `offsetPolyline` は自己交差を除去せず
+      // null を返して諦める造りなので、片側だけ出すと figure が壊れる
+      if (!points) return [];
+      out.push({
+        id: newId('s'),
+        shape: 'polyline',
+        layerId: this.newLayer(editor),
+        levelId: editor.store.scene.activeLevelId,
+        attrs: defaultAttrs(),
+        points,
+        closed: this.closed,
+      });
+    }
+    return out;
+  }
+
+  /** 新しく置く図形の画層 */
+  private newLayer(editor: Editor): LayerId {
+    return resolveNewLayer(
+      editor.store.scene.layers,
+      editor.store.settings.currentLayerId,
+      SHAPE_GEOMETRY[shapeKindOf(this.mode, this.arcMode)].defaultLayer,
+    );
+  }
+
+  private buildOne(editor: Editor): Shape | null {
     const pts = this.points;
     const layerId = resolveNewLayer(
       editor.store.scene.layers,
@@ -212,6 +262,9 @@ export class ShapeTool implements Tool {
       }
       // 対角 2 点から 4 隅。**専用の型は作らない**——`polyline.closed` が
       // 「矩形や多角形は closed: true で表す」と宣言済み（core/shapes.ts）
+      // 2 本の図形になるので `build` が受け持つ。ここでは作らない
+      case 'doubleLine':
+        return null;
       case 'rect': {
         const points = rectFromDiagonal(pts[0], pts[1]);
         return points === null
@@ -353,6 +406,20 @@ export class ShapeTool implements Tool {
             : []),
           { kind: 'note', text: 'Enter / ダブルクリックで終了' },
         ];
+      case 'doubleLine':
+        return [
+          {
+            kind: 'number',
+            label: '間隔',
+            value: this.lineWidth,
+            step: 50,
+            min: 1,
+            suffix: 'mm',
+            onChange: (v: number) => void (this.lineWidth = Math.max(1, v)),
+          },
+          { kind: 'toggle', label: '閉じる', value: this.closed, onChange: (v) => void (this.closed = v) },
+          { kind: 'note', text: '中心線を順にクリック / Enter・ダブルクリックで終了' },
+        ];
       case 'rect':
         return [{ kind: 'note', text: '対角の 2 点をクリック' }];
       case 'roundRect':
@@ -434,24 +501,24 @@ export class ShapeTool implements Tool {
     if (this.points.length === 0) return;
 
     // 確定済みの点 + 現在のカーソル位置で仮の図形を組み、同じ描画経路で出す
-    const preview = this.previewShape(editor);
-    if (!preview) return;
-    const layer = getLayer(editor.store.scene.layers, preview.layerId, LAYER_IDS.shape);
-    drawPrimitives(
-      frame,
-      SHAPE_GEOMETRY[preview.shape].primitives(editor.store.scene, preview as never, editor.store.scene.standard),
-      layer,
-      'rgba(37, 99, 235, 0.9)',
-    );
+    for (const preview of this.previewShapes(editor)) {
+      const layer = getLayer(editor.store.scene.layers, preview.layerId, LAYER_IDS.shape);
+      drawPrimitives(
+        frame,
+        SHAPE_GEOMETRY[preview.shape].primitives(editor.store.scene, preview as never, editor.store.scene.standard),
+        layer,
+        'rgba(37, 99, 235, 0.9)',
+      );
+    }
   }
 
-  private previewShape(editor: Editor): Shape | null {
+  private previewShapes(editor: Editor): Shape[] {
     const cursor = editor.lastSnap?.point ?? editor.pointerWorld();
     const saved = this.points;
     this.points = [...saved, cursor];
     try {
       // 点が足りないモードはプレビューを出さない
-      if (this.points.length < Math.min(this.requiredPoints, this.previewPoints)) return null;
+      if (this.points.length < Math.min(this.requiredPoints, this.previewPoints)) return [];
       return this.build(editor);
     } finally {
       this.points = saved;
@@ -472,6 +539,10 @@ export class ShapeTool implements Tool {
         return ['クリックで円弧の中心を指定', 'クリックで始点を指定', 'クリックで終点を指定（反時計回り）'][
           this.points.length
         ]!;
+      case 'doubleLine':
+        return this.points.length === 0
+          ? `クリックで中心線の始点を指定（間隔 ${this.lineWidth}mm）`
+          : 'クリックで次の点 / Enter・ダブルクリックで終了';
       case 'rect':
       case 'roundRect':
       case 'ellipse':
@@ -502,6 +573,7 @@ function shapeKindOf(mode: ShapeToolMode, arcMode: 'circle' | 'arc'): Shape['sha
       return 'line';
     case 'rect':
     case 'spline':
+    case 'doubleLine':
       return 'polyline';
     case 'roundRect':
       return 'roundRect';

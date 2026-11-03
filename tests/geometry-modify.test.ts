@@ -304,3 +304,29 @@ test('辺の数は 3 未満にならない', async () => {
   assert.equal(regularPolygonPoints(vec(0, 0), 1000, 2, 0).length, 3);
   assert.equal(regularPolygonPoints(vec(0, 0), 1000, 0, 0).length, 3);
 });
+
+/**
+ * ダブルラインは**1 つの実体として持たない。** 中心線の両側にオフセットした
+ * 2 本の折れ線として置く。幅を後から変えたくなったら、そのとき種別にする。
+ */
+test('ダブルラインは中心線の両側に同じ距離だけ出る', async () => {
+  const { offsetPolyline } = await import('../src/core/geometry.ts');
+  const center = [vec(0, 0), vec(3000, 0)];
+  const left = offsetPolyline(center, 100, false)!;
+  const right = offsetPolyline(center, -100, false)!;
+
+  assert.ok(left && right, 'どちらかが出ていない');
+  for (let i = 0; i < center.length; i++) {
+    assert.ok(Math.abs(left[i].y - 100) < 1e-6, `左が ${left[i].y}`);
+    assert.ok(Math.abs(right[i].y + 100) < 1e-6, `右が ${right[i].y}`);
+    // 中心線は 2 本のちょうど真ん中
+    assert.ok(Math.abs((left[i].y + right[i].y) / 2 - center[i].y) < 1e-6, '真ん中からずれている');
+  }
+});
+
+test('退化した中心線ではダブルラインを置かない', async () => {
+  const { offsetPolyline } = await import('../src/core/geometry.ts');
+  // 同じ点が続くと、オフセットは null を返して諦める
+  assert.equal(offsetPolyline([vec(0, 0), vec(0, 0)], 100, false), null);
+  assert.equal(offsetPolyline([vec(0, 0)], 100, false), null);
+});

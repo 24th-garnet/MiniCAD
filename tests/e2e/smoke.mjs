@@ -311,6 +311,36 @@ async function run() {
     },
   );
 
+  // **1 つの実体としては持たない。** 2 本の折れ線として置く
+  let shapesBeforeDouble = 0;
+  await step(
+    'ダブルラインは 2 本の折れ線になり、undo 1 回で両方戻る',
+    async () => {
+      shapesBeforeDouble = (await state()).shapes;
+      await page.evaluate(() => {
+        const t = window.minicad.editorInstance.tool;
+        t.options().find((f) => f.label === '種類').onChange('doubleLine');
+        t.options().find((f) => f.label === '間隔').onChange(300);
+      });
+      await sleep(150);
+      await clickWorld(1000, 5000);
+      await clickWorld(3000, 5000);
+      await clickWorld(3000, 6500);
+      await page.keyboard.press('Enter');
+      await sleep(300);
+    },
+    (s) => assert.equal(s.shapes, shapesBeforeDouble + 2, `2 本にならない (${s.shapes - shapesBeforeDouble})`),
+  );
+
+  await step(
+    'ダブルラインは undo 1 回で両方消える',
+    async () => {
+      await page.keyboard.press('Meta+z');
+      await sleep(300);
+    },
+    (s) => assert.equal(s.shapes, shapesBeforeDouble, '1 回の undo で戻らない'),
+  );
+
   await step(
     '作図は undo で戻る',
     async () => {
