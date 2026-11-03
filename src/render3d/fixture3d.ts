@@ -1,4 +1,7 @@
-import { FIXTURE_SPECS, outline, STEP_DEPTH, toWorld, verticalRange, type Fixture, type FixtureKind } from '../core/fixture.ts';
+import {
+  FIXTURE_SPECS, isStairKind, outline, stairTreads, toWorld, verticalRange,
+  type Fixture, type FixtureKind,
+} from '../core/fixture.ts';
 import { isSnappable } from '../core/entity.ts';
 import { levelOf, type Level } from '../core/level.ts';
 import { vec, type Vec } from '../core/geometry.ts';
@@ -37,21 +40,21 @@ const structural: SolidBuilder = (f, level, src, out) => {
  * 踏面の数は平面の記号（`stepGlyph`）と同じ式で決めるので、**2D の段板の本数と
  * 3D の段数が必ず一致する**。
  */
+/**
+ * 階段。**踏面の形は平面の記号と同じ `stairTreads` から引く。**
+ *
+ * 以前は段数の式が平面と 3D に 1 つずつあり、片方を直すと図と立体がずれた。
+ * コの字・L 字・回り段は踏面が矩形ですらないので、式の二重管理はもう無理。
+ */
 const steps: SolidBuilder = (f, level, src, out) => {
+  if (!isStairKind(f.kind)) return;
   const { z0, z1 } = verticalRange(f, level);
-  const count = Math.max(2, Math.round(f.size.h / STEP_DEPTH));
-  const rise = (z1 - z0) / count;
-  for (let i = 0; i < count; i++) {
-    const y0 = -f.size.h / 2 + (f.size.h * i) / count;
-    const y1 = -f.size.h / 2 + (f.size.h * (i + 1)) / count;
-    const poly = [
-      toWorld(f, vec(-f.size.w / 2, y0)),
-      toWorld(f, vec(f.size.w / 2, y0)),
-      toWorld(f, vec(f.size.w / 2, y1)),
-      toWorld(f, vec(-f.size.w / 2, y1)),
-    ];
+  const treads = stairTreads(f.kind, f.size).treads;
+  const rise = (z1 - z0) / treads.length;
+  treads.forEach((tread, i) => {
+    const poly = tread.poly.map((p) => toWorld(f, p));
     extrudePrism(poly, z0, z0 + rise * (i + 1), theme.furniture3d, 'furniture', src, out);
-  }
+  });
 };
 
 /**
@@ -95,6 +98,9 @@ export const FIXTURE_SOLIDS: Record<FixtureKind, SolidBuilder> = {
   roundColumn: structural,
   beam: structural,
   stair: steps,
+  stairU: steps,
+  stairL: steps,
+  stairWinder: steps,
   slope: wedge,
   void: nothing,
   // 天窓は屋根の穴。この図面に屋根は無いので、3D には何も出ない

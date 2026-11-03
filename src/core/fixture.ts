@@ -1,5 +1,5 @@
 import type { Attrs } from './attrs.ts';
-import { add, rotate, vec, type Vec } from './geometry.ts';
+import { add, rotate, signedArea, vec, type Vec } from './geometry.ts';
 import type { Id } from './id.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import type { Level } from './level.ts';
@@ -28,7 +28,9 @@ import { ALL_USES, type Use } from './use.ts';
  * `Record<FixtureKind, …>` なので、種別を足して書き忘れれば型検査が止まる。
  */
 export const FIXTURE_KINDS = [
-  'column', 'roundColumn', 'beam', 'stair', 'slope', 'void', 'skylight',
+  'column', 'roundColumn', 'beam',
+  'stair', 'stairU', 'stairL', 'stairWinder',
+  'slope', 'void', 'skylight',
 ] as const;
 
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
@@ -123,6 +125,20 @@ const circle = (size: { w: number; h: number }): Vec[] => {
   return out;
 };
 
+/**
+ * L 形の外形。下の走り（左脚）を上がって、上の走り（上辺）へ曲がる。
+ * 脚の幅は短いほうの辺の半分。
+ */
+const lOutline = (size: { w: number; h: number }): Vec[] => {
+  const hw = size.w / 2;
+  const hh = size.h / 2;
+  const leg = Math.min(size.w, size.h) / 2;
+  return [
+    vec(-hw, -hh), vec(-hw + leg, -hh), vec(-hw + leg, hh - leg),
+    vec(hw, hh - leg), vec(hw, hh), vec(-hw, hh),
+  ];
+};
+
 /** 中を斜めに横切る 2 本。JIS の吹抜・PS の表し方 */
 function crossGlyph(f: Fixture): Primitive[] {
   const p = outline(f);
@@ -134,31 +150,185 @@ function crossGlyph(f: Fixture): Primitive[] {
   return [{ kind: 'segments', segments }];
 }
 
-/** 段板。長手方向に等間隔で引く */
+/**
+ * 段板と上り勾配線。**形は `stairTreads` 1 箇所から引く。**
+ *
+ * 上り方向の矢印は、踏面の重心をつないだ折れ線で描く。
+ * まっすぐな階段では真ん中を通る 1 本になり、コの字や回り段では
+ * **実際に歩く道筋**になる——向きを種別ごとに書き分けずに済む。
+ */
 function stepGlyph(f: Fixture): Primitive[] {
-  const steps = Math.max(2, Math.round(f.size.h / STEP_DEPTH));
+  if (!isStairKind(f.kind)) return [];
+  const { treads, guides } = stairTreads(f.kind, f.size);
+  const at = (p: Vec): Vec => toWorld(f, p);
   const segments: Segment[] = [];
-  for (let i = 1; i < steps; i++) {
-    const y = -f.size.h / 2 + (f.size.h * i) / steps;
+  for (const t of treads) if (t.riser) segments.push({ a: at(t.riser[0]), b: at(t.riser[1]) });
+  for (const g of guides) segments.push({ a: at(g[0]), b: at(g[1]) });
+
+  const path = treads.map((t) => at(centroid(t.poly)));
+  for (let i = 1; i < path.length; i++) segments.push({ a: path[i - 1], b: path[i] });
+
+  // 矢印の頭。最後の 1 歩の向きに開く
+  const tip = path[path.length - 1];
+  const prev = path[path.length - 2] ?? path[0];
+  const dir = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+  const wing = Math.min(f.size.w, f.size.h) * 0.12;
+  for (const spread of [Math.PI * 0.8, -Math.PI * 0.8]) {
     segments.push({
-      a: toWorld(f, vec(-f.size.w / 2, y)),
-      b: toWorld(f, vec(f.size.w / 2, y)),
+      a: tip,
+      b: vec(tip.x + Math.cos(dir + spread) * wing, tip.y + Math.sin(dir + spread) * wing),
     });
   }
-  // 上り方向の矢印。足元から上階へ
-  const tipY = f.size.h / 2 - STEP_DEPTH * 0.4;
-  const tip = toWorld(f, vec(0, tipY));
-  const wing = Math.min(f.size.w, f.size.h) * 0.12;
-  segments.push(
-    { a: toWorld(f, vec(0, -f.size.h / 2 + STEP_DEPTH * 0.4)), b: tip },
-    { a: tip, b: toWorld(f, vec(-wing, tipY - wing)) },
-    { a: tip, b: toWorld(f, vec(wing, tipY - wing)) },
-  );
   return [{ kind: 'segments', segments }];
 }
 
+/** 多角形の重心。段の真ん中を拾うだけなので頂点の平均で足りる */
+const centroid = (poly: Vec[]): Vec => ({
+  x: poly.reduce((s, p) => s + p.x, 0) / poly.length,
+  y: poly.reduce((s, p) => s + p.y, 0) / poly.length,
+});
+
 /** 段 1 つの奥行 (mm)。蹴上 180 / 踏面 250 の普通の階段 */
 export const STEP_DEPTH = 250;
+
+/** 段 1 つ。踏面の輪郭と、平面に引く段鼻の線 */
+export interface Tread {
+  /** 踏面の輪郭。ローカル座標（中心が原点）、反時計回り */
+  poly: Vec[];
+  /** 段鼻の線。1 段目は外形と重なるので持たない */
+  riser: [Vec, Vec] | null;
+}
+
+export interface StairPlan {
+  /** 下から上へ並ぶ段 */
+  treads: Tread[];
+  /** 段鼻ではない補助線。コの字の 2 つの流れの間の仕切りなど */
+  guides: [Vec, Vec][];
+}
+
+export const STAIR_KINDS = ['stair', 'stairU', 'stairL', 'stairWinder'] as const;
+
+export type StairKind = (typeof STAIR_KINDS)[number];
+
+const STAIR_KIND_SET: ReadonlySet<string> = new Set<string>(STAIR_KINDS);
+
+export const isStairKind = (kind: FixtureKind): kind is StairKind => STAIR_KIND_SET.has(kind);
+
+/** 走り 1 本の段数。段が 1 つしかない階段は階段に見えないので 2 を下限にする */
+const treadCount = (run: number): number => Math.max(2, Math.round(run / STEP_DEPTH));
+
+/** 反時計回りの矩形。向きを呼ぶ側に気にさせない */
+const ccwRect = (xa: number, xb: number, ya: number, yb: number): Vec[] => {
+  const [x0, x1] = xa < xb ? [xa, xb] : [xb, xa];
+  const [y0, y1] = ya < yb ? [ya, yb] : [yb, ya];
+  return [vec(x0, y0), vec(x1, y0), vec(x1, y1), vec(x0, y1)];
+};
+
+/**
+ * まっすぐな走り。`y0` から `y1` へ進む（降りる向きもある）。
+ * 1 段目の段鼻は、呼ぶ側が「走りの始まりかどうか」で決める。
+ */
+function runY(x0: number, x1: number, y0: number, y1: number, first: boolean): Tread[] {
+  const n = treadCount(Math.abs(y1 - y0));
+  const out: Tread[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = y0 + ((y1 - y0) * i) / n;
+    const b = y0 + ((y1 - y0) * (i + 1)) / n;
+    out.push({
+      poly: ccwRect(x0, x1, a, b),
+      riser: first && i === 0 ? null : [vec(x0, a), vec(x1, a)],
+    });
+  }
+  return out;
+}
+
+/** まっすぐな走り。`x0` から `x1` へ進む */
+function runX(y0: number, y1: number, x0: number, x1: number, first: boolean): Tread[] {
+  const n = treadCount(Math.abs(x1 - x0));
+  const out: Tread[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = x0 + ((x1 - x0) * i) / n;
+    const b = x0 + ((x1 - x0) * (i + 1)) / n;
+    out.push({
+      poly: ccwRect(a, b, y0, y1),
+      riser: first && i === 0 ? null : [vec(a, y0), vec(a, y1)],
+    });
+  }
+  return out;
+}
+
+/**
+ * 回り段。角の正方形を、内側の角を軸に 3 枚へ扇形に割る。
+ *
+ * `pivot` は内角、`corner` は外角。平面でも 3D でも同じ 3 枚になる。
+ */
+function winderTreads(pivot: Vec, corner: Vec, leg: number): Tread[] {
+  // 内角から外側の 2 辺へ向かう 2 方向。その間を 3 等分する
+  const a0 = Math.atan2(0, Math.sign(corner.x - pivot.x));
+  const a1 = Math.atan2(Math.sign(corner.y - pivot.y), 0);
+  const step = (a1 - a0) / 3;
+  const hit = (angle: number): { p: Vec; onX: boolean } => {
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    const tx = Math.abs(dx) < 1e-9 ? Infinity : leg / Math.abs(dx);
+    const ty = Math.abs(dy) < 1e-9 ? Infinity : leg / Math.abs(dy);
+    const t = Math.min(tx, ty);
+    return { p: vec(pivot.x + dx * t, pivot.y + dy * t), onX: tx <= ty };
+  };
+  const rays = [0, 1, 2, 3].map((i) => hit(a0 + step * i));
+  const out: Tread[] = [];
+  for (let i = 0; i < 3; i++) {
+    const poly = [pivot, rays[i].p];
+    // 2 本のレイが別の辺に当たっているなら、間に外角が挟まる
+    if (rays[i].onX !== rays[i + 1].onX) poly.push(corner);
+    poly.push(rays[i + 1].p);
+    out.push({ poly: ccw(poly), riser: [pivot, rays[i].p] });
+  }
+  return out;
+}
+
+/** 反時計回りに揃える。踏面は 3D の押し出しが向きを前提にしている */
+const ccw = (poly: Vec[]): Vec[] => (signedArea(poly) < 0 ? [...poly].reverse() : poly);
+
+/**
+ * 階段の段。**平面の段板と 3D の段がここ 1 箇所から出る。**
+ *
+ * 以前は段数の式が平面と 3D に 1 つずつあり、片方を直すと図と立体がずれた。
+ * 種別を 3 つ足すにあたって、形そのものを 1 箇所に寄せた。
+ */
+export function stairTreads(kind: StairKind, size: { w: number; h: number }): StairPlan {
+  const hw = size.w / 2;
+  const hh = size.h / 2;
+
+  if (kind === 'stair') {
+    return { treads: runY(-hw, hw, -hh, hh, true), guides: [] };
+  }
+
+  if (kind === 'stairU') {
+    // **左右の流れの間に空間を作らない**（奥谷さんの指摘）。
+    // 踊り場の奥行は流れ 1 本の幅と同じで、180 度まわるのにちょうど足りる
+    const landing = hw;
+    const turn = hh - landing;
+    const up = runY(-hw, 0, -hh, turn, true);
+    const flat: Tread = { poly: ccwRect(-hw, hw, turn, hh), riser: [vec(-hw, turn), vec(0, turn)] };
+    const down = runY(0, hw, turn, -hh, false);
+    return {
+      treads: [...up, flat, ...down],
+      guides: [[vec(0, -hh), vec(0, turn)]],
+    };
+  }
+
+  // L 字と回り段は同じ L 形。角を踊り場 1 枚にするか、3 枚の回り段にするかが違う
+  const leg = Math.min(size.w, size.h) / 2;
+  const corner = vec(-hw, hh);
+  const pivot = vec(-hw + leg, hh - leg);
+  const up = runY(-hw, -hw + leg, -hh, hh - leg, true);
+  const turn: Tread[] = kind === 'stairWinder'
+    ? winderTreads(pivot, corner, leg)
+    : [{ poly: ccwRect(-hw, pivot.x, pivot.y, hh), riser: [vec(-hw, pivot.y), vec(pivot.x, pivot.y)] }];
+  const across = runX(hh - leg, hh, -hw + leg, hw, false);
+  return { treads: [...up, ...turn, ...across], guides: [] };
+}
 
 /** 梁のせい (mm)。天井からこれだけ下がる */
 const BEAM_DEPTH = 400;
@@ -218,6 +388,54 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: rect,
+    glyph: stepGlyph,
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    uses: ['住'],
+  },
+  /** コの字階段（COOHOM の U 字型階段）。**左右の流れの間に空間を作らない** */
+  stairU: {
+    label: '階段(コの字)',
+    defaultLayer: LAYER_IDS.furniture,
+    defaultSize: { w: 1800, h: 2700 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: (level) => level.wallHeight,
+    localOutline: rect,
+    glyph: stepGlyph,
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    uses: ['住'],
+  },
+  /** L 字階段。角は踊り場 1 枚 */
+  stairL: {
+    label: '階段(L字)',
+    defaultLayer: LAYER_IDS.furniture,
+    defaultSize: { w: 2400, h: 2400 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: (level) => level.wallHeight,
+    localOutline: lOutline,
+    glyph: stepGlyph,
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    uses: ['住'],
+  },
+  /** 回り段。L 字の角を 3 枚の扇形に割る */
+  stairWinder: {
+    label: '階段(回り段)',
+    defaultLayer: LAYER_IDS.furniture,
+    defaultSize: { w: 2400, h: 2400 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: (level) => level.wallHeight,
+    localOutline: lOutline,
     glyph: stepGlyph,
     solid: true,
     floorHole: false,

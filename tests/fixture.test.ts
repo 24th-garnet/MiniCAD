@@ -226,3 +226,36 @@ test('天窓は床面積を減らさない。吹抜は減らす', async () => {
   // **天窓が抜くのは屋根。** 床は 1mm² も減らない
   assert.equal(areaWith('skylight'), plain, '天窓で床面積が減った');
 });
+
+test('階段の踏面は外形をちょうど埋める（隙間も重なりも無い）', async () => {
+  const { STAIR_KINDS, stairTreads, FIXTURE_SPECS } = await import('../src/core/fixture.ts');
+  for (const kind of STAIR_KINDS) {
+    const size = FIXTURE_SPECS[kind].defaultSize;
+    const { treads } = stairTreads(kind, size);
+    const covered = treads.reduce((sum, t) => sum + Math.abs(signedArea(t.poly)), 0);
+    const whole = Math.abs(signedArea(FIXTURE_SPECS[kind].localOutline(size)));
+    // **コの字の左右の流れの間に空間を作らない**（奥谷さんの指摘）。
+    // 隙間があれば足りず、重なれば超える
+    assert.ok(Math.abs(covered - whole) < 1, `${kind}: 踏面 ${covered} に対し外形 ${whole}`);
+  }
+});
+
+test('階段の踏面はすべて反時計回り', async () => {
+  const { STAIR_KINDS, stairTreads, FIXTURE_SPECS } = await import('../src/core/fixture.ts');
+  for (const kind of STAIR_KINDS) {
+    for (const t of stairTreads(kind, FIXTURE_SPECS[kind].defaultSize).treads) {
+      assert.ok(signedArea(t.poly) > 0, `${kind} に時計回りの踏面がある`);
+    }
+  }
+});
+
+test('回り段は角が 3 枚、L字は踊り場 1 枚', async () => {
+  const { stairTreads, FIXTURE_SPECS } = await import('../src/core/fixture.ts');
+  const size = FIXTURE_SPECS.stairL.defaultSize;
+  const straightIn = (kind: 'stairL' | 'stairWinder'): number =>
+    // 4 角形でないものが回り段の扇形
+    stairTreads(kind, size).treads.filter((t) => t.poly.length !== 4).length;
+  assert.equal(straightIn('stairL'), 0, 'L字に扇形が混じっている');
+  assert.equal(stairTreads('stairWinder', size).treads.length
+    - stairTreads('stairL', size).treads.length, 2, '回り段が踊り場より 2 枚多くない');
+});

@@ -93,3 +93,18 @@ test('柱と梁は壁と同じ色で出る（躯体だから）', () => {
     for (const f of facesOf(kind)) assert.equal(f.bucket, 'wall', `${kind} の層が違う`);
   }
 });
+
+test('どの階段も、平面の段鼻の数と 3D の段数が合う', async () => {
+  const { STAIR_KINDS, stairTreads, FIXTURE_SPECS } = await import('../src/core/fixture.ts');
+  for (const kind of STAIR_KINDS) {
+    const { treads, guides } = stairTreads(kind, FIXTURE_SPECS[kind].defaultSize);
+    const faces = facesOf(kind);
+    // 踏面は角柱 1 つ。n 角形なら側面 n 枚 + 上下 2 枚
+    const expected = treads.reduce((sum, t) => sum + t.poly.length + 2, 0);
+    assert.equal(faces.length, expected, `${kind}: 段数が合わない (${faces.length} 枚)`);
+    // 段鼻の線は 1 段目を除いた数。補助線はそれとは別
+    const risers = treads.filter((t) => t.riser).length;
+    assert.equal(risers, treads.length - 1, `${kind}: 段鼻の数が段数 − 1 でない`);
+    assert.ok(guides.length === (kind === 'stairU' ? 1 : 0), `${kind}: 補助線の数が違う`);
+  }
+});
