@@ -8,6 +8,7 @@ import {
   type WeightRole,
 } from '../core/standard.ts';
 import { createWallDimensions } from '../core/dimension.ts';
+import { OPENING_SYMBOLS } from '../core/opening.ts';
 import { defaultSheet, type Sheet } from '../core/sheet.ts';
 import type { BlockDef } from '../core/block.ts';
 import { BLOCK_PRESETS } from '../core/blockPresets.ts';
@@ -37,10 +38,19 @@ import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../co
  * `levelId` の無い実体は**既定の階に乗せる**だけで済む。
  * `DEFAULT_LEVEL_ID` が固定値なのはこのため。
  */
-export const FILE_VERSION = 11;
+export const FILE_VERSION = 12;
 
 /** 寸法が実体になる前のファイル。読み込み時に全壁ぶんの寸法を作る */
 const DIMENSIONS_BECAME_ENTITIES = 4;
+
+/**
+ * 枚数が引違い窓以外でも記号に効くようになる前のファイル。
+ *
+ * それまでツールは種別を問わず 2 を書いていて、引違い窓以外では**誰も読まない値**
+ * だった。そのまま読むと、片開き戸が 2 枚に、折戸が 2 山から 1 山に変わる
+ * ——保存した図が開いた瞬間に変わる。種別ごとの既定値に寄せて防ぐ。
+ */
+const LEAVES_BECAME_REAL = 12;
 
 export interface SceneFile {
   format: 'minicad';
@@ -164,6 +174,7 @@ export function deserialize(raw: unknown): Scene {
     if (shape) scene.shapes[id] = shape;
   }
   migrateDimensions(scene, obj);
+  migrateLeaves(scene, obj);
 
   for (const [id, c] of Object.entries(table<Record<string, unknown>>('constraints'))) {
     if (!isConstraintKind(c?.kind)) continue;
@@ -470,6 +481,23 @@ function migrateDimensions(scene: Scene, raw: Record<string, unknown>): void {
   const version = typeof raw.version === 'number' ? raw.version : 1;
   if (version >= DIMENSIONS_BECAME_ENTITIES) return;
   for (const dim of createWallDimensions(scene)) scene.shapes[dim.id] = dim;
+}
+
+/**
+ * 枚数を読まなかった頃のファイルの枚数を、種別ごとの既定値に寄せる。
+ *
+ * `migrateDimensions` と同じく MiniCAD が書いたファイルだけが対象。
+ * 引違い窓は当時から枚数を読んでいたので触らない——**そこだけは
+ * 利用者が選んだ値**で、寄せると 4 枚建てが 2 枚に戻ってしまう。
+ */
+function migrateLeaves(scene: Scene, raw: Record<string, unknown>): void {
+  if (raw.format !== 'minicad') return;
+  const version = typeof raw.version === 'number' ? raw.version : 1;
+  if (version >= LEAVES_BECAME_REAL) return;
+  for (const opening of Object.values(scene.openings)) {
+    if (opening.kind === 'windowSliding') continue;
+    opening.leaves = OPENING_SYMBOLS[opening.kind].defaultLeaves;
+  }
 }
 
 /** 既定の画層を土台に、ファイル側の値で上書きする。知らない画層は追加で受け入れる */

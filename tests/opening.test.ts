@@ -394,11 +394,42 @@ test('引違いの召し合わせは枚数で増える', async () => {
   assert.equal(ticksOf(1), 0, '1 枚なら召し合わせは無い');
 });
 
-test('枚数が記号に効く種別だけが使うと言っている', async () => {
+/**
+ * `usesLeaves` は「枚数の欄を出すか」の札で、欄を出すのに記号が変わらなければ
+ * **直しても図面が変わらない欄**になる。逆に、記号が枚数を読むのに札が false だと
+ * 欄が出ず、使う人は枚数を選べない。表を読み上げるのではなく、
+ * **実際に描かせて**突き合わせる。
+ */
+test('枚数の欄を出す種別は、枚数で記号が実際に変わる', async () => {
+  const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
+  const { openingFrame } = await import('../src/core/shape.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(8000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+
+  for (const kind of OPENING_KINDS) {
+    const base = makeOpening(wall.id, { kind, offset: 4000, width: 2400 });
+    const frame = openingFrame(scene, base)!;
+    const draw = (leaves: number) =>
+      JSON.stringify(OPENING_SYMBOLS[kind].primitives(frame, { ...base, leaves }));
+    const changes = draw(1) !== draw(3);
+    assert.equal(
+      OPENING_SYMBOLS[kind].usesLeaves,
+      changes,
+      `${kind}: 枚数で記号が${changes ? '変わる' : '変わらない'}のに `
+        + `usesLeaves は ${OPENING_SYMBOLS[kind].usesLeaves}`,
+    );
+  }
+});
+
+/** 置いた直後の図が正しいこと。片引きを 2 枚、折戸を 2 枚で置くと図が違う */
+test('種別ごとの既定枚数が、1 以上 6 以下の整数', async () => {
   const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
   for (const kind of OPENING_KINDS) {
-    const uses = OPENING_SYMBOLS[kind].usesLeaves;
-    assert.equal(uses, kind === 'windowSliding', `${kind} の usesLeaves が ${uses}`);
+    const n = OPENING_SYMBOLS[kind].defaultLeaves;
+    assert.ok(Number.isInteger(n) && n >= 1 && n <= 6, `${kind} の既定枚数が ${n}`);
   }
 });
 
@@ -439,4 +470,90 @@ test('壊れた枚数は 1 以上の整数に丸める', async () => {
   assert.equal(deserialize(raw(-5)).openings.o.leaves, 1);
   assert.equal(deserialize(raw(2.6)).openings.o.leaves, 3);
   assert.equal(deserialize(raw('yon')).openings.o.leaves, 2);
+});
+
+test('開き戸の枚数を増やすと、その数だけ戸と軌跡が並ぶ', async () => {
+  const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
+  const { openingFrame } = await import('../src/core/shape.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(8000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const base = makeOpening(wall.id, { kind: 'door', offset: 4000, width: 2400 });
+  const frame = openingFrame(scene, base)!;
+
+  const arcsOf = (leaves: number): { radius: number }[] =>
+    OPENING_SYMBOLS.door
+      .primitives(frame, { ...base, leaves })
+      .filter((p): p is Extract<typeof p, { kind: 'arc' }> => p.kind === 'arc');
+
+  assert.equal(arcsOf(1).length, 1, '1 枚なら今までどおり 1 本');
+  assert.equal(arcsOf(1)[0].radius, 2400, '1 枚の軌跡は開口いっぱい');
+  assert.equal(arcsOf(3).length, 3, '3 枚なら 3 本');
+  // **等分**。戸 1 枚の幅が軌跡の半径になる
+  for (const arc of arcsOf(3)) assert.equal(Math.round(arc.radius), 800, '3 枚が等分になっていない');
+});
+
+test('両開きの枚数は、突き合わせの左右に割れる', async () => {
+  const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
+  const { openingFrame } = await import('../src/core/shape.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(8000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const base = makeOpening(wall.id, { kind: 'doubleDoor', offset: 4000, width: 2400 });
+  const frame = openingFrame(scene, base)!;
+
+  const centers = (leaves: number): number[] =>
+    OPENING_SYMBOLS.doubleDoor
+      .primitives(frame, { ...base, leaves })
+      .filter((p): p is Extract<typeof p, { kind: 'arc' }> => p.kind === 'arc')
+      .map((p) => Math.round(p.center.x))
+      .sort((x, y) => x - y);
+
+  // 2 枚は両端が吊元。今までと 1 本も変わらない
+  assert.deepEqual(centers(2), [2800, 5200]);
+  // 4 枚は 2 枚ずつ。吊元は左の 2 枚が左寄り、右の 2 枚が右寄りになる
+  assert.deepEqual(centers(4), [2800, 3400, 4600, 5200]);
+});
+
+test('折戸の 4 枚は、枚数を読む前と同じ 2 山のまま', async () => {
+  const { OPENING_SYMBOLS } = await import('../src/core/opening.ts');
+  const { openingFrame } = await import('../src/core/shape.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(8000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const base = makeOpening(wall.id, { kind: 'folding', offset: 4000, width: 1200 });
+  const frame = openingFrame(scene, base)!;
+
+  const pointsOf = (leaves: number): string[] => {
+    const prims = OPENING_SYMBOLS.folding.primitives(frame, { ...base, leaves });
+    const segs = prims.flatMap((p) => (p.kind === 'segments' ? p.segments : []));
+    return [segs[0].a, ...segs.map((s) => s.b)].map((p) => `${Math.round(p.x)},${Math.round(p.y)}`);
+  };
+
+  // 山は開口幅の 1/6 の深さ。枚数を読むようにしても、4 枚の図は動かさない
+  assert.deepEqual(pointsOf(4), ['3400,0', '3700,200', '4000,0', '4300,200', '4600,0']);
+  assert.equal(pointsOf(2).length, 3, '2 枚なら山は 1 つ');
+});
+
+test('枚数を読まなかった頃のファイルは、種別ごとの既定に寄せて開く', () => {
+  const scene = sampleScene();
+  const first = Object.values(scene.openings)[0];
+  scene.openings[first.id] = { ...first, kind: 'door', leaves: 2 };
+  scene.openings.w4 = { ...first, id: 'w4', kind: 'windowSliding', leaves: 4 };
+
+  const file = serialize(scene);
+  // 枚数を読む前のファイルとして読ませる
+  const old = deserialize(JSON.parse(JSON.stringify({ ...file, version: 11 })));
+  assert.equal(old.openings[first.id].leaves, 1, '片開き戸が 2 枚のまま開いた');
+  assert.equal(old.openings.w4.leaves, 4, '引違い窓で選んだ枚数まで寄せてしまった');
+
+  // いまのファイルは触らない
+  const now = deserialize(JSON.parse(JSON.stringify(file)));
+  assert.equal(now.openings[first.id].leaves, 2, '現行版のファイルの枚数を書き換えた');
 });

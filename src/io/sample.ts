@@ -1,6 +1,7 @@
 import { defaultAttrs } from '../core/attrs.ts';
 import { createWallDimensions } from '../core/dimension.ts';
 import { vec } from '../core/geometry.ts';
+import { OPENING_SYMBOLS } from '../core/opening.ts';
 import { LAYER_IDS } from '../core/layer.ts';
 import { addWall, findOrCreateNode } from '../core/ops.ts';
 import { emptyScene, newId, type Opening, type OpeningKind, type Scene } from '../core/types.ts';
@@ -59,7 +60,8 @@ export function sampleScene(): Scene {
       sillHeight: null,
       bay: null,
       designation: '',
-      leaves: 2,
+      // **種別ごとの既定。** 片開き戸に 2 を書くと 2 枚の戸が並んで描かれる
+      leaves: OPENING_SYMBOLS[kind].defaultLeaves,
       height: null,
       layerId: LAYER_IDS.opening,
       attrs: defaultAttrs(),

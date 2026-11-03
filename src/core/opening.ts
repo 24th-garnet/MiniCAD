@@ -33,6 +33,15 @@ export interface OpeningSymbol {
    * 直しても図面が変わらない欄が残り、使う側が何かが壊れたと思う。
    */
   usesLeaves: boolean;
+  /**
+   * 置いたときの枚数。**種別ごとに違う。**
+   *
+   * 片引き戸は 1 枚、引違いは 2 枚、折戸は 4 枚が普通で、
+   * 全部を同じ数で置くと置いた直後の図が間違っている。
+   * 枚数を読まない種別でも、結合の判定（`sameOpening`）が枚数を見るので
+   * 値は要る。そこは従来どおり 2 を書く。
+   */
+  defaultLeaves: number;
   primitives(frame: OpeningFrame, opening: Opening): Primitive[];
 }
 
@@ -52,8 +61,13 @@ const TICK = 0.45;
 /** 戸袋の見付け。壁厚に対する比 */
 const POCKET = 0.3;
 
-/** 折戸の山の深さ。開口幅に対する比 */
-const FOLD = 1 / 6;
+/**
+ * 折戸の山の深さ。**戸 1 枚の幅**に対する比。
+ *
+ * 開口幅に対する比にすると、枚数を増やしたときに山だけが深いままになる。
+ * 4 枚のときに開口幅の 1/6 になる値を選んであるので、既定の見た目は変わらない。
+ */
+const FOLD = 2 / 3;
 
 /** 親子扉の子扉が占める割合 */
 const CHILD = 1 / 3;
@@ -68,8 +82,10 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 800,
     usesFlipX: true,
     usesFlipY: true,
-    usesLeaves: false,
-    primitives: (f, op) => swing(f, op.flipX, op.flipY),
+    // 開き戸(〇枚開き)。**種別を増やさずにここで出す**
+    usesLeaves: true,
+    defaultLeaves: 1,
+    primitives: (f, op) => swingRow(f, op.flipX, op.flipY, op.leaves),
   },
 
   doubleDoor: {
@@ -78,8 +94,9 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1600,
     usesFlipX: false,
     usesFlipY: true,
-    usesLeaves: false,
-    primitives: (f, op) => leaves(f, 0, op.flipY),
+    usesLeaves: true,
+    defaultLeaves: 2,
+    primitives: (f, op) => swingLeaves(f, 0, op.flipY, op.leaves),
   },
 
   // 子扉を 1/3、親扉を 2/3 に割る。flipX でどちら側が子かが入れ替わる
@@ -89,8 +106,10 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1200,
     usesFlipX: true,
     usesFlipY: true,
+    // 親子は 2 枚と決まっている。枚数を選ばせない
     usesLeaves: false,
-    primitives: (f, op) => leaves(f, f.width * (op.flipX ? 0.5 - CHILD : CHILD - 0.5), op.flipY),
+    defaultLeaves: 2,
+    primitives: (f, op) => swingLeaves(f, f.width * (op.flipX ? 0.5 - CHILD : CHILD - 0.5), op.flipY, 2),
   },
 
   slidingDouble: {
@@ -99,10 +118,15 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1650,
     usesFlipX: false,
     usesFlipY: false,
-    usesLeaves: false,
-    primitives: (f) => {
+    // 引き戸(〇枚開き)。4 枚建ては召し合わせが 3 本になる
+    usesLeaves: true,
+    defaultLeaves: 2,
+    primitives: (f, op) => {
       const at = openingAt(f);
-      return [{ kind: 'segments', segments: [{ a: at(-f.width / 2, 0), b: at(f.width / 2, 0) }, meetTick(f)] }];
+      return [{
+        kind: 'segments',
+        segments: [{ a: at(-f.width / 2, 0), b: at(f.width / 2, 0) }, ...meetTicks(f, op.leaves)],
+      }];
     },
   },
 
@@ -113,13 +137,20 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1600,
     usesFlipX: true,
     usesFlipY: false,
-    usesLeaves: false,
+    usesLeaves: true,
+    defaultLeaves: 1,
     primitives: (f, op) => {
       const at = openingAt(f);
       const s = op.flipX ? -1 : 1;
+      const edge = (s * f.width) / 2;
+      // 中央の印は**戸の閉まる側の端**で、枚数とは関係なく常に要る。
+      // 枚数の分かれ目は実線側（戸そのもの）の中に入る
       return [
-        { kind: 'segments', segments: [{ a: at(0, 0), b: at((s * f.width) / 2, 0) }, meetTick(f)] },
-        { kind: 'segments', segments: [{ a: at((-s * f.width) / 2, 0), b: at(0, 0) }], lineType: 'hidden' },
+        {
+          kind: 'segments',
+          segments: [{ a: at(0, 0), b: at(edge, 0) }, meetTick(f), ...meetTicks(subFrame(f, 0, edge), op.leaves)],
+        },
+        { kind: 'segments', segments: [{ a: at(-edge, 0), b: at(0, 0) }], lineType: 'hidden' },
       ];
     },
   },
@@ -131,7 +162,8 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1600,
     usesFlipX: true,
     usesFlipY: false,
-    usesLeaves: false,
+    usesLeaves: true,
+    defaultLeaves: 1,
     primitives: (f, op) => {
       const at = openingAt(f);
       const s = op.flipX ? -1 : 1;
@@ -142,6 +174,8 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
           kind: 'segments',
           segments: [
             { a: at(-edge, 0), b: at(0, 0) },
+            // 戸袋に引き込まれた戸の分かれ目。1 枚なら 1 本も出ない
+            ...meetTicks(subFrame(f, 0, edge), op.leaves),
             { a: at(0, p), b: at(edge, p) },
             { a: at(0, -p), b: at(edge, -p) },
             { a: at(edge, p), b: at(edge, -p) },
@@ -158,12 +192,17 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultWidth: 1200,
     usesFlipX: false,
     usesFlipY: true,
-    usesLeaves: false,
+    // 折れ戸(〇枚開き)。山の数が枚数の半分になる
+    usesLeaves: true,
+    defaultLeaves: 4,
     primitives: (f, op) => {
       const at = openingAt(f);
       const w = f.width;
-      const d = w * FOLD * (op.flipY ? -1 : 1);
-      const points = [at(-w / 2, 0), at(-w / 4, d), at(0, 0), at(w / 4, d), at(w / 2, 0)];
+      const n = leafCount(op.leaves);
+      const d = (w / n) * FOLD * (op.flipY ? -1 : 1);
+      // 戸を等分し、折り目を交互に山と谷にする。4 枚なら今までと同じ 2 山
+      const points = [];
+      for (let i = 0; i <= n; i++) points.push(at(-w / 2 + (w * i) / n, i % 2 === 1 ? d : 0));
       return [{ kind: 'segments', segments: chain(points) }];
     },
   },
@@ -176,6 +215,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     usesFlipX: false,
     usesFlipY: false,
     usesLeaves: false,
+    defaultLeaves: 2,
     primitives: (f) => [{ kind: 'segments', segments: [meetTick(f)] }],
   },
 
@@ -187,6 +227,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     usesFlipX: false,
     usesFlipY: false,
     usesLeaves: false,
+    defaultLeaves: 2,
     primitives: (f) => [{ kind: 'segments', segments: sashes(f) }],
   },
 
@@ -198,6 +239,7 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     usesFlipY: false,
     // 4 枚建てはここで出す。**種別を増やさない**
     usesLeaves: true,
+    defaultLeaves: 2,
     primitives: (f, op) => [{ kind: 'segments', segments: [...sashes(f), ...meetTicks(f, op.leaves)] }],
   },
 };
@@ -263,16 +305,44 @@ function swing(frame: OpeningFrame, flipX: boolean, flipY: boolean): Primitive[]
   ];
 }
 
+/** 枚数を 1 以上の整数に丸める。読み込み側でも丸めているが、計算の前でもう一度 */
+const leafCount = (leaves: number): number => Math.max(1, Math.round(leaves));
+
 /**
- * 突き合わせの 2 枚戸（両開き・親子）。`meet` は突き合わせ位置（開口の中心が 0）。
- * 左右それぞれを 1 枚の片開き戸として `swing` に流すので、
- * 90 度という不変条件も円弧の向きの約束も自動的に守られる。
+ * 片開き戸を枚数ぶん横に並べる。**吊元はすべて同じ側。**
+ *
+ * 突き合わせの両開き（`swingLeaves`）が「両端から中へ」なのに対し、
+ * こちらは「片側から順に」。1 枚なら開口いっぱいの片開き戸そのもので、
+ * 今までの図と 1 本も変わらない。
  */
-function leaves(frame: OpeningFrame, meet: number, flipY: boolean): Primitive[] {
+function swingRow(frame: OpeningFrame, flipX: boolean, flipY: boolean, leaves: number): Primitive[] {
+  const n = leafCount(leaves);
+  if (n < 2) return swing(frame, flipX, flipY);
   const half = frame.width / 2;
+  const out: Primitive[] = [];
+  for (let i = 0; i < n; i++) {
+    const u0 = -half + (frame.width * i) / n;
+    out.push(...swing(subFrame(frame, u0, u0 + frame.width / n), flipX, flipY));
+  }
+  return out;
+}
+
+/**
+ * 突き合わせの戸（両開き・親子）。`meet` は突き合わせ位置（開口の中心が 0）。
+ * 左右それぞれを `swingRow` に流すので、90 度という不変条件も
+ * 円弧の向きの約束も自動的に守られる。
+ *
+ * 枚数は**幅の比で左右に割る**。両開き 4 枚なら 2 枚ずつ、
+ * 親子は 2 枚固定なので今までどおり 1 枚ずつになる。
+ */
+function swingLeaves(frame: OpeningFrame, meet: number, flipY: boolean, leaves: number): Primitive[] {
+  const n = leafCount(leaves);
+  const half = frame.width / 2;
+  if (n < 2) return swing(frame, false, flipY);
+  const left = Math.min(n - 1, Math.max(1, Math.round((n * (meet + half)) / frame.width)));
   return [
-    ...swing(subFrame(frame, -half, meet), false, flipY),
-    ...swing(subFrame(frame, meet, half), true, flipY),
+    ...swingRow(subFrame(frame, -half, meet), false, flipY, left),
+    ...swingRow(subFrame(frame, meet, half), true, flipY, n - left),
   ];
 }
 

@@ -41,6 +41,8 @@ export class OpeningTool implements Tool {
   kind: OpeningKind;
   /** 開口幅 (mm)。種別を変えると既定値に追従する */
   width: number;
+  /** 枚数。種別を変えると既定値に追従する（片引きは 1、折戸は 4） */
+  leaves: number;
   flipX = false;
   flipY = false;
 
@@ -53,6 +55,7 @@ export class OpeningTool implements Tool {
     this.shortcut = shortcut;
     this.kind = openingKindsOf(family)[0];
     this.width = OPENING_SYMBOLS[this.kind].defaultWidth;
+    this.leaves = OPENING_SYMBOLS[this.kind].defaultLeaves;
   }
 
   private get symbol() {
@@ -139,11 +142,11 @@ export class OpeningTool implements Tool {
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
-      sillHeight: null,
+      sillHeight: this.sillHeight,
       bay: this.bay ? { ...this.bay } : null,
-      designation: '',
-      leaves: 2,
-      height: null,
+      designation: this.designation,
+      leaves: this.leaves,
+      height: this.height,
       layerId,
       attrs: defaultAttrs(),
     };
@@ -213,6 +216,17 @@ export class OpeningTool implements Tool {
   /** 出窓・ニッチを付けて置く。パレットの「出窓」が立てる */
   bay: Bay | null = null;
 
+  /**
+   * パレットの品名が決める既定値。**種別を増やさずに品を分ける札。**
+   *
+   * 掃き出し窓と腰窓、勝手口ドアと玄関ドアは、種別も記号も同じで
+   * これらの値だけが違う。欄として持っておけば、パレットは
+   * 「`kind` ＋ この 3 つ」を流し込むだけで 1 品になる。
+   */
+  sillHeight: number | null = null;
+  height: number | null = null;
+  designation = '';
+
   options(): OptionField[] {
     const flips = [
       this.symbol.usesFlipX ? 'X で吊元・引き勝手' : null,
@@ -227,6 +241,7 @@ export class OpeningTool implements Tool {
         onChange: (v: string) => {
           this.kind = v as OpeningKind;
           this.width = this.symbol.defaultWidth;
+          this.leaves = this.symbol.defaultLeaves;
         },
       },
       {
@@ -238,6 +253,19 @@ export class OpeningTool implements Tool {
         onChange: (v: number) => void (this.width = Math.max(100, v)),
       },
     ];
+    // 枚数で記号が変わる種別にだけ出す。出さない種別で出すと、
+    // 直しても図面が変わらない欄が残る
+    if (this.symbol.usesLeaves) {
+      fields.push({
+        kind: 'number',
+        label: '枚数',
+        value: this.leaves,
+        step: 1,
+        min: 1,
+        max: 6,
+        onChange: (v: number) => void (this.leaves = Math.max(1, Math.min(6, Math.round(v)))),
+      });
+    }
     if (this.bay) {
       fields.push(
         {
