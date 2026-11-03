@@ -361,6 +361,8 @@ function mapShapePoints(shape: Shape, f: (p: Vec) => Vec): Shape {
         radius: shape.radius * Math.min(sx, sy),
       };
     }
+    case 'leader':
+      return { ...shape, at: f(shape.at), elbow: f(shape.elbow) };
     case 'text':
       return { ...shape, at: f(shape.at) };
     case 'point':

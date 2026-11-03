@@ -16,6 +16,7 @@ import {
 } from './geometry.ts';
 import type { Attrs } from './attrs.ts';
 import { dimEndPoint, dimensionGeometry, dimensionPrimitives } from './dimension.ts';
+import { leaderGeometry, leaderPrimitives } from './leader.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import type { Primitive, TextAlign } from './primitive.ts';
 import type { Segment } from './shape.ts';
@@ -100,6 +101,23 @@ export interface EllipseShape extends ShapeBase {
   angle: number;
 }
 
+/**
+ * 引出線付き注釈。指す点から引き出して、水平な棚の上に文字を置く。
+ *
+ * **指した先には連動しない。** 寸法の `DimEnd` のような「壁の角に紐づく」
+ * 仕組みは持たせていない（`core/leader.ts` に理由を書いてある）。
+ */
+export interface LeaderShape extends ShapeBase {
+  shape: 'leader';
+  /** 指している点 */
+  at: Vec;
+  /** 引出線の折れ点。ここから水平な棚が伸びる */
+  elbow: Vec;
+  text: string;
+  /** 文字高（紙の上の mm） */
+  height: number;
+}
+
 export interface ArcShape extends ShapeBase {
   shape: 'arc';
   center: Vec;
@@ -161,6 +179,7 @@ export type Shape =
   | RegularPolygonShape
   | RoundRectShape
   | EllipseShape
+  | LeaderShape
   | ArcShape
   | CircleShape
   | TextShape
@@ -439,6 +458,27 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
       center: applyPoint(t, s.center),
       angle: directionAngleAfter(t, s.angle),
     }),
+  },
+
+  leader: {
+    label: '引出線付き注釈',
+    defaultLayer: LAYER_IDS.shape,
+    // 文字と同じく小さいので、線より先に拾う
+    pickPriority: 2,
+    vertices: (scene, s) => {
+      const g = leaderGeometry(s, scene.standard);
+      return [g.at, g.elbow, g.tail];
+    },
+    outline: (scene, s) => leaderGeometry(s, scene.standard).segments,
+    snapPoints: (scene, s) => {
+      const g = leaderGeometry(s, scene.standard);
+      return [
+        { point: g.at, kind: 'node' },
+        { point: g.elbow, kind: 'node' },
+      ];
+    },
+    primitives: (_scene, s, std) => leaderPrimitives(s, std),
+    transform: (_scene, s, t) => ({ ...s, at: applyPoint(t, s.at), elbow: applyPoint(t, s.elbow) }),
   },
 
   text: {

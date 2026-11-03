@@ -78,7 +78,8 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   // **プロモードの作図はここにまとめる。** 1 種別 1 ツールにするとツールバーが
   // 破綻するので、建具と同じく「種類」セレクタで切り替える
   shape: { make: () => new ShapeTool(
-      ['rect', 'roundRect', 'ngon', 'ellipse', 'spline', 'doubleLine'], 'shape', '作図', 'F',
+      ['rect', 'roundRect', 'ngon', 'ellipse', 'spline', 'doubleLine', 'leader'],
+      'shape', '作図', 'F',
     ), glyph: '▭', modes: PRO_ONLY, edits: true },
   arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), glyph: '○', modes: BOTH_MODES, edits: true },
   point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), glyph: '・', modes: PRO_ONLY, edits: true },

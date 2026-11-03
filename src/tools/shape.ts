@@ -15,7 +15,7 @@ import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './too
 
 export type ShapeToolMode =
   | 'line' | 'doubleLine' | 'rect' | 'roundRect' | 'ngon' | 'ellipse'
-  | 'spline' | 'arc' | 'text' | 'point';
+  | 'spline' | 'arc' | 'text' | 'leader' | 'point';
 
 /**
  * 「種類」セレクタに出す名前。**`Record<ShapeToolMode, string>` なので、
@@ -31,6 +31,7 @@ const MODE_LABELS: Record<ShapeToolMode, string> = {
   spline: '曲線',
   arc: '円・円弧',
   text: '文字',
+  leader: '引出線付き注釈',
   point: '基準点',
 };
 
@@ -133,6 +134,7 @@ export class ShapeTool implements Tool {
       case 'ellipse':
       case 'spline':
       case 'text':
+      case 'leader':
       case 'point':
         return 2;
     }
@@ -160,6 +162,9 @@ export class ShapeTool implements Tool {
       case 'text':
       case 'point':
         return 1;
+      // 指す点 → 折れ点 の 2 点
+      case 'leader':
+        return 2;
     }
   }
 
@@ -345,6 +350,17 @@ export class ShapeTool implements Tool {
           align: this.textAlign,
         };
       }
+      case 'leader': {
+        const value = this.text.trim();
+        if (!value) return null;
+        return {
+          id, shape: 'leader', layerId, levelId, attrs,
+          at: pts[0],
+          elbow: pts[1],
+          text: value,
+          height: this.textHeight,
+        };
+      }
       case 'point':
         return { id, shape: 'point', layerId, levelId, attrs, at: pts[0] };
     }
@@ -468,6 +484,18 @@ export class ShapeTool implements Tool {
             onChange: (v) => void (this.arcMode = v === 'arc' ? 'arc' : 'circle'),
           },
         ];
+      case 'leader':
+        return [
+          { kind: 'text', label: '注釈', value: this.text, placeholder: '注釈', onChange: (v) => void (this.text = v) },
+          {
+            kind: 'select',
+            label: '高さ',
+            value: String(this.textHeight),
+            options: JIS_TEXT_HEIGHTS.map((h) => ({ value: String(h), label: `${h} mm` })),
+            onChange: (v) => void (this.textHeight = Number(v)),
+          },
+          { kind: 'note', text: '指す点 → 折れ点 の順にクリック' },
+        ];
       case 'text':
         return [
           { kind: 'text', label: '文字', value: this.text, placeholder: '文字', onChange: (v) => void (this.text = v) },
@@ -555,6 +583,10 @@ export class ShapeTool implements Tool {
         return this.points.length === 0
           ? 'クリックで曲線の始点を指定'
           : 'クリックで通る点を足す / Enter・ダブルクリックで終了';
+      case 'leader':
+        return this.points.length === 0
+          ? `「${this.text || '(空)'}」が指す点をクリック`
+          : 'クリックで引出線の折れ点を指定';
       case 'text':
         return `「${this.text || '(空)'}」を置く位置をクリック`;
       case 'point':
@@ -583,6 +615,8 @@ function shapeKindOf(mode: ShapeToolMode, arcMode: 'circle' | 'arc'): Shape['sha
       return 'ellipse';
     case 'arc':
       return arcMode;
+    case 'leader':
+      return 'leader';
     case 'text':
     case 'point':
       return mode;

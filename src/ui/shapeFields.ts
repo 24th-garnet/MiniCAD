@@ -84,6 +84,19 @@ export const SHAPE_FIELDS: { [K in ShapeKind]: Fields<Extract<Shape, { shape: K 
     numberField('向き', toDeg(s.angle), (v) => edit(() => void (s.angle = toRad(v))), { step: 15, suffix: '°' }),
   ],
 
+  leader: (s, edit) => [
+    readonlyField('種類', '引出線付き注釈'),
+    textField('注釈', s.text, (v) => edit(() => void (s.text = v))),
+    numberField('指す点 X', s.at.x, (v) => edit(() => void (s.at = { ...s.at, x: v })), MM),
+    numberField('指す点 Y', s.at.y, (v) => edit(() => void (s.at = { ...s.at, y: v })), MM),
+    numberField('折れ点 X', s.elbow.x, (v) => edit(() => void (s.elbow = { ...s.elbow, x: v })), MM),
+    numberField('折れ点 Y', s.elbow.y, (v) => edit(() => void (s.elbow = { ...s.elbow, y: v })), MM),
+    numberField('文字高', s.height, (v) => edit(() => void (s.height = Math.max(0.5, v))), {
+      step: 0.5,
+      suffix: '紙 mm',
+    }),
+  ],
+
   circle: (s, edit) => [
     readonlyField('種類', '円'),
     numberField('中心 X', s.center.x, (v) => edit(() => void (s.center = { ...s.center, x: v })), MM),

@@ -81,6 +81,17 @@ const SAMPLES: { [K in ShapeKind]: Extract<Shape, { shape: K }> } = {
     ratio: 0.5,
     angle: 0,
   },
+  leader: {
+    id: 'sh-leader',
+    shape: 'leader',
+    layerId: LAYER_IDS.shape,
+    levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
+    at: vec(18000, 0),
+    elbow: vec(19000, 800),
+    text: '仕上げ要確認',
+    height: 3.5,
+  },
   text: {
     id: 'sh-text',
     shape: 'text',
@@ -195,6 +206,8 @@ test('全種別がクリックで拾える', () => {
     roundRect: vec(12500, -500),
     // 楕円の長軸の端
     ellipse: vec(15900, 0),
+    // 引出線のまんなか（指す点と折れ点のあいだ）
+    leader: vec(18500, 400),
     text: vec(0, 3000),
     point: vec(5000, 3000),
     // 寸法線の上（端点から offset だけ離れた位置）
@@ -264,10 +277,16 @@ test('DXF に LINE / ARC / CIRCLE / TEXT として出る', () => {
   let sweep = ((arc.endAngle - arc.startAngle) * 180) / Math.PI;
   while (sweep < 0) sweep += 360;
   assert.ok(Math.abs(sweep - 90) < 0.01, `掃き角 ${sweep}`);
-  // 文字が正しい画層に乗っている
-  const textEntity = oracleEntities(parsed).find((e) => e.type === 'TEXT')!;
-  assert.equal(textEntity.layer, scene.layers[LAYER_IDS.roomName].name);
-  assert.equal(textEntity.text, '注記テキスト');
+  // 文字が正しい画層に乗っている。**内容で特定する**——
+  // 引出線付き注釈も TEXT を出すので、並び順に頼ると取り違える
+  const texts = oracleEntities(parsed).filter((e) => e.type === 'TEXT');
+  const note = texts.find((e) => e.text === '注記テキスト');
+  assert.ok(note, `文字が出ていない: ${texts.map((e) => e.text)}`);
+  assert.equal(note.layer, scene.layers[LAYER_IDS.roomName].name);
+  // 引出線付き注釈の文字は図形の画層
+  const leader = texts.find((e) => e.text === '仕上げ要確認');
+  assert.ok(leader, '注釈の文字が出ていない');
+  assert.equal(leader.layer, scene.layers[LAYER_IDS.shape].name);
 });
 
 test('SVG が妥当なまま図形を含む', () => {
@@ -324,6 +343,7 @@ const CURVES_INTO: Record<ShapeKind, boolean> = {
   roundRect: true,
   ellipse: true,
   // 注釈のたぐいは線ではないので、曲線にならないのが正しい
+  leader: false,
   text: false,
   point: false,
   dimension: false,

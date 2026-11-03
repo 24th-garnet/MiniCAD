@@ -112,6 +112,20 @@ export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
     };
   },
 
+  leader: (base, raw) => {
+    const at = point(raw.at);
+    const elbow = point(raw.elbow);
+    if (!at || !elbow) return null;
+    return {
+      ...base,
+      shape: 'leader',
+      at,
+      elbow,
+      text: typeof raw.text === 'string' ? raw.text : '',
+      height: Math.max(0.5, num(raw.height, 3.5)),
+    };
+  },
+
   circle: (base, raw) => {
     const center = point(raw.center);
     const radius = num(raw.radius, 0);
