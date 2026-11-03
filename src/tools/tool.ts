@@ -15,6 +15,7 @@ export type ToolId =
   | 'extend'
   | 'split'
   | 'erase'
+  | 'corner'
   | 'wall'
   | 'door'
   | 'window'

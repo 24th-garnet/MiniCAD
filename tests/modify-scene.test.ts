@@ -305,3 +305,72 @@ test('壁も分割できて、開口が付いていれば引き継がれる', as
   assert.ok(host, '開口の乗る壁が無い');
   assert.ok(Math.abs(kept.offset - 1000) < 1e-6, `開口の位置がずれた (${kept.offset})`);
 });
+
+/**
+ * 角の処理は `Curve` 層に書いてあるので、**図形にも壁にも同じものが効く**。
+ * ただし壁の角の丸めだけは断る——`Wall` が直線で、円弧壁がまだ無いため。
+ */
+test('図形どうしを面取りすると、2 本が短くなって橋が架かる', async () => {
+  const { cornerEntities } = await import('../src/core/corner.ts');
+  const scene = emptyScene();
+  const h = addLine(scene, -2000, 0, 0, 0);
+  const v = addLine(scene, 0, 0, 0, 2000);
+
+  assert.ok(
+    cornerEntities(scene, { type: 'shape', id: h }, { type: 'shape', id: v },
+      { kind: 'chamfer', distance: 500, radius: 0 }),
+    '面取りできない',
+  );
+  // 元の 2 本は id を保ったまま短くなる
+  assert.ok(Math.abs(dist(lineOf(scene, h).a, lineOf(scene, h).b) - 1500) < 1e-6, '1 本目が短くなっていない');
+  assert.ok(Math.abs(dist(lineOf(scene, v).a, lineOf(scene, v).b) - 1500) < 1e-6, '2 本目が短くなっていない');
+  // 橋が 1 本増えている
+  assert.equal(Object.keys(scene.shapes).length, 3, '橋が架かっていない');
+});
+
+test('図形どうしを丸めると、円弧が架かる', async () => {
+  const { cornerEntities } = await import('../src/core/corner.ts');
+  const scene = emptyScene();
+  const h = addLine(scene, -2000, 0, 0, 0);
+  const v = addLine(scene, 0, 0, 0, 2000);
+
+  assert.ok(
+    cornerEntities(scene, { type: 'shape', id: h }, { type: 'shape', id: v },
+      { kind: 'fillet', distance: 0, radius: 400 }),
+    '丸められない',
+  );
+  const arcs = Object.values(scene.shapes).filter((s) => s.shape === 'arc');
+  assert.equal(arcs.length, 1, '円弧が架かっていない');
+  assert.ok(arcs[0].shape === 'arc' && Math.abs(arcs[0].radius - 400) < 1e-6, '半径が違う');
+});
+
+test('壁の角は落とせるが、丸められない', async () => {
+  const { cornerEntities } = await import('../src/core/corner.ts');
+  const scene = emptyScene();
+  const corner = findOrCreateNode(scene, vec(0, 0));
+  const left = findOrCreateNode(scene, vec(-3000, 0));
+  const up = findOrCreateNode(scene, vec(0, 3000));
+  const w1 = addWall(scene, left, corner, 120)!;
+  const w2 = addWall(scene, corner, up, 120)!;
+
+  // **丸めは断る。** 円弧の壁がまだ無いので、置く先が無い
+  assert.equal(
+    cornerEntities(scene, { type: 'wall', id: w1.id }, { type: 'wall', id: w2.id },
+      { kind: 'fillet', distance: 0, radius: 400 }),
+    false,
+    '壁を丸めてしまった',
+  );
+  assert.equal(Object.keys(scene.walls).length, 2, '断ったのに壁が増えた');
+
+  // 面取りは効く。新しい壁が 1 本増える
+  assert.ok(
+    cornerEntities(scene, { type: 'wall', id: w1.id }, { type: 'wall', id: w2.id },
+      { kind: 'chamfer', distance: 500, radius: 0 }),
+    '壁を面取りできない',
+  );
+  assert.equal(Object.keys(scene.walls).length, 3, '面取りの壁が増えていない');
+  // 壁は線に差し替わらず、壁のまま
+  for (const wall of Object.values(scene.walls)) {
+    assert.ok(wall.thickness > 0, '厚みを失った');
+  }
+});

@@ -433,3 +433,69 @@ test('区間の境界は昇順で、両端を含む', async () => {
   // 端でだけ接する相手では切れていない
   assert.equal(curveBounds(target, [seg(0, -500, 0, 500)]), null);
 });
+
+/**
+ * 角の処理は `Curve` 層に書いてある。**図形にも壁にも同じものが効く。**
+ * 線分どうしだけを相手にし、円弧が混じったら何もしないと答える。
+ */
+test('面取りは角から指定した距離だけ戻った 2 点を結ぶ', async () => {
+  const { chamferCurves } = await import('../src/core/corner.ts');
+  // 原点で直角に交わる 2 本
+  const got = chamferCurves(seg(-2000, 0, 0, 0), seg(0, 0, 0, 2000), 500, 300)!;
+  assert.ok(got, '面取りできない');
+
+  const [t1, t2] = got.trimmed;
+  assert.ok(t1.kind === 'segment' && t2.kind === 'segment');
+  // 角から 500 / 300 戻ったところで終わる
+  assert.ok(Math.abs(dist(t1.b, vec(0, 0)) - 500) < 1e-6, `1 本目が ${dist(t1.b, vec(0, 0))}`);
+  assert.ok(Math.abs(dist(t2.b, vec(0, 0)) - 300) < 1e-6, `2 本目が ${dist(t2.b, vec(0, 0))}`);
+  // 橋はその 2 点を結ぶ線分
+  assert.equal(got.bridge.kind, 'segment');
+  if (got.bridge.kind === 'segment') {
+    assert.ok(dist(got.bridge.a, t1.b) < 1e-6 || dist(got.bridge.a, t2.b) < 1e-6, '橋が接していない');
+  }
+});
+
+test('辺より長い面取りはしない', async () => {
+  const { chamferCurves } = await import('../src/core/corner.ts');
+  // 辺の長さが 2000 しかないのに 3000 戻そうとする
+  assert.equal(chamferCurves(seg(-2000, 0, 0, 0), seg(0, 0, 0, 2000), 3000, 300), null);
+  assert.equal(chamferCurves(seg(-2000, 0, 0, 0), seg(0, 0, 0, 2000), 0, 300), null, '0 で面取りした');
+});
+
+test('角の丸めは、両辺に接する円弧になる', async () => {
+  const { filletCurves } = await import('../src/core/corner.ts');
+  const r = 400;
+  const got = filletCurves(seg(-2000, 0, 0, 0), seg(0, 0, 0, 2000), r)!;
+  assert.ok(got, '丸められない');
+  assert.equal(got.bridge.kind, 'arc');
+  if (got.bridge.kind !== 'arc') return;
+
+  // 直角なら、接点は角から r だけ戻ったところ。中心は (r, r)
+  const [t1, t2] = got.trimmed;
+  assert.ok(t1.kind === 'segment' && t2.kind === 'segment');
+  assert.ok(Math.abs(dist(t1.b, vec(0, 0)) - r) < 1e-6, `接点が ${dist(t1.b, vec(0, 0))}`);
+  assert.ok(dist(got.bridge.arc.center, vec(-r, r)) < 1e-6,
+    `中心が ${JSON.stringify(got.bridge.arc.center)}`);
+  assert.ok(Math.abs(got.bridge.arc.radius - r) < 1e-6);
+
+  // 円弧の両端が接点に一致する
+  const ends = [got.bridge.arc.start, got.bridge.arc.end].map((a) => ({
+    x: got.bridge.kind === 'arc' ? got.bridge.arc.center.x + Math.cos(a) * r : 0,
+    y: got.bridge.kind === 'arc' ? got.bridge.arc.center.y + Math.sin(a) * r : 0,
+  }));
+  for (const p of [t1.b, t2.b]) {
+    assert.ok(ends.some((e) => dist(e, p) < 1e-6), `接点 ${JSON.stringify(p)} に円弧が届いていない`);
+  }
+});
+
+test('平行な 2 本や円弧が相手なら、何もしないと答える', async () => {
+  const { chamferCurves, filletCurves } = await import('../src/core/corner.ts');
+  const parallel: [Curve, Curve] = [seg(0, 0, 1000, 0), seg(0, 500, 1000, 500)];
+  assert.equal(chamferCurves(parallel[0], parallel[1], 100, 100), null, '平行なのに面取りした');
+  assert.equal(filletCurves(parallel[0], parallel[1], 100), null, '平行なのに丸めた');
+
+  const arc: Curve = { kind: 'arc', arc: { center: vec(0, 0), radius: 500, start: 0, end: Math.PI } };
+  assert.equal(chamferCurves(seg(0, 0, 1000, 0), arc, 100, 100), null, '円弧を面取りした');
+  assert.equal(filletCurves(seg(0, 0, 1000, 0), arc, 100), null, '円弧を丸めた');
+});
