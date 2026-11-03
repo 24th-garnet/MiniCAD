@@ -216,7 +216,7 @@ function sphereFaces(radius: number): Face3[] {
   const scene = emptyScene();
   scene.fixtures.s = {
     id: 's', kind: 'sphere', x: 0, y: 0, angle: 0,
-    size: { w: radius * 2, h: radius * 2 }, outline: null, combine: null,
+    size: { w: radius * 2, h: radius * 2 }, outline: null, combine: null, edge: null,
     base: -radius, height: radius * 2, label: '',
     layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(),
   };

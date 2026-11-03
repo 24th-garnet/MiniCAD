@@ -108,6 +108,7 @@ export class Place3D implements Tool3D {
       // 置くときは種別の既定の輪郭。自前の輪郭は押し出しだけが持つ
       outline: null,
       combine: null,
+      edge: null,
       // **高さだけは既定に任せない。** 指した点が床とは限らない
       base: at.z - level.floorZ,
       height: null,

@@ -28,7 +28,7 @@ function roomScene(): { scene: Scene; refs: EntityRef[] } {
   scene.openings[op.id] = op;
   scene.fixtures.k = {
     id: 'k', kind: 'column', x: 1000, y: 1500, angle: 0,
-    size: { ...FIXTURE_SPECS.column.defaultSize }, outline: null, combine: null, base: null, height: null, label: '',
+    size: { ...FIXTURE_SPECS.column.defaultSize }, outline: null, combine: null, edge: null, base: null, height: null, label: '',
     layerId: FIXTURE_SPECS.column.defaultLayer, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(),
   };
   const refs: EntityRef[] = [

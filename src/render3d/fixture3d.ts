@@ -5,6 +5,7 @@ import {
 import { isSnappable } from '../core/entity.ts';
 import { levelOf, type Level } from '../core/level.ts';
 import { combineFingerprint } from '../core/combine.ts';
+import { edgeRings, insetOutline, maxInsetOf } from '../core/edge3d.ts';
 import { csgOperate } from './csg.ts';
 import { vec, type Vec } from '../core/geometry.ts';
 import { theme } from '../render/theme.ts';
@@ -32,7 +33,9 @@ type SolidBuilder = (f: Fixture, level: Level, src: FaceSource, out: Face3[]) =>
 /** 柱と梁は躯体なので壁と同じ色にする */
 const structural: SolidBuilder = (f, level, src, out) => {
   const { z0, z1 } = verticalRange(f, level);
-  extrudePrism(outline(f), z0, z1, theme.wall3d, 'wall', src, out);
+  // 柱にもテーパを付けられる。段の積み方は汎用ソリッドと同じ
+  if (f.edge) extrudeProfile(f, outline(f), z0, z1, theme.wall3d, src, out);
+  else extrudePrism(outline(f), z0, z1, theme.wall3d, 'wall', src, out);
 };
 
 /**
@@ -170,8 +173,83 @@ function revolve(f: Fixture, rings: { r: number; z: number }[], src: FaceSource,
 /** 底面を押し出すだけのソリッド。直方体・三角柱・垂直の円筒 */
 const prismSolid: SolidBuilder = (f, level, src, out) => {
   const { z0, z1 } = verticalRange(f, level);
+  if (f.edge) {
+    extrudeProfile(f, outline(f), z0, z1, SOLID_COLOR, src, out);
+    return;
+  }
   extrudePrism(outline(f), z0, z1, SOLID_COLOR, 'wall', src, out);
 };
+
+/**
+ * 段を積んで押し出す。テーパ・面取り・丸めがこれ 1 本で出る。
+ *
+ * **側面が平面でなくなる段がある**（縮めながら上がるところ）ので、
+ * 四角形ではなく**三角形 2 枚**で出す。四角形のまま出すと、4 点が
+ * 同一平面に乗らず、`faceNormal` が代表の向きしか返せない。
+ *
+ * 縮めきって輪郭が潰れた段は**そこで打ち切る**（`insetOutline` が null）。
+ * 黙って裏返った形を作るより、少し寸胴になるほうがよい。
+ */
+function extrudeProfile(
+  f: Fixture,
+  world: Vec[],
+  z0: number,
+  z1: number,
+  color: string,
+  src: FaceSource,
+  out: Face3[],
+): void {
+  const height = z1 - z0;
+  if (height < 1e-6 || world.length < 3) return;
+  const rings = edgeRings(f.edge!, height, maxInsetOf(world));
+
+  const rows: { z: number; points: Vec[] }[] = [];
+  for (const ring of rings) {
+    const points = insetOutline(world, ring.inset);
+    if (!points) break; // 潰れた。ここまでで打ち切る
+    rows.push({ z: z0 + ring.dz, points });
+  }
+  if (rows.length < 2) {
+    extrudePrism(world, z0, z1, color, 'wall', src, out);
+    return;
+  }
+  // 上まで届かなかったら、最後の輪郭をまっすぐ伸ばして閉じる
+  const last = rows[rows.length - 1];
+  if (last.z < z1 - 1e-6) rows.push({ z: z1, points: last.points });
+
+  const n = world.length;
+  for (let r = 0; r + 1 < rows.length; r++) {
+    const lo = rows[r];
+    const hi = rows[r + 1];
+    if (Math.abs(hi.z - lo.z) < 1e-9 && samePoints(lo.points, hi.points)) continue;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 1) % n;
+      const a = p3(lo.points[i], lo.z);
+      const b = p3(lo.points[k], lo.z);
+      const c = p3(hi.points[k], hi.z);
+      const d = p3(hi.points[i], hi.z);
+      // **三角形 2 枚。** 縮めながら上がる段では 4 点が同一平面に乗らない。
+      // 輪郭は反時計回り（上から見て）なので、この並びで外を向く
+      pushIfReal(out, [a, b, c], color, src);
+      pushIfReal(out, [a, c, d], color, src);
+    }
+  }
+  // 蓋。下は裏返して法線を下へ
+  pushIfReal(out, rows[0].points.map((p) => p3(p, rows[0].z)).reverse(), color, src);
+  const top = rows[rows.length - 1];
+  pushIfReal(out, top.points.map((p) => p3(p, top.z)), color, src);
+}
+
+const samePoints = (a: readonly Vec[], b: readonly Vec[]): boolean =>
+  a.length === b.length && a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-9);
+
+/** 面積のある面だけ入れる。潰れた三角形は塗っても見えず、ソートを濁らせるだけ */
+function pushIfReal(out: Face3[], points: Vec3[], color: string, src: FaceSource): void {
+  if (points.length < 3) return;
+  const face = polygonFace(points, color, 'wall', src);
+  if (!Number.isFinite(face.normal.x)) return;
+  out.push(face);
+}
 
 /** 円錐。底の輪 1 つと頂点 1 つ */
 const cone: SolidBuilder = (f, level, src, out) => {
@@ -306,6 +384,8 @@ export function fixtureFingerprint(scene: Scene, id: Id): string {
     f.kind, f.x, f.y, f.angle, f.size.w, f.size.h, f.base, f.height,
     // **しまい込んだ相手も入れる。** 入れ忘れると、相手を直しても 3D が古いまま
     combineFingerprint(f),
+    // **稜線の仕上げも入れる。** 入れ忘れると、面取りを変えても 3D が古いまま
+    f.edge ? `${f.edge.kind}:${f.edge.size}` : '-',
     // **自前の輪郭を忘れない。** 入れ忘れると、輪郭を変えても指紋が同じままで
     // 3D が作り直されない（キャッシュが効き続ける）
     f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(' ') : '-',

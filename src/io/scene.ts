@@ -18,6 +18,7 @@ import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
 import { FIXTURE_SPECS, isFixtureKind, isRoundFixture, type Fixture } from '../core/fixture.ts';
 import { isBooleanOp, type FixtureCombine } from '../core/combine.ts';
+import { isEdgeKind, type FixtureEdge } from '../core/edge3d.ts';
 import { isBayShape, type Bay } from '../core/bay.ts';
 import { readPoint3 } from '../core/annotation.ts';
 import { emptyBody, isEmptyBody, type Assembly } from '../core/assembly.ts';
@@ -126,6 +127,7 @@ function readFixture(
     size: { w, h: isRoundFixture(raw.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
     outline: readOutline(raw.outline),
     combine: readCombine(raw.combine, layerOr, levelId),
+    edge: readEdge(raw.edge),
     base: typeof raw.base === 'number' ? raw.base : null,
     height: typeof raw.height === 'number' ? raw.height : null,
     label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
@@ -133,6 +135,15 @@ function readFixture(
     levelId,
     attrs: readAttrs(raw.attrs),
   };
+}
+
+/** 稜線の仕上げ。大きさが 0 以下なら持たない（素の立体に戻る） */
+function readEdge(raw: unknown): FixtureEdge | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const obj = raw as Record<string, unknown>;
+  if (!isEdgeKind(obj.kind)) return null;
+  const size = numberOr(obj.size, 0);
+  return size > 0 ? { kind: obj.kind, size } : null;
 }
 
 /** ブーリアンの作り方。**相手が 1 つも読めなければ null**（素の立体に戻る） */

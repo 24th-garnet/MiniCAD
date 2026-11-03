@@ -136,6 +136,7 @@ function fixtureFrom(
     size: { w: Math.max(1, b.max.x - b.min.x), h: Math.max(1, b.max.y - b.min.y) },
     outline: poly.map((p) => sub(p, center)),
     combine: null,
+    edge: null,
     base: 0,
     height: Math.max(1, height),
     label: spec.defaultLabel,

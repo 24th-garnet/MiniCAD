@@ -22,7 +22,7 @@ function put(scene: Scene, id: string, kind: FixtureKind, over: Partial<Fixture>
   const spec = FIXTURE_SPECS[kind];
   scene.fixtures[id] = {
     id, kind, x: 0, y: 0, angle: 0,
-    size: { ...spec.defaultSize }, outline: null, combine: null,
+    size: { ...spec.defaultSize }, outline: null, combine: null, edge: null,
     base: 0, height: 1000, label: spec.defaultLabel,
     layerId: spec.defaultLayer, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(),
     ...over,

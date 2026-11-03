@@ -13,6 +13,7 @@ import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core
 import { FIXTURE_SPECS, isRoundFixture, type Fixture } from '../../../core/fixture.ts';
 import { closedPolygonOf, extrudeShapes } from '../../../core/extrude.ts';
 import { BOOLEAN_LABELS, BOOLEAN_OPS, combineFixtures, explodeFixture } from '../../../core/combine.ts';
+import { EDGE_KINDS, EDGE_LABELS, isEdgeKind } from '../../../core/edge3d.ts';
 import { activeLevel } from '../../../core/level.ts';
 import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
@@ -305,9 +306,49 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
         numberField('X', f.x, (v) => edit(() => void (f.x = v)), { step: 50, suffix: 'mm' }),
         numberField('Y', f.y, (v) => edit(() => void (f.y = v)), { step: 50, suffix: 'mm' }),
         textField('文字', f.label, (v) => edit(() => void (f.label = v.trim()))),
+        ...edgeFields(ctx, f),
       ];
     }
   }
+}
+
+/**
+ * 上下の稜線の仕上げ（テーパ・面取り・丸め）。
+ *
+ * **輪郭を押し出す種別にだけ出す。** 階段・スロープ・回転体では何も起きないので、
+ * 欄を出すと「効かない設定」が見えることになる。出さずに理由を書く。
+ */
+function edgeFields(ctx: PanelContext, f: Fixture): (HTMLElement | null)[] {
+  if (ctx.mode !== 'pro') return [];
+  const spec = FIXTURE_SPECS[f.kind];
+  if (!spec.solid) return [];
+  if (!spec.extruded) {
+    return [el('p', { class: 'empty-note' }, [
+      `${spec.label}は輪郭を押し出して作っていないので、テーパや面取りは付けられません。`,
+    ])];
+  }
+  const edge = f.edge;
+  return [
+    selectField(
+      '稜線の仕上げ',
+      edge?.kind ?? '',
+      [{ value: '', label: '（なし）' }, ...EDGE_KINDS.map((k) => ({ value: k, label: EDGE_LABELS[k] }))],
+      (v) => ctx.edit(() => {
+        f.edge = isEdgeKind(v) ? { kind: v, size: f.edge?.size ?? 100 } : null;
+      }),
+    ),
+    edge
+      ? numberField(
+          edge.kind === 'fillet' ? '半径' : '量',
+          edge.size,
+          (v) => ctx.edit(() => void (f.edge = { kind: edge.kind, size: Math.max(1, v) })),
+          { step: 25, min: 1, suffix: 'mm' },
+        )
+      : null,
+    edge
+      ? el('p', { class: 'empty-note' }, ['上下の稜線だけです（縦の角は落とせません）。平面の記号は変わりません。'])
+      : null,
+  ];
 }
 
 /** 幅と奥行は別々に直せる。円柱は直径が奥行も決める */

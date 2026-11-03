@@ -8,6 +8,7 @@ import type { Segment } from './shape.ts';
 import type { SnapKind } from './snap.ts';
 import { ALL_USES, type Use } from './use.ts';
 import type { FixtureCombine } from './combine.ts';
+import type { FixtureEdge } from './edge3d.ts';
 
 /**
  * 構造物。柱・梁・階段・スロープ・吹抜のように、**平面の footprint と
@@ -99,6 +100,14 @@ export interface Fixture {
    * 詳しい理由は `core/combine.ts`。
    */
   combine: FixtureCombine | null;
+  /**
+   * 上下の稜線の仕上げ（テーパ・面取り・丸め）。null なら素のまま。
+   *
+   * **輪郭を押し出す種別にだけ効く。** 階段やスロープ、回転体は
+   * 押し出しで出来ていないので、付けても何も起きない（画面でも断る）。
+   * 詳しい理由は `core/edge3d.ts`。
+   */
+  edge: FixtureEdge | null;
   /** 記号の中に書く文字。吹抜 / PS / 煙道 はこれで書き分ける */
   label: string;
   layerId: LayerId;
@@ -146,6 +155,14 @@ export interface FixtureSpec {
   uses: readonly Use[];
   /** 建築の躯体か、汎用のソリッドか。どの道具から出すかだけを決める */
   family: FixtureFamily;
+  /**
+   * 平面の輪郭をまっすぐ押し出して立体にするか。
+   *
+   * **稜線の仕上げ（テーパ・面取り・丸め）が効くのはこれだけ。** 階段は段で、
+   * スロープは楔で、円錐・球・半球は回転体で出来ていて、どれも段を積む作りではない。
+   * `false` のものに仕上げを付けても何も起きないので、**画面で断る**ために持つ。
+   */
+  extruded: boolean;
 }
 
 /** 円柱の輪郭を折れ線で近似するときの分割数 */
@@ -408,6 +425,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: true,
     pickPriority: 2,
     family: 'structure',
+    extruded: true,
     uses: ALL_USES,
   },
   roundColumn: {
@@ -424,6 +442,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: true,
     pickPriority: 2,
     family: 'structure',
+    extruded: true,
     uses: ALL_USES,
   },
   beam: {
@@ -441,6 +460,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 3,
     family: 'structure',
+    extruded: true,
     uses: ALL_USES,
   },
   stair: {
@@ -457,6 +477,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'structure',
+    extruded: false,
     uses: ['住'],
   },
   /** コの字階段（COOHOM の U 字型階段）。**左右の流れの間に空間を作らない** */
@@ -474,6 +495,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'structure',
+    extruded: false,
     uses: ['住'],
   },
   /** L 字階段。角は踊り場 1 枚 */
@@ -491,6 +513,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'structure',
+    extruded: false,
     uses: ['住'],
   },
   /** 回り段。L 字の角を 3 枚の扇形に割る */
@@ -508,6 +531,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'structure',
+    extruded: false,
     uses: ['住'],
   },
   slope: {
@@ -524,6 +548,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'structure',
+    extruded: false,
     uses: ALL_USES,
   },
   void: {
@@ -542,6 +567,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     pickPriority: 5,
     // 吹抜＜住＞・PS＜住オ店＞・煙道＜オ店＞を 1 つの種別で兼ねるので、絞らない
     family: 'structure',
+    extruded: false,
     uses: ALL_USES,
   },
 
@@ -571,6 +597,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 5,
     family: 'structure',
+    extruded: false,
     uses: ['住'],
   },
   // ---- ここから汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）----
@@ -600,6 +627,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: true,
     uses: ALL_USES,
   },
   prism: {
@@ -616,6 +644,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: true,
     uses: ALL_USES,
   },
   /** 垂直の円筒。`w` が直径で `h` は見ない（円柱と同じ） */
@@ -633,6 +662,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: true,
     uses: ALL_USES,
   },
   /**
@@ -653,6 +683,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: false,
     uses: ALL_USES,
   },
   cone: {
@@ -669,6 +700,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: false,
     uses: ALL_USES,
   },
   /** 球。既定では高さ＝直径だが、高さを変えれば縦に伸びた回転楕円体になる */
@@ -686,6 +718,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: false,
     uses: ALL_USES,
   },
   /**
@@ -708,6 +741,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'derived',
+    extruded: true,
     uses: ALL_USES,
   },
 
@@ -726,6 +760,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 4,
     family: 'solid',
+    extruded: false,
     uses: ALL_USES,
   },
 };
