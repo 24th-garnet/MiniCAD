@@ -16,9 +16,28 @@ import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './too
 export type ShapeToolMode = 'line' | 'arc' | 'text' | 'point';
 
 /**
+ * 「種類」セレクタに出す名前。**`Record<ShapeToolMode, string>` なので、
+ * モードを足して書き忘れると型検査が止まる。**
+ */
+const MODE_LABELS: Record<ShapeToolMode, string> = {
+  line: '直線・折れ線',
+  arc: '円・円弧',
+  text: '文字',
+  point: '基準点',
+};
+
+/**
  * 汎用図形の作図ツール。
  * OpeningTool と同じく、1つのクラスをモードでパラメタライズしている。
  * 「何点取るか・どう組むか」はモードごとに下の switch 1箇所に閉じている。
+ *
+ * **1 つのツールが複数のモードを持てる。** 建具が 11 種別を 2 ツール（ドア・窓）＋
+ * 「種類」セレクタで出しているのと同じ形。作図の形はこれから増えるが、
+ * **1 種別 1 ツールにするとツールバーが破綻する**（いま 21 ツールで、
+ * 空いているショートカットは 4 つしかない）。
+ *
+ * `modes` が 1 つだけのツールはセレクタを出さない——選ぶものが無いのに
+ * 欄があると、使う側は「他に何かあるはず」と探すことになる。
  */
 export class ShapeTool implements Tool {
   readonly id: ToolId;
@@ -27,7 +46,10 @@ export class ShapeTool implements Tool {
   readonly cursor = 'crosshair';
   readonly group = 'draw' as const;
 
-  private readonly mode: ShapeToolMode;
+  /** このツールが出せるモード。先頭が既定 */
+  private readonly modes: readonly ShapeToolMode[];
+  /** 選択中のモード。`modes` が 2 つ以上なら「種類」セレクタで切り替わる */
+  private mode: ShapeToolMode;
   /** 確定済みのクリック点 */
   private points: Vec[] = [];
 
@@ -40,8 +62,14 @@ export class ShapeTool implements Tool {
   textHeight = 3.5;
   textAlign: TextAlign = 'center';
 
-  constructor(mode: ShapeToolMode, id: ToolId, label: string, shortcut: string) {
-    this.mode = mode;
+  constructor(
+    modes: ShapeToolMode | readonly ShapeToolMode[],
+    id: ToolId,
+    label: string,
+    shortcut: string,
+  ) {
+    this.modes = typeof modes === 'string' ? [modes] : modes;
+    this.mode = this.modes[0];
     this.id = id;
     this.label = label;
     this.shortcut = shortcut;
@@ -68,6 +96,24 @@ export class ShapeTool implements Tool {
   private reset(editor: Editor): void {
     this.points = [];
     editor.snapContext = {};
+  }
+
+  /**
+   * プレビューを出し始めるのに要る点の数。
+   *
+   * **`requiredPoints` とは別物。** 連続モードの `Infinity` では出せないし、
+   * 円弧は 3 点目まで形が決まらない。以前は `previewShape` の中に式が
+   * 直書きされていて、**モードを足しても型検査が止めなかった**。
+   */
+  private get previewPoints(): number {
+    switch (this.mode) {
+      case 'arc':
+        return this.arcMode === 'arc' ? 3 : 2;
+      case 'line':
+      case 'text':
+      case 'point':
+        return 2;
+    }
   }
 
   /** そのモードが必要とする点の数。線の連続モードだけ可変 */
@@ -187,6 +233,25 @@ export class ShapeTool implements Tool {
   }
 
   options(): OptionField[] {
+    return [...this.modeField(), ...this.modeOptions()];
+  }
+
+  /** 出せるモードが 2 つ以上あるときだけ「種類」を出す */
+  private modeField(): OptionField[] {
+    if (this.modes.length < 2) return [];
+    return [{
+      kind: 'select',
+      label: '種類',
+      value: this.mode,
+      options: this.modes.map((m) => ({ value: m, label: MODE_LABELS[m] })),
+      onChange: (v: string) => {
+        this.mode = this.modes.find((m) => m === v) ?? this.mode;
+        this.points = [];
+      },
+    }];
+  }
+
+  private modeOptions(): OptionField[] {
     switch (this.mode) {
       case 'line':
         return [
@@ -256,9 +321,7 @@ export class ShapeTool implements Tool {
     this.points = [...saved, cursor];
     try {
       // 点が足りないモードはプレビューを出さない
-      if (this.points.length < Math.min(this.requiredPoints, this.mode === 'arc' && this.arcMode === 'arc' ? 3 : 2)) {
-        return null;
-      }
+      if (this.points.length < Math.min(this.requiredPoints, this.previewPoints)) return null;
       return this.build(editor);
     } finally {
       this.points = saved;
