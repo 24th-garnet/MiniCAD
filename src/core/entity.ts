@@ -258,6 +258,30 @@ export function sceneBounds(scene: Scene): Bounds | null {
 }
 
 /**
+ * 選んだものの外接範囲。1 つも無ければ null。
+ *
+ * `sceneBounds` と同じく `ENTITY_KINDS.points` を通るので、
+ * **種別を足してもここは触らない**。
+ */
+export function refsBounds(scene: Scene, refs: readonly EntityRef[]): Bounds | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let any = false;
+  for (const ref of refs) {
+    for (const p of ENTITY_KINDS[ref.type].points(scene, ref.id)) {
+      any = true;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  return any ? { min: vec(minX, minY), max: vec(maxX, maxY) } : null;
+}
+
+/**
  * 画層を消す。所属していたエンティティは種別ごとの既定画層へ移す。
  * 組み込みの画層は消せない（フォールバック先が無くなるため）。
  */

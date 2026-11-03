@@ -165,6 +165,40 @@ export function frameAll(cam: Camera3D, bounds: Bounds | null, wallHeight: numbe
 }
 
 /**
+ * 視点の中心の取り方（ワイヤー 5 枚目の「各種中心モード」）。
+ *
+ * **カメラだけの話で、メッシュにもピックにも触らない。** 回す中心
+ * （＝注視点）をどこに置くかが変わるだけ。
+ */
+export type OrbitCenter = 'all' | 'selection' | 'pick' | 'origin';
+
+export const ORBIT_CENTER_LABELS: Record<OrbitCenter, string> = {
+  all: '全図形の中心',
+  selection: '選択したものの中心',
+  pick: 'クリックした位置',
+  origin: '原点 (0,0,0)',
+};
+
+/** 注視点だけを動かす。距離と角度はそのまま＝見ている向きは変わらない */
+export function lookAt(cam: Camera3D, target: Vec3): void {
+  cam.target = { ...target };
+}
+
+/**
+ * フライオーバー（歩き回る視点）。
+ *
+ * **目線の高さに下ろして、注視点を前方に置く。** 軌道カメラのまま
+ * `pitch` を水平近くにして距離を詰めれば、同じ仕掛けで歩いている絵になる。
+ * 別のカメラの型は作らない——投影・クリップ・ソートの経路を 2 つ持つと、
+ * 片方だけ直す事故が起きる。
+ */
+export function flyOver(cam: Camera3D, at: Vec3, eyeHeight: number): void {
+  cam.target = vec3(at.x, at.y, eyeHeight);
+  cam.pitch = 0;
+  cam.distance = Math.max(MIN_DISTANCE, 1500);
+}
+
+/**
  * カメラを外から読み書きするための形。
  *
  * **ワイヤーの「AI パース」の欄そのもの** ——カメラ位置（Eye）・ターゲット

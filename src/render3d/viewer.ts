@@ -1,4 +1,4 @@
-import { sceneBounds } from '../core/entity.ts';
+import { refsBounds, sceneBounds } from '../core/entity.ts';
 import { activeLevel, levelOf, wallHeightOf } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
 import {
@@ -6,7 +6,10 @@ import {
   cameraParams,
   defaultCamera,
   dolly,
+  flyOver,
   frameAll,
+  lookAt,
+  type OrbitCenter,
   orbit,
   pan,
   projectPoint,
@@ -22,7 +25,7 @@ import { paint } from './paint.ts';
 import { COMMENT_BADGE_R } from '../render/renderer.ts';
 import { theme } from '../render/theme.ts';
 import type { CommentAnchor } from '../core/annotation.ts';
-import { vec3 } from './mat4.ts';
+import { vec3, type Vec3 } from './mat4.ts';
 import type { Vec } from '../core/geometry.ts';
 import { screenRay } from './ray.ts';
 
@@ -59,6 +62,11 @@ const CLICK_SLOP = 4;
 
 export class Viewer3D {
   readonly camera: Camera3D = defaultCamera();
+  /**
+   * 回す中心の取り方（ワイヤー 5 枚目の「各種中心モード」）。
+   * **カメラだけの話で、メッシュにもピックにも触らない。**
+   */
+  orbitCenter: OrbitCenter = 'all';
   showEdges = false;
 
   private readonly ctx: CanvasRenderingContext2D;
@@ -141,6 +149,38 @@ export class Viewer3D {
   /** ホストのカタログから表示色を取り込む。渡されなければ既定の 5 色のまま */
   setMaterialColors(colors: ReadonlyMap<string, string>): void {
     this.materials = colors;
+    this.requestRender();
+  }
+
+  /**
+   * 回す中心を、いまのモードに合わせて置き直す。
+   * 決まらなければ（選択が空、何も拾えない）**いまの中心のまま**にする。
+   */
+  private applyOrbitCenter(p: { hit: { point: Vec3 } | null }): void {
+    const scene = this.editor.store.scene;
+    const z = activeLevel(scene).wallHeight / 2;
+    switch (this.orbitCenter) {
+      case 'all': {
+        const b = sceneBounds(scene);
+        if (b) lookAt(this.camera, vec3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, z));
+        return;
+      }
+      case 'selection': {
+        const b = refsBounds(scene, this.editor.store.selection);
+        if (b) lookAt(this.camera, vec3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, z));
+        return;
+      }
+      case 'pick':
+        if (p.hit) lookAt(this.camera, p.hit.point);
+        return;
+      case 'origin':
+        lookAt(this.camera, vec3(0, 0, 0));
+    }
+  }
+
+  /** 歩き回る視点にする。いまの注視点の真下、目線の高さに立つ */
+  flyOverHere(eyeHeight = 1500): void {
+    flyOver(this.camera, this.camera.target, eyeHeight);
     this.requestRender();
   }
 
@@ -389,6 +429,9 @@ export class Viewer3D {
         this.select.onPointerDown(this.editor, p);
         return;
       }
+      // **回す前に中心を決める。** 距離と角度はそのままなので、
+      // 見ている向きは変わらず、回る軸だけが移る
+      this.applyOrbitCenter(p);
       this.dragging = 'orbit';
       this.select.onPointerDown(this.editor, p);
     });
