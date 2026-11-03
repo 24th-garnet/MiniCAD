@@ -1143,7 +1143,7 @@ async function run() {
 
   // --- 出窓 ---
   // **種別は増やさない。** 窓に張り出しを持たせる
-  await page.locator('.part-button[data-opening="出窓"]').click();
+  await page.locator('.part-button[data-opening="角型出窓"]').click();
   await sleep(200);
   const beforeBay = await state();
   // 前の手順で画面の外に出ている壁があるので、全体を入れてから狙う
@@ -1195,7 +1195,7 @@ async function run() {
 
   // --- 建具の結合 ---
   // 同じ種別に重ねて置くと、まとまって 1 つになる（区間マージ）
-  await page.locator('.part-button[data-opening="窓"]').click();
+  await page.locator('.part-button[data-opening="引き違い窓"]').click();
   await sleep(200);
   const beforeMerge = await state();
   await moveWorld(spot[0], spot[1]);
@@ -1242,6 +1242,47 @@ async function run() {
   await sleep(250);
   assert.equal((await state()).openings, beforeMerge.openings, '2 回目の undo で戻らない');
   console.log('✔ 同じ種別の建具を重ねると 1 つにまとまる');
+
+  // --- 改訂版のパーツ表（ワイヤー 8 枚目） ---
+  // **品名のボタンが既定値を連れてくる。** 掃き出し窓は窓台 0、
+  // 引き戸(4枚開き) は枚数 4。押しただけでそうなっていないと、
+  // 使う人は置いたあとに毎回手で直すことになる
+  const partDefaults = [
+    ['掃き出し窓', (o) => o.sillHeight === 0, '窓台が 0 になっていない'],
+    ['引き戸(4枚開き)', (o) => o.leaves === 4, '枚数が 4 になっていない'],
+    ['FIX窓', (o) => o.designation === 'FIX', '符号が付いていない'],
+  ];
+  for (const [label, ok, why] of partDefaults) {
+    const button = page.locator(`.part-button[data-opening="${label}"]`);
+    assert.equal(await button.count(), 1, `${label} のボタンが無い`);
+    await button.click();
+    await sleep(150);
+    const placed = await page.evaluate(() => {
+      const t = window.minicad.editorInstance.tool;
+      return { sillHeight: t.sillHeight, leaves: t.leaves, designation: t.designation };
+    });
+    assert.ok(ok(placed), `${label}: ${why} (${JSON.stringify(placed)})`);
+  }
+  console.log('✔ 改訂版のパーツ表の品が、既定値ごと 1 クリックで選べる');
+
+  // --- 物件用途の絞り込み ---
+  const countParts = () => page.locator('.part-button[data-opening]').count();
+  const all = await countParts();
+  await page.locator('.use-button[data-use="オ"]').click();
+  await sleep(150);
+  const office = await countParts();
+  assert.ok(office < all, `オフィスで絞っても減らない (${all} → ${office})`);
+  assert.equal(await page.locator('.part-button[data-opening="開き戸(親子ドア)"]').count(), 0,
+    '住宅だけの品がオフィスに出ている');
+  assert.equal(await page.locator('.part-button[data-opening="排煙窓"]').count(), 1,
+    'オフィスの品が出ていない');
+  // 構造も同じ札で絞る
+  assert.equal(await page.locator('.part-button[data-fixture="stair"]').count(), 0,
+    '住宅だけの構造がオフィスに出ている');
+  await page.locator('.use-button[data-use="all"]').click();
+  await sleep(150);
+  assert.equal(await countParts(), all, '「全て」に戻らない');
+  console.log('✔ 物件用途で絞ると、建具も構造も出入りする');
 
   await page.keyboard.press('Escape');
   await page.keyboard.press('v');

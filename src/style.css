@@ -675,6 +675,37 @@ input.layer-name:focus {
 }
 
 /* パーツのパレット */
+/* 物件用途の絞り込み。ワイヤー改訂版の画面上部のラジオ */
+.use-filter {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+.use-button {
+  font: inherit;
+  font-size: 11px;
+  flex: 1;
+  padding: 4px 2px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.use-button:hover {
+  background: var(--accent-soft);
+}
+
+.use-button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: #b9ccf8;
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .part-group {
   margin: 8px 0 4px;
   font-size: 11px;

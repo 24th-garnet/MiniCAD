@@ -11,6 +11,7 @@ import { deserialize } from '../../../io/scene.ts';
 import { el } from '../../dom.ts';
 import type { PanelContext, Section } from '../../panel.ts';
 import type { LibraryItem } from '../../../host.ts';
+import { ALL_USES, USES, USE_LABELS, type Use } from '../../../core/use.ts';
 
 /**
  * 挿せる部品の一覧。**通常モードの中心にある道具立て。**
@@ -24,22 +25,38 @@ import type { LibraryItem } from '../../../host.ts';
  * 図面が持っているブロック定義をそのまま出す（単体でも空にならない）。
  */
 export class LibrarySection implements Section {
+  /**
+   * 絞り込み中の物件用途。null は「全て」。
+   *
+   * **区画のインスタンスが持つ。** 図面の中身ではないので履歴にも載せず、
+   * 保存もしない。区画はモードを切り替えたときにだけ作り直されるので、
+   * パネルを描き直しても選んだ用途は残る。
+   */
+  private use: Use | null = null;
+
   render(ctx: PanelContext): (HTMLElement | null)[] {
     const items = ctx.catalogs.library ?? fromScene(ctx);
     const out: (HTMLElement | null)[] = [el('h2', {}, ['パーツ'])];
+    out.push(this.useFilter(ctx));
 
     // **構造を先に出す**（ワイヤーの奥谷さんの指摘）。躯体を決めてから
     // 建具を入れ、最後に家具を置く——実際の手順の順に並べる
-    out.push(el('h3', { class: 'part-group' }, ['構造']));
-    const structure = el('div', { class: 'part-grid' }, []);
-    for (const kind of FIXTURE_KINDS) structure.append(fixtureButton(kind, ctx));
-    out.push(structure);
+    const fixtures = FIXTURE_KINDS.filter((k) => this.shows(FIXTURE_SPECS[k].uses));
+    if (fixtures.length > 0) {
+      out.push(el('h3', { class: 'part-group' }, ['構造']));
+      const structure = el('div', { class: 'part-grid' }, []);
+      for (const kind of fixtures) structure.append(fixtureButton(kind, ctx));
+      out.push(structure);
+    }
 
     // **建具は構造の次。** 躯体 → 建具 → 家具 の順
-    out.push(el('h3', { class: 'part-group' }, ['建具']));
-    const openings = el('div', { class: 'part-grid' }, []);
-    for (const preset of OPENING_PARTS) openings.append(openingButton(preset, ctx));
-    out.push(openings);
+    const parts = OPENING_PARTS.filter((p) => this.shows(p.uses));
+    if (parts.length > 0) {
+      out.push(el('h3', { class: 'part-group' }, ['建具']));
+      const openings = el('div', { class: 'part-grid' }, []);
+      for (const preset of parts) openings.append(openingButton(preset, ctx));
+      out.push(openings);
+    }
 
     if (items.length === 0) return out;
 
@@ -67,6 +84,36 @@ export class LibrarySection implements Section {
       ]));
     }
     return out;
+  }
+
+  /** その用途でよく使うものか。「全て」のときは何も落とさない */
+  private shows(uses: readonly Use[]): boolean {
+    return this.use === null || uses.includes(this.use);
+  }
+
+  /**
+   * 物件用途のラジオ。ワイヤー改訂版の画面上部にあるもの。
+   *
+   * **ホストのカタログは絞らない。** ホストが渡す家具の一覧には用途の札が
+   * 無く、勝手に札を立てると「渡したのに出ない」が起きる。
+   * 絞るのは MiniCAD が持っている建築パーツだけ。
+   */
+  private useFilter(ctx: PanelContext): HTMLElement {
+    const row = el('div', { class: 'use-filter' }, []);
+    const button = (value: Use | null, label: string): HTMLElement =>
+      el('button', {
+        class: 'use-button',
+        type: 'button',
+        'aria-pressed': String(this.use === value),
+        'data-use': value ?? 'all',
+        onclick: () => {
+          this.use = value;
+          ctx.refresh();
+        },
+      }, [label]);
+    row.append(button(null, '全て'));
+    for (const use of USES) row.append(button(use, USE_LABELS[use]));
+    return row;
   }
 }
 
@@ -102,15 +149,64 @@ interface OpeningPart {
   family: 'door' | 'window';
   kind: OpeningKind;
   bay?: Bay;
+  /** 既定の開口幅 (mm)。省くと種別の既定 */
+  width?: number;
+  /** 既定の枚数。省くと種別の既定 */
+  leaves?: number;
+  /** 既定の窓台 (mm)。掃き出し窓は 0、腰窓は 800 */
+  sillHeight?: number;
+  /** 既定の建具高さ (mm) */
+  height?: number;
+  /** 既定の建具符号 */
+  designation?: string;
+  /** どの物件用途でよく使うか（ワイヤー 8 枚目のタグ） */
+  uses: readonly Use[];
 }
 
+/**
+ * ワイヤー改訂版（8 枚目）のパーツ表。**ドア 11 品・窓 9 品・出窓 5 品。**
+ *
+ * ここに並ぶのは品であって種別ではない。`OpeningKind` は 10 種のままで、
+ * 1 品は「種別 ＋ 既定幅 ＋ 窓台 ＋ 枚数 ＋ 符号」の組で出る。
+ * 使う人は「FIX窓を置く」と考えるので品名のボタンを出し、
+ * 図面の中身は記号が同じものをまとめて持つ——**画面と内部でちょうど逆**にする。
+ *
+ * **まだ置けない品**（丸窓・天窓）はここに並べない。
+ * 並べて別の記号を出すと、使う人は置いたつもりになって違うものを得る。
+ */
 const OPENING_PARTS: OpeningPart[] = [
-  { label: 'ドア', family: 'door', kind: 'door' },
-  { label: '引き違い窓', family: 'window', kind: 'windowSliding' },
-  { label: '窓', family: 'window', kind: 'window' },
-  { label: '壁開口', family: 'door', kind: 'opening' },
-  { label: '出窓', family: 'window', kind: 'window', bay: { shape: 'box', depth: 450, side: 1 } },
-  { label: 'ニッチ', family: 'door', kind: 'opening', bay: { shape: 'box', depth: -150, side: 1 } },
+  // ドア
+  { label: '開き戸(片開き)', family: 'door', kind: 'door', uses: ALL_USES },
+  { label: '開き戸(両開き)', family: 'door', kind: 'doubleDoor', uses: ALL_USES },
+  { label: '開き戸(3枚開き)', family: 'door', kind: 'door', width: 2400, leaves: 3, uses: ALL_USES },
+  { label: '開き戸(親子ドア)', family: 'door', kind: 'unequalDoor', uses: ['住'] },
+  { label: '引き戸(片開き)', family: 'door', kind: 'slidingSingle', uses: ['住', '店'] },
+  { label: '引き戸(両開き)', family: 'door', kind: 'slidingDouble', uses: ['住', '店'] },
+  { label: '引き戸(4枚開き)', family: 'door', kind: 'slidingDouble', width: 3300, leaves: 4, uses: ['住'] },
+  { label: '引き戸(大開口)', family: 'door', kind: 'slidingDouble', width: 3600, uses: ['店'] },
+  { label: '引込み戸', family: 'door', kind: 'slidingPocket', uses: ['住', '店'] },
+  { label: '折れ戸(4枚)', family: 'door', kind: 'folding', uses: ['住'] },
+  { label: '折れ戸(大開口)', family: 'door', kind: 'folding', width: 2700, leaves: 6, uses: ['店'] },
+  // 勝手口は外部建具。幅が狭く、符号が付く
+  { label: '勝手口ドア', family: 'door', kind: 'door', width: 700, designation: 'AD-1', uses: ['住'] },
+  { label: 'ドア開口(建具なし)', family: 'door', kind: 'opening', uses: ALL_USES },
+
+  // 窓。記号は同じで、窓台と符号で分かれる
+  { label: '引き違い窓', family: 'window', kind: 'windowSliding', sillHeight: 800, uses: ALL_USES },
+  { label: '掃き出し窓', family: 'window', kind: 'windowSliding', width: 1700, sillHeight: 0, height: 2000, uses: ALL_USES },
+  { label: '片開き窓', family: 'window', kind: 'window', width: 600, sillHeight: 800, designation: 'AW-1', uses: ALL_USES },
+  { label: '上げ下げ窓', family: 'window', kind: 'window', width: 600, sillHeight: 900, designation: 'AW-2', uses: ['住', '店'] },
+  { label: 'FIX窓', family: 'window', kind: 'window', width: 900, sillHeight: 900, designation: 'FIX', uses: ['オ', '店'] },
+  { label: '排煙窓', family: 'window', kind: 'window', width: 900, sillHeight: 1800, designation: 'HW-1', uses: ['オ', '店'] },
+  { label: '横連窓', family: 'window', kind: 'window', width: 3600, sillHeight: 900, height: 1200, designation: 'AW-3', uses: ['オ', '店'] },
+
+  // 出窓。窓に張り出しを足したもの
+  { label: '角型出窓', family: 'window', kind: 'window', sillHeight: 800, bay: { shape: 'box', depth: 450, side: 1 }, uses: ['住'] },
+  { label: '台形出窓', family: 'window', kind: 'window', sillHeight: 800, bay: { shape: 'trapezoid', depth: 450, side: 1 }, uses: ['住'] },
+  { label: '弓型出窓', family: 'window', kind: 'window', sillHeight: 800, bay: { shape: 'bow', depth: 450, side: 1 }, uses: ['住'] },
+  // ハーフ出窓は窓台が高いだけ。欄は増やさない
+  { label: 'ハーフ出窓', family: 'window', kind: 'window', sillHeight: 1100, bay: { shape: 'box', depth: 300, side: 1 }, uses: ['住'] },
+  { label: 'ニッチ', family: 'door', kind: 'opening', bay: { shape: 'box', depth: -150, side: 1 }, uses: ALL_USES },
 ];
 
 function openingButton(part: OpeningPart, ctx: PanelContext): HTMLElement {
@@ -123,9 +219,15 @@ function openingButton(part: OpeningPart, ctx: PanelContext): HTMLElement {
       ctx.selectTool(part.family);
       const tool = ctx.editor.tool;
       if (tool instanceof OpeningTool) {
+        const symbol = OPENING_SYMBOLS[part.kind];
         tool.kind = part.kind;
-        // 種別を変えたら幅もその種別の既定に戻す。ツールの種別セレクタと同じ扱い
-        tool.width = OPENING_SYMBOLS[part.kind].defaultWidth;
+        // **品の既定値をひとそろい流し込む。** 省いた欄は種別の既定に戻す。
+        // 戻さないと、前に押した品の窓台や符号が次の品に残る
+        tool.width = part.width ?? symbol.defaultWidth;
+        tool.leaves = part.leaves ?? symbol.defaultLeaves;
+        tool.sillHeight = part.sillHeight ?? null;
+        tool.height = part.height ?? null;
+        tool.designation = part.designation ?? '';
         tool.bay = part.bay ? { ...part.bay } : null;
       }
       ctx.editor.canvas.focus();

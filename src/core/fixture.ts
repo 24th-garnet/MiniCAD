@@ -6,6 +6,7 @@ import type { Level } from './level.ts';
 import type { Primitive } from './primitive.ts';
 import type { Segment } from './shape.ts';
 import type { SnapKind } from './snap.ts';
+import { ALL_USES, type Use } from './use.ts';
 
 /**
  * 構造物。柱・梁・階段・スロープ・吹抜のように、**平面の footprint と
@@ -85,6 +86,11 @@ export interface FixtureSpec {
   filled: boolean;
   /** ピックの優先度。小さいほど先に拾う */
   pickPriority: number;
+  /**
+   * どの物件用途でよく使うか（ワイヤー 8 枚目のタグ）。
+   * パレットの絞り込みにだけ使う。図面の中身には出ない。
+   */
+  uses: readonly Use[];
 }
 
 /** 円柱の輪郭を折れ線で近似するときの分割数 */
@@ -160,6 +166,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     solid: true,
     filled: true,
     pickPriority: 2,
+    uses: ALL_USES,
   },
   roundColumn: {
     label: '円柱',
@@ -173,6 +180,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     solid: true,
     filled: true,
     pickPriority: 2,
+    uses: ALL_USES,
   },
   beam: {
     label: '梁',
@@ -187,6 +195,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     solid: true,
     filled: false,
     pickPriority: 3,
+    uses: ALL_USES,
   },
   stair: {
     label: '階段',
@@ -200,6 +209,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     solid: true,
     filled: false,
     pickPriority: 4,
+    uses: ['住'],
   },
   slope: {
     label: 'スロープ',
@@ -213,6 +223,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     solid: true,
     filled: false,
     pickPriority: 4,
+    uses: ALL_USES,
   },
   void: {
     label: '吹抜',
@@ -227,6 +238,8 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     solid: false,
     filled: false,
     pickPriority: 5,
+    // 吹抜＜住＞・PS＜住オ店＞・煙道＜オ店＞を 1 つの種別で兼ねるので、絞らない
+    uses: ALL_USES,
   },
 };
 
