@@ -2,6 +2,7 @@ import { ENTITY_KINDS } from './entity.ts';
 import { pruneConstraints } from './constraintOps.ts';
 import { solveScene, type SolveResult } from './constraintSolver.ts';
 import { emptyScene, sameRef, type EntityRef, type Id, type Scene } from './types.ts';
+import { expandGroups } from './group.ts';
 
 export interface Settings {
   /** グリッド間隔 (mm) */
@@ -248,16 +249,26 @@ export class Store {
     return this.selection.some((s) => sameRef(s, ref));
   }
 
+  /**
+   * 選び直す。**グループは 1 つ掴めば全部選ばれる。**
+   *
+   * 広げるのをここ 1 箇所にしてある。拾う側（2D のクリック・矩形選択・3D の
+   * クリック・ツールが置いた直後の選択）が自分で広げると、1 つ忘れた経路だけ
+   * グループが効かない形になる。
+   */
   setSelection(refs: EntityRef[]): void {
-    this.selection = refs;
+    this.selection = expandGroups(this.scene, refs);
     this.emit();
   }
 
+  /** Shift クリック。**グループは仲間ごと入って、仲間ごと外れる** */
   toggleSelection(ref: EntityRef): void {
+    const group = expandGroups(this.scene, [ref]);
     if (this.isSelected(ref)) {
-      this.selection = this.selection.filter((s) => !sameRef(s, ref));
+      this.selection = this.selection.filter((s) => !group.some((g) => sameRef(g, s)));
     } else {
-      this.selection = [...this.selection, ref];
+      const add = group.filter((g) => !this.isSelected(g));
+      this.selection = [...this.selection, ...add];
     }
     this.emit();
   }

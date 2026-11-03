@@ -1,5 +1,6 @@
 import { downloadJson } from '../io/scene.ts';
 import { isSelectable } from '../core/entity.ts';
+import { groupEntities, ungroupEntities } from '../core/group.ts';
 import type { CommandInput } from './command-input.ts';
 import { isTextInput } from './editor.ts';
 import type { PanelContext } from './panel.ts';
@@ -39,6 +40,32 @@ export function defaultBindings(): Binding[] {
       run: (ctx) => ctx.editor.store.redo(),
     },
     { keys: ['y', 'Y'], mod: true, run: (ctx) => ctx.editor.store.redo() },
+    {
+      keys: ['g', 'G'],
+      mod: true,
+      shift: false,
+      display: 'Cmd/Ctrl+G',
+      description: 'グループ化',
+      run: (ctx) => {
+        const scene = ctx.editor.store.scene;
+        const sel = [...ctx.editor.store.selection];
+        ctx.edit(() => groupEntities(scene, sel) !== null);
+        ctx.refresh();
+      },
+    },
+    {
+      keys: ['g', 'G'],
+      mod: true,
+      shift: true,
+      display: 'Shift+Cmd/Ctrl+G',
+      description: 'グループ解除',
+      run: (ctx) => {
+        const scene = ctx.editor.store.scene;
+        const sel = [...ctx.editor.store.selection];
+        ctx.edit(() => ungroupEntities(scene, sel));
+        ctx.refresh();
+      },
+    },
     { keys: ['s', 'S'], mod: true, run: (ctx) => downloadJson(ctx.editor.store.scene) },
     {
       keys: ['a', 'A'],

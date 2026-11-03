@@ -15,6 +15,7 @@ import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
 import { resolveSelection, selectionCenter } from '../../../core/selection.ts';
 import type { Section, PanelContext } from '../../panel.ts';
+import { groupEntities, ungroupEntities } from '../../../core/group.ts';
 
 /** 選択中のエンティティのプロパティ */
 export class SelectionSection implements Section {
@@ -32,6 +33,7 @@ export class SelectionSection implements Section {
         ...attrFields(ctx, sel),
         layerField(ctx),
         blockifyButton(ctx),
+        groupButton(ctx),
         symbolifyButton(ctx),
         ...symbolUpdateButtons(ctx),
       );
@@ -46,6 +48,7 @@ export class SelectionSection implements Section {
       ...attrFields(ctx, sel),
       layerField(ctx),
       blockifyButton(ctx),
+      groupButton(ctx),
       symbolifyButton(ctx),
       ...symbolUpdateButtons(ctx),
     );
@@ -404,6 +407,43 @@ function uniqueBlockLabel(scene: PanelContext['editor']['store']['scene'], base:
  * 選んだ図形をブロックにする。
  * 対象は汎用図形だけ。壁や建具はノードのグラフを定義に持ち込むことになるので入れない。
  */
+/**
+ * グループにする／解く。**同じボタンが状態で入れ替わる。**
+ *
+ * グループは `Attrs.groupId` が同じというだけの札で、新しい実体は作らない。
+ * シンボル（スタンプ）との違いは、**名前も版も持たず、置き直せない**こと。
+ * 「このひとかたまりを一緒に動かしたい」だけならこちら。
+ */
+function groupButton(ctx: PanelContext): HTMLElement | null {
+  const scene = ctx.editor.store.scene;
+  const sel = ctx.editor.store.selection;
+  const grouped = sel.filter((ref) => attrsOf(scene, ref)?.groupId);
+  const groupable = sel.filter((ref) => attrsOf(scene, ref) !== null);
+
+  if (grouped.length > 0) {
+    return el('button', {
+      class: 'wide',
+      type: 'button',
+      title: 'グループを解いて、1 つずつ選べるようにする（Shift+Ctrl/Cmd+G）',
+      onclick: () => {
+        ctx.edit(() => ungroupEntities(scene, sel));
+        ctx.refresh();
+      },
+    }, [`グループ解除（${grouped.length} 個）`]);
+  }
+  // ノードと室名ラベルは属性を持たないのでグループに入れられない
+  if (groupable.length < 2) return null;
+  return el('button', {
+    class: 'wide',
+    type: 'button',
+    title: '選んだものを 1 つのグループにする。1 つ掴むと全部動く（Ctrl/Cmd+G）',
+    onclick: () => {
+      ctx.edit(() => groupEntities(scene, sel) !== null);
+      ctx.refresh();
+    },
+  }, [`グループ化（${groupable.length} 個）`]);
+}
+
 /**
  * 選んだものをシンボルにする。**壁を含められるのがブロックとの違い。**
  *

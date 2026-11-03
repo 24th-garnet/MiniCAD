@@ -107,6 +107,15 @@ async function run() {
         drawings: Object.values(s.shapes).filter((sh) => sh.shape !== 'dimension').length,
         rooms: ed.rooms.map((r) => ({ name: r.name, area: Number(r.area.toFixed(2)) })),
         selection: ed.store.selection.length,
+        groups: new Set(
+          [
+            ...Object.values(ed.store.scene.walls),
+            ...Object.values(ed.store.scene.openings),
+            ...Object.values(ed.store.scene.instances),
+            ...Object.values(ed.store.scene.shapes),
+            ...Object.values(ed.store.scene.fixtures),
+          ].map((e) => e.attrs?.groupId).filter(Boolean),
+        ).size,
         status: document.getElementById('status-hint').textContent,
         numericVisible: !document.getElementById('numeric').hidden,
         standard: {
@@ -500,6 +509,69 @@ async function run() {
   );
 
   // --- 複写・回転・鏡像 ---
+
+  // --- グループ化 ---
+  // **1 つ掴むと全部動く。** 同じ値の札なので、新しい実体は作っていない
+  await step(
+    '範囲選択したものをグループにできる',
+    async () => {
+      await page.keyboard.press('v');
+      const from = await at(9400, -600);
+      const to = await at(14600, 3400);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 10 });
+      await page.mouse.up();
+      const picked = (await state()).selection;
+      assert.ok(picked >= 4, '書斎を選択できていない');
+      await page.keyboard.press('Meta+g');
+      await sleep(200);
+    },
+    (s) => {
+      assert.ok(s.groups === 1, `グループが 1 つになっていない (${s.groups})`);
+      assert.ok(s.selection >= 4, 'グループ化で選択が外れた');
+    },
+  );
+
+  await step(
+    'グループは 1 つ掴むと全部選ばれる',
+    async () => {
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => window.minicad.editorInstance.store.clearSelection());
+      await sleep(120);
+      assert.equal((await state()).selection, 0, '選択が外れていない');
+      // グループの壁を 1 本だけクリックする
+      const wall = await page.evaluate(() => {
+        const s = window.minicad.editorInstance.store.scene;
+        const w = Object.values(s.walls).find((x) => x.attrs.groupId);
+        const a = s.nodes[w.a];
+        const b = s.nodes[w.b];
+        return [(a.x + b.x) / 2, (a.y + b.y) / 2];
+      });
+      await clickWorld(wall[0], wall[1]);
+      await sleep(200);
+    },
+    (s) => assert.ok(s.selection >= 4, `1 本掴んでも広がらない (${s.selection})`),
+  );
+
+  await step(
+    'グループを解除すると 1 つずつ選べる',
+    async () => {
+      await page.keyboard.press('Meta+Shift+g');
+      await sleep(200);
+    },
+    (s) => assert.equal(s.groups, 0, 'グループが残っている'),
+  );
+
+  await step(
+    'グループ化は undo で戻る',
+    async () => {
+      await page.keyboard.press('Meta+z');
+      await page.keyboard.press('Meta+z');
+      await sleep(250);
+    },
+    (s) => assert.equal(s.groups, 0, 'undo でグループが残った'),
+  );
 
   let wallsBeforeCopy = 0;
   await step(
