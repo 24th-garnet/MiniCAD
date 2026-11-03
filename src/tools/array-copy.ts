@@ -2,7 +2,9 @@ import { arrayCopy, type ArrayCopy } from '../core/arrayCopy.ts';
 import { toRad, type Vec } from '../core/geometry.ts';
 import { drawSnapMarker, type Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
+import { copyLayerField } from './tool.ts';
 import type { OptionField, PointerInfo, Tool } from './tool.ts';
+import type { LayerId } from '../core/layer.ts';
 
 /**
  * 配列複写（ワイヤー 5 枚目の「配列複写」）。
@@ -34,6 +36,8 @@ export class ArrayCopyTool implements Tool {
   angleDeg = 0;
   count = 6;
   sweepDeg = 360;
+  /** 複製先の画層。null なら元のまま（ワイヤー 5 枚目の「複製先のレイヤーを選択」） */
+  copyLayerId: LayerId | null = null;
 
   onActivate(editor: Editor): void {
     editor.snapContext = {};
@@ -63,7 +67,7 @@ export class ArrayCopyTool implements Tool {
         }
       : { kind: 'radial', center, count: this.count, sweep: toRad(this.sweepDeg) };
     // **1 コミットにまとめる。** undo 1 回で全部戻る
-    editor.store.commit(() => arrayCopy(editor.store.scene, refs, spec) > 0);
+    editor.store.commit(() => arrayCopy(editor.store.scene, refs, spec, this.copyLayerId) > 0);
     editor.requestRender();
   }
 
@@ -79,9 +83,11 @@ export class ArrayCopyTool implements Tool {
       ],
       onChange: (v) => void (this.kind = v === 'radial' ? 'radial' : 'grid'),
     };
+    const layer = copyLayerField(editor, this.copyLayerId, (v) => void (this.copyLayerId = v));
     if (this.kind === 'radial') {
       return [
         head,
+        layer,
         { kind: 'number', label: '個数', value: this.count, step: 1, min: 2, max: 360,
           onChange: (v) => void (this.count = Math.max(2, Math.min(360, Math.round(v)))) },
         { kind: 'number', label: '全体の角', value: this.sweepDeg, step: 15, suffix: '°',
@@ -91,6 +97,7 @@ export class ArrayCopyTool implements Tool {
     }
     return [
       head,
+      layer,
       { kind: 'number', label: '行', value: this.rows, step: 1, min: 1, max: 200,
         onChange: (v) => void (this.rows = Math.max(1, Math.min(200, Math.round(v)))) },
       { kind: 'number', label: '列', value: this.cols, step: 1, min: 1, max: 200,

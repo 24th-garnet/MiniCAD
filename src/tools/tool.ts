@@ -1,5 +1,6 @@
 import type { CoordInput, CoordMode } from '../core/coord-input.ts';
 import type { Vec } from '../core/geometry.ts';
+import type { LayerId } from '../core/layer.ts';
 import type { SnapResult } from '../core/snap.ts';
 import type { Frame } from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
@@ -64,6 +65,30 @@ export type OptionField =
   /** その場で押せる候補。押すと onPick が呼ばれ、オプションバーが描き直される */
   | { kind: 'chips'; items: string[]; onPick(s: string): void }
   | { kind: 'note'; text: string };
+
+/**
+ * 複製先の画層を選ぶ欄（ワイヤー 5 枚目の「複製先のレイヤーを選択」）。
+ *
+ * **複製するツールが 2 つある**（複写と配列）ので、欄をここで 1 回だけ書く。
+ * 空欄は「元のまま」で、画層を指すのとは別の状態。
+ */
+export function copyLayerField(
+  editor: Editor,
+  value: LayerId | null,
+  onChange: (v: LayerId | null) => void,
+): OptionField {
+  const layers = Object.values(editor.store.scene.layers);
+  return {
+    kind: 'select',
+    label: '複製先の画層',
+    value: value ?? '',
+    options: [
+      { value: '', label: '元のまま' },
+      ...layers.map((l) => ({ value: l.id, label: l.name })),
+    ],
+    onChange: (v) => onChange(v && editor.store.scene.layers[v] ? v : null),
+  };
+}
 
 /** ツールバーの並びを区切るためのグループ */
 export type ToolGroup = 'draw' | 'modify' | 'annotate';

@@ -4,6 +4,8 @@ import { transformShape } from './shapes.ts';
 import { applyPoint, directionAngleAfter, isMirror, type Transform } from './transform.ts';
 import { newId, type EntityRef, type Id, type Scene } from './types.ts';
 import { copyConstraints } from './constraintOps.ts';
+import { setLayerOf } from './entity.ts';
+import type { LayerId } from './layer.ts';
 import type { Attrs } from './attrs.ts';
 
 export interface TransformResult {
@@ -18,6 +20,13 @@ export interface TransformResult {
 export interface TransformOptions {
   /** 元を残して複製する */
   copy: boolean;
+  /**
+   * 複製先の画層（ワイヤー 5 枚目の「複製先のレイヤーを選択」）。
+   * null なら元と同じ画層のまま。**複製のときだけ効く。**
+   *
+   * 画層を持たない実体（ノード）は黙って素通りする——`setLayerOf` の作法と同じ。
+   */
+  layerId?: LayerId | null;
 }
 
 /**
@@ -44,7 +53,7 @@ export function transformEntities(
   const movedWalls = Object.values(scene.walls).filter((w) => nodeIds.has(w.a) && nodeIds.has(w.b));
 
   return options.copy
-    ? copyEntities(scene, sel, movedWalls, t, mirrored)
+    ? copyEntities(scene, sel, movedWalls, t, mirrored, options.layerId ?? null)
     : moveEntities(scene, sel, movedWalls, t, mirrored);
 }
 
@@ -147,6 +156,7 @@ function copyEntities(
   movedWalls: Wall[],
   t: Transform,
   mirrored: boolean,
+  layerId: LayerId | null,
 ): TransformResult {
   const nodeMap = new Map<Id, Id>();
   const refs: EntityRef[] = [];
@@ -247,6 +257,10 @@ function copyEntities(
 
   // 全参照先が複製された拘束だけを写す。片側だけだと複製が元に引きずられて動く
   copyConstraints(scene, wallMap);
+
+  // **複製してから画層を移す。** 作るときに画層を差し込むと、
+  // 6 種別それぞれの生成式に同じ分岐が入る。出来たものをまとめて移すほうが短い
+  if (layerId) setLayerOf(scene, refs, layerId);
 
   return { refs, nodeMap, wallMap };
 }

@@ -12,7 +12,9 @@ import { theme } from '../render/theme.ts';
 import type { Editor } from '../ui/editor.ts';
 import { resolveDelta, resolveLength, type CoordInput } from '../core/coord-input.ts';
 import { pointerAngleFrom } from './wall.ts';
+import { copyLayerField } from './tool.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
+import type { LayerId } from '../core/layer.ts';
 
 export type TransformMode = 'copy' | 'rotate' | 'mirror';
 
@@ -34,6 +36,8 @@ export class TransformTool implements Tool {
   private points: Vec[] = [];
   /** 回転・鏡像で元を残すか。複写は常に残す */
   keepOriginal = false;
+  /** 複製先の画層。null なら元のまま（ワイヤー 5 枚目の「複製先のレイヤーを選択」） */
+  copyLayerId: LayerId | null = null;
 
   constructor(mode: TransformMode, id: ToolId, label: string, shortcut: string) {
     this.mode = mode;
@@ -118,7 +122,10 @@ export class TransformTool implements Tool {
 
     let result: EntityRef[] = [];
     store.commit(() => {
-      const r = transformEntities(store.scene, refs, t, { copy: this.copies });
+      const r = transformEntities(store.scene, refs, t, {
+        copy: this.copies,
+        layerId: this.copyLayerId,
+      });
       if (r.refs.length === 0) return false;
       result = r.refs;
     });
@@ -162,12 +169,15 @@ export class TransformTool implements Tool {
     editor.requestRender();
   }
 
-  options(): OptionField[] {
+  options(editor: Editor): OptionField[] {
+    // **複製するときだけ画層を選ばせる。** 移動では複製先が無い
+    const layer = copyLayerField(editor, this.copyLayerId, (v) => void (this.copyLayerId = v));
     if (this.mode === 'copy') {
-      return [{ kind: 'note', text: '選択 → 基点 → 配置点。続けて複写できます' }];
+      return [{ kind: 'note', text: '選択 → 基点 → 配置点。続けて複写できます' }, layer];
     }
     return [
       { kind: 'toggle', label: '元を残す（複写）', value: this.keepOriginal, onChange: (v) => void (this.keepOriginal = v) },
+      ...(this.keepOriginal ? [layer] : []),
     ];
   }
 

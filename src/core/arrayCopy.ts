@@ -2,6 +2,7 @@ import { rotate, vec, type Vec } from './geometry.ts';
 import { rotation, translation } from './transform.ts';
 import { transformEntities } from './transformOps.ts';
 import type { EntityRef, Scene } from './types.ts';
+import type { LayerId } from './layer.ts';
 
 /**
  * 配列複写。**3D のソリッドとは無関係で、2D でも 3D でも同じものが動く。**
@@ -76,14 +77,20 @@ function stepsOf(spec: ArrayCopy): { kind: 'move'; delta: Vec }[] | { kind: 'tur
  * **1 回の呼び出しで全部置く。** 呼ぶ側が `store.commit` で包めば、
  * undo 1 回でまとめて戻る。
  */
-export function arrayCopy(scene: Scene, refs: readonly EntityRef[], spec: ArrayCopy): number {
+export function arrayCopy(
+  scene: Scene,
+  refs: readonly EntityRef[],
+  spec: ArrayCopy,
+  /** 複製先の画層。null なら元のまま */
+  layerId: LayerId | null = null,
+): number {
   if (refs.length === 0) return 0;
   let placed = 0;
   for (const step of stepsOf(spec)) {
     const t = step.kind === 'move'
       ? translation(step.delta)
       : rotation((spec as RadialArray).center, step.angle);
-    const got = transformEntities(scene, [...refs], t, { copy: true });
+    const got = transformEntities(scene, [...refs], t, { copy: true, layerId });
     if (got.refs.length > 0) placed += 1;
   }
   return placed;

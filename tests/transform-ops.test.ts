@@ -13,6 +13,7 @@ import { LAYER_IDS } from '../src/core/layer.ts';
 import { dist, toRad, vec, type Vec } from '../src/core/geometry.ts';
 import { Store } from '../src/core/store.ts';
 import type { EntityRef } from '../src/core/types.ts';
+import type { Shape } from '../src/core/shapes.ts';
 
 const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
 const nearPt = (a: Vec, b: Vec, eps = 1e-6) => near(a.x, b.x, eps) && near(a.y, b.y, eps);
@@ -393,3 +394,80 @@ test('一周でなければ、端から端まで等分する', async () => {
   // 0 / 45 / 90。**端も含めて 3 つ**
   assert.deepEqual(angles, [0, 45, 90]);
 });
+
+/**
+ * 複製先の画層（ワイヤー 5 枚目の「複製先のレイヤーを選択」）。
+ *
+ * **複製したものだけが移る。** 元は動かさない——複写は元を残す操作で、
+ * 元まで一緒に移ると「複製したら元の画層が変わっていた」になる。
+ */
+test('複製先の画層を指すと、複製だけがその画層に乗る', () => {
+  const scene = emptyScene();
+  const src = lineShape(LAYER_IDS.shape);
+  scene.shapes.s = src;
+  const refs: EntityRef[] = [{ type: 'shape', id: 's' }];
+
+  const got = transformEntities(scene, refs, translation(vec(2000, 0)), {
+    copy: true, layerId: LAYER_IDS.dimension,
+  });
+  assert.equal(got.refs.length, 1);
+  assert.equal(scene.shapes[got.refs[0].id].layerId, LAYER_IDS.dimension, '複製が移っていない');
+  assert.equal(src.layerId, LAYER_IDS.shape, '元まで移った');
+});
+
+test('画層を指さなければ元のまま', () => {
+  const scene = emptyScene();
+  scene.shapes.s = lineShape(LAYER_IDS.dimension);
+  const got = transformEntities(scene, [{ type: 'shape', id: 's' }], translation(vec(2000, 0)), { copy: true });
+  assert.equal(scene.shapes[got.refs[0].id].layerId, LAYER_IDS.dimension);
+});
+
+test('移動では画層を指しても効かない（複製先が無いので）', () => {
+  const scene = emptyScene();
+  const src = lineShape(LAYER_IDS.shape);
+  scene.shapes.s = src;
+  transformEntities(scene, [{ type: 'shape', id: 's' }], translation(vec(2000, 0)), {
+    copy: false, layerId: LAYER_IDS.dimension,
+  });
+  assert.equal(src.layerId, LAYER_IDS.shape, '移動で画層が変わった');
+});
+
+test('壁と構造も複製先の画層へ移る', () => {
+  const scene = emptyScene();
+  const wall = addWall(scene, findOrCreateNode(scene, vec(0, 0)), findOrCreateNode(scene, vec(4000, 0)), 120)!;
+  const refs: EntityRef[] = [
+    { type: 'node', id: wall.a }, { type: 'node', id: wall.b }, { type: 'wall', id: wall.id },
+  ];
+  const got = transformEntities(scene, refs, translation(vec(0, 3000)), {
+    copy: true, layerId: LAYER_IDS.draft,
+  });
+  const copied = got.refs.filter((r) => r.type === 'wall');
+  assert.equal(copied.length, 1, '壁が複製されていない');
+  assert.equal(scene.walls[copied[0].id].layerId, LAYER_IDS.draft);
+  assert.equal(scene.walls[wall.id].layerId, LAYER_IDS.wall, '元の壁まで移った');
+});
+
+test('配列複写も複製先の画層に従う', async () => {
+  const { arrayCopy } = await import('../src/core/arrayCopy.ts');
+  const scene = emptyScene();
+  const src = lineShape(LAYER_IDS.shape);
+  scene.shapes.s = src;
+  const n = arrayCopy(
+    scene, [{ type: 'shape', id: 's' }],
+    { kind: 'grid', rows: 1, cols: 3, rowStep: 0, colStep: 2000, angle: 0 },
+    LAYER_IDS.draft,
+  );
+  assert.ok(n > 0, '並ばなかった');
+  const copies = Object.values(scene.shapes).filter((sh) => sh.id !== 's');
+  assert.ok(copies.length > 0);
+  for (const c of copies) assert.equal(c.layerId, LAYER_IDS.draft, '複製が移っていない');
+  assert.equal(src.layerId, LAYER_IDS.shape, '元まで移った');
+});
+
+/** 画層だけが違う線。`as never` で代入すると後の読みが never に狭まるので、参照を返す */
+function lineShape(layerId: string): Shape {
+  return {
+    id: 's', shape: 'line', a: vec(0, 0), b: vec(1000, 0),
+    layerId, attrs: defaultAttrs(),
+  } as unknown as Shape;
+}
