@@ -1,7 +1,7 @@
 import { defaultAttrs } from '../core/attrs.ts';
 import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
 import { clampOpening, mergeOpeningSpan, wallEnds, wallLength } from '../core/ops.ts';
-import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
+import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
 import { openingFrame, openingQuad } from '../core/shape.ts';
 import { OPENING_SYMBOLS, openingKindsOf, openingPrimitives } from '../core/opening.ts';
 import { newId, type Id, type Opening, type OpeningKind } from '../core/types.ts';
@@ -77,22 +77,11 @@ export class OpeningTool implements Tool {
     if (!candidate) return;
     const store = editor.store;
     const id = newId('o');
-    const opening: Opening = {
+    const opening = this.makeOpening(
       id,
-      wallId: candidate.wallId,
-      offset: candidate.offset,
-      width: candidate.width,
-      kind: this.kind,
-      flipX: this.flipX,
-      flipY: this.flipY,
-      sillHeight: null,
-      bay: this.bay ? { ...this.bay } : null,
-      designation: '',
-      leaves: 2,
-      height: null,
-      layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
-      attrs: defaultAttrs(),
-    };
+      candidate,
+      resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
+    );
     store.commit(() => {
       // 吸収したぶんは同じコミットで消す。undo 1 回で元の 2 つに戻る
       for (const absorbed of candidate.absorb) delete store.scene.openings[absorbed];
@@ -117,6 +106,35 @@ export class OpeningTool implements Tool {
   }
 
   /** カーソルに最も近い壁の、開口が収まる位置を探す */
+  /**
+   * いま置こうとしている建具を組み立てる。**置くときとプレビューで共有する。**
+   *
+   * 以前は `onPointerDown` と `drawOverlay` に同じリテラルが 2 つあった。
+   * 欄を足すたびに両方直す必要があり、片方を忘れると
+   * **ゴーストと実際に置かれるものが違う**という質の悪い壊れ方をする。
+   *
+   * 結合するときの幅は `candidate.width`（まとめた後の形）。
+   * 押す前に結果が見えるのは、ここを共有しているから。
+   */
+  private makeOpening(id: Id, candidate: Candidate, layerId: LayerId): Opening {
+    return {
+      id,
+      wallId: candidate.wallId,
+      offset: candidate.offset,
+      width: candidate.width,
+      kind: this.kind,
+      flipX: this.flipX,
+      flipY: this.flipY,
+      sillHeight: null,
+      bay: this.bay ? { ...this.bay } : null,
+      designation: '',
+      leaves: 2,
+      height: null,
+      layerId,
+      attrs: defaultAttrs(),
+    };
+  }
+
   private findCandidate(editor: Editor, p: Vec): Candidate | null {
     const scene = editor.store.scene;
     const limit = editor.viewport.toWorldLength(40);
@@ -150,23 +168,9 @@ export class OpeningTool implements Tool {
     const candidate = this.candidate;
     if (!candidate) return;
     const scene = editor.store.scene;
-    const preview: Opening = {
-      id: '__preview',
-      wallId: candidate.wallId,
-      offset: candidate.offset,
-      // 結合するときは、まとめた後の形を先に見せる。押してから驚かない
-      width: candidate.width,
-      kind: this.kind,
-      flipX: this.flipX,
-      flipY: this.flipY,
-      sillHeight: null,
-      bay: this.bay ? { ...this.bay } : null,
-      designation: '',
-      leaves: 2,
-      height: null,
-      layerId: LAYER_IDS.opening,
-      attrs: defaultAttrs(),
-    };
+    // **置くものと同じ関数で作る。** ここを別に書くと、欄を足したときに
+    // 片方だけ直してゴーストと実体がずれる
+    const preview = this.makeOpening('__preview', candidate, LAYER_IDS.opening);
     const f = openingFrame(scene, preview);
     if (!f) return;
     const { ctx, vp } = frame;
