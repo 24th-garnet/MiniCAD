@@ -18,6 +18,7 @@ import type { Settings } from '../core/store.ts';
 import type { Room, Scene } from '../core/types.ts';
 import { theme } from '../render/theme.ts';
 import { lineTag, pointsAttr, round, svgPrimitives, textTag } from './svgPrimitive.ts';
+import { colorOf } from '../core/material.ts';
 import { shapePrimitives } from '../core/shapes.ts';
 
 const MARGIN = 400; // mm
@@ -76,8 +77,9 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
   for (const wall of Object.values(scene.walls)) {
     const layer = layerOf(wall.layerId, LAYER_IDS.wall);
     if (!visible(layer)) continue;
+    const color = colorOf(scene, { type: 'wall', id: wall.id }) ?? layer.color;
     // 塗らない設定でも、下の部屋塗りを隠すため紙の色で埋める
-    out.push(`<polygon points="${pointsAttr(wallQuad(scene, wall))}" fill="${std.wallFill ? layer.color : theme.paper}"/>`);
+    out.push(`<polygon points="${pointsAttr(wallQuad(scene, wall))}" fill="${std.wallFill ? color : theme.paper}"/>`);
   }
   for (const op of Object.values(scene.openings)) {
     const f = openingFrame(scene, op);
@@ -88,8 +90,9 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     for (const wall of Object.values(scene.walls)) {
       const layer = layerOf(wall.layerId, LAYER_IDS.wall);
       if (!visible(layer)) continue;
+      const color = colorOf(scene, { type: 'wall', id: wall.id }) ?? layer.color;
       for (const s of wallOutline(scene, wall)) {
-        out.push(lineTag(s.a, s.b, layer.color, strokeWidth(layer), dashAttr(layer)));
+        out.push(lineTag(s.a, s.b, color, strokeWidth(layer), dashAttr(layer)));
       }
     }
   }
@@ -102,8 +105,9 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     if (!f) continue;
     // 小口（ジャム）は壁の幾何なので記号の表には入れない
     const w = strokeWidth(layer);
-    for (const jamb of openingJambs(f)) out.push(lineTag(jamb.a, jamb.b, layer.color, w));
-    out.push(...svgPrimitives(openingPrimitives(scene, op), layer, std));
+    const color = colorOf(scene, { type: 'opening', id: op.id });
+    for (const jamb of openingJambs(f)) out.push(lineTag(jamb.a, jamb.b, color ?? layer.color, w));
+    out.push(...svgPrimitives(openingPrimitives(scene, op), layer, std, color));
   }
 
   // --- ブロックの挿入 ---
@@ -115,7 +119,10 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     out.push(
       `<polygon points="${pointsAttr(instanceVertices(scene, inst))}" fill="rgba(120,113,108,0.14)" stroke="none"/>`,
     );
-    out.push(...svgPrimitives(instancePrimitives(scene, inst, std), layer, std));
+    out.push(...svgPrimitives(
+      instancePrimitives(scene, inst, std), layer, std,
+      colorOf(scene, { type: 'blockInstance', id: inst.id }),
+    ));
 
     const label = instanceLabel(scene, inst);
     const nameSize = paperToWorld(std.textHeight.furniture, std);
@@ -128,7 +135,10 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
   for (const shape of Object.values(scene.shapes)) {
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
     if (!visible(layer)) continue;
-    out.push(...svgPrimitives(shapePrimitives(scene, shape, std), layer, std));
+    out.push(...svgPrimitives(
+      shapePrimitives(scene, shape, std), layer, std,
+      colorOf(scene, { type: 'shape', id: shape.id }),
+    ));
   }
 
   // --- 室名・面積 ---

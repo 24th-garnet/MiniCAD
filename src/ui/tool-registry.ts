@@ -8,6 +8,7 @@ import { ModifyTool } from '../tools/modify.ts';
 import { CornerTool } from '../tools/corner.ts';
 import { VertexTool } from '../tools/vertex.ts';
 import { ArrayCopyTool } from '../tools/array-copy.ts';
+import { EyedropperTool } from '../tools/eyedropper.ts';
 import { OpeningTool } from '../tools/opening.ts';
 import { RoomTool } from '../tools/room.ts';
 import { SelectTool } from '../tools/select.ts';
@@ -78,6 +79,8 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   vertex: { make: () => new VertexTool(), glyph: '◆', modes: PRO_ONLY, edits: true },
   // 3D のソリッドとは無関係。2D でも 3D でも同じものが動く
   array: { make: () => new ArrayCopyTool(), glyph: '⠿', modes: PRO_ONLY, edits: true },
+  /** スポイト。**キーを持たない**——A〜Z に空きが 1 つも無い */
+  eyedrop: { make: () => new EyedropperTool(), glyph: '⬩', modes: PRO_ONLY, edits: true },
   wall: { make: () => new WallTool(), glyph: '▬', modes: BOTH_MODES, edits: true },
   // **構造は建具より上に並べる**（ワイヤーの奥谷さんの指摘）。
   // 躯体を決めてから建具を入れるのが実際の手順

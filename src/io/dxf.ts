@@ -6,6 +6,8 @@ import { toTatami } from '../core/rooms.ts';
 import { wallOutline, type Segment } from '../core/shape.ts';
 import { openingPrimitives } from '../core/opening.ts';
 import { encodeCp932 } from './cp932.ts';
+import { colorOf } from '../core/material.ts';
+import type { EntityRef } from '../core/types.ts';
 import { paperToWorld, type DrawingStandard } from '../core/standard.ts';
 import {
   dimensionGeometry,
@@ -22,6 +24,7 @@ import {
   dxfPrimitives,
   dxfText,
   fmt,
+  nearestAci,
   normalizeTextDeg,
   LTYPE_NAMES,
 } from './dxfPrimitive.ts';
@@ -115,6 +118,23 @@ function dimVariables(std: DrawingStandard): { name: string; code: number; value
   ];
 }
 
+/**
+ * 実体に指した色を R12 の色番号に寄せる。色が無ければ null（＝画層の色に従う）。
+ *
+ * **R12 は任意の RGB を持てない。** 基本の 9 色のうちいちばん近いものに寄せ、
+ * 寄せたことを `exportLossReport` に出す（`nearestAci` のコメント）。
+ */
+const aciOf = (scene: Scene, ref: EntityRef): number | null => nearestAci(colorOf(scene, ref));
+
+/** 色を直に指してある実体の数。書き出しの報告に出す */
+function countTinted(scene: Scene): number {
+  let n = 0;
+  for (const table of [scene.walls, scene.openings, scene.instances, scene.shapes, scene.fixtures]) {
+    for (const e of Object.values(table)) if (e.attrs?.color) n += 1;
+  }
+  return n;
+}
+
 export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, options: DxfOptions): string {
   const std = scene.standard;
   const out: string[] = [];
@@ -129,11 +149,13 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
 
   // --- エンティティを先に組み立てて、図面範囲を確定させる ---
   const entities: string[][] = [];
-  const pushLine = (a: Vec, b: Vec, layer: Layer) => {
-    entities.push(dxfLine(a, b, layer.name));
+  const pushLine = (a: Vec, b: Vec, layer: Layer, aci?: number | null) => {
+    const line = dxfLine(a, b, layer.name);
+    // **実体ごとの色は画層名のすぐ後ろ。** AutoCAD の並びと同じにしておく
+    entities.push(aci == null ? line : [...line.slice(0, 4), '62', String(aci), ...line.slice(4)]);
   };
-  const pushSegments = (segments: Segment[], layer: Layer) => {
-    for (const s of segments) pushLine(s.a, s.b, layer);
+  const pushSegments = (segments: Segment[], layer: Layer, aci?: number | null) => {
+    for (const s of segments) pushLine(s.a, s.b, layer, aci);
   };
   const pushText = (value: string, at: Vec, height: number, rotationDeg: number, layer: Layer) => {
     entities.push(dxfText(text(value), at, height, rotationDeg, layer.name));
@@ -143,14 +165,16 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   for (const wall of Object.values(scene.walls)) {
     const layer = layerOf(wall.layerId, LAYER_IDS.wall);
     if (!printable(layer)) continue;
-    pushSegments(wallOutline(scene, wall), layer);
+    pushSegments(wallOutline(scene, wall), layer, aciOf(scene, { type: 'wall', id: wall.id }));
   }
 
   // 建具。小口（ジャム）は wallOutline が壁側で出しているので、ここで足すと二重線になる
   for (const op of Object.values(scene.openings)) {
     const layer = layerOf(op.layerId, LAYER_IDS.opening);
     if (!printable(layer)) continue;
-    entities.push(...dxfPrimitives(openingPrimitives(scene, op), layer, std, text));
+    entities.push(...dxfPrimitives(
+      openingPrimitives(scene, op), layer, std, text, aciOf(scene, { type: 'opening', id: op.id }),
+    ));
   }
 
   // ブロックの挿入。同じ定義は1つだけ書き、INSERT で使い回す
@@ -170,7 +194,10 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
       );
       usedBlocks.set(def.name, dxfBlock(def.name, vec(0, 0), body));
     }
-    entities.push(dxfInsert(def.name, vec(inst.x, inst.y), inst.scaleX, inst.scaleY, toDeg(inst.angle), layer.name));
+    entities.push(dxfInsert(
+      def.name, vec(inst.x, inst.y), inst.scaleX, inst.scaleY, toDeg(inst.angle), layer.name,
+      aciOf(scene, { type: 'blockInstance', id: inst.id }),
+    ));
 
     const label = instanceLabel(scene, inst);
     if (labelFits(label, instanceSize(def, inst), furnitureSize)) {
@@ -213,7 +240,9 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
       continue;
     }
 
-    entities.push(...dxfPrimitives(shapePrimitives(scene, shape, std), layer, std, text));
+    entities.push(...dxfPrimitives(
+      shapePrimitives(scene, shape, std), layer, std, text, aciOf(scene, { type: 'shape', id: shape.id }),
+    ));
   }
 
   // 室名・面積
@@ -395,6 +424,14 @@ export function exportLossReport(scene: Scene): string[] {
     out.push(
       `図面は ${Object.keys(scene.views).length} 枚ありますが、`
       + `書き出したのは作業中の 1 枚だけです。`,
+    );
+  }
+  // **実体に指した色は寄せている。** R12 は任意の RGB を持てない
+  const tinted = countTinted(scene);
+  if (tinted > 0) {
+    out.push(
+      `実体に指した色 ${tinted} 件を、DXF の基本 9 色のうち近いものに寄せました`
+      + `（R12 は番号の色表しか持てません）。SVG には指した色のまま出ています。`,
     );
   }
   return out;

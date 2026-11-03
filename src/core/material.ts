@@ -24,6 +24,15 @@ export function materialRefOf(scene: Scene, ref: EntityRef): string | null {
  * 表にすると「持たない」を 2 行書くことになり、
  * `ENTITY_KINDS` と同じ形の表が 2 枚並ぶ。
  */
+/**
+ * 実体に直に指した線の色。無ければ null（＝画層の色に従う）。
+ *
+ * **ここが「色」の唯一の出どころ。** 平面・SVG・DXF・3D の 4 つが同じ値を読む。
+ * 前は 3D の着色だけが読んでいて、画面にも紙にも出ていなかった。
+ */
+export const colorOf = (scene: Scene, ref: EntityRef): string | null =>
+  attrsOf(scene, ref)?.color ?? null;
+
 export function attrsOf(scene: Scene, ref: EntityRef): Attrs | null {
   switch (ref.type) {
     case 'wall':

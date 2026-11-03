@@ -2,7 +2,7 @@ import { toDeg, toRad } from '../../../core/geometry.ts';
 import { wallLength } from '../../../core/ops.ts';
 import { isOpeningKind, OPENING_KINDS, type EntityRef, type Scene } from '../../../core/types.ts';
 import { OPENING_PROFILES, OPENING_SYMBOLS } from '../../../core/opening.ts';
-import { checkboxField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
+import { checkboxField, colorField, el, numberField, optionalNumberField, readonlyField, selectField, textField } from '../../dom.ts';
 import { shapeFields } from '../../shapeFields.ts';
 import { layerOfRef, setLayerOf } from '../../../core/entity.ts';
 import { attrsOf } from '../../../core/material.ts';
@@ -340,6 +340,14 @@ function attrFields(ctx: PanelContext, sel: EntityRef[]): (HTMLElement | null)[]
   });
 
   const out: (HTMLElement | null)[] = [el('h3', { class: 'attr-head' }, ['仕上げと積算'])];
+
+  // **色。** 平面・SVG・DXF・3D が同じ値を読む。空欄なら画層の色に従う
+  out.push(
+    colorField('色', common((a) => a.color), (v) => setAll((a) => void (a.color = v))),
+  );
+  if (common((a) => a.color) === null && targets.some((a) => a.color !== null)) {
+    out.push(el('p', { class: 'empty-note' }, ['選んだものの色が食い違っています。触ると全部そろいます。']));
+  }
 
   if (materials.length > 0) {
     out.push(

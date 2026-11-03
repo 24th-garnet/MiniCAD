@@ -1767,6 +1767,7 @@ async function run() {
   assert.equal((await state()).fixtures, beforeExtrude.fixtures + 1, '押し出しで立体が増えない');
   console.log('✔ 凹の図形を押し出せる（元の図形は消える）');
 
+
   // 3D で上面を Alt+ドラッグして押し引きする。**掴める点は走査で探す**
   await page.keyboard.press('F3');
   await sleep(500);
@@ -1835,6 +1836,101 @@ async function run() {
   await page.evaluate(() => window.minicad.setMode('normal'));
   await sleep(300);
   console.log('✔ Alt+ドラッグで面を押し引きできる（undo で戻る）');
+
+  // --- 色とスポイト（7 段） ---
+  // **押し出しの後ろに置く。** 間に commit を挟むと、あちらの「undo 1 回で戻る」が崩れる
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  // 壁を 1 本赤くして、スポイトで別のものへ配る
+  const walls2 = await page.evaluate(() => Object.keys(window.minicad.editorInstance.store.scene.walls));
+  await page.evaluate((id) => {
+    const ed = window.minicad.editorInstance;
+    ed.store.setSelection([{ type: 'wall', id }]);
+    ed.notifyUi();
+  }, walls2[0]);
+  await sleep(300);
+  const picker = page.locator('.color-cell input[type=color]');
+  assert.equal(await picker.count(), 1, 'プロパティに色の欄が無い');
+  await picker.evaluate((el) => {
+    el.value = '#ff0000';
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await sleep(400);
+  const colorOf2 = (id) => page.evaluate(
+    (w) => window.minicad.editorInstance.store.scene.walls[w].attrs.color, id);
+  assert.equal(await colorOf2(walls2[0]), '#ff0000', '色の欄が効かない');
+  // スポイト: 吸って、別のものへ Alt+クリックで配る。
+  // **狙った壁の上に家具が乗っていることがある**ので、実際に拾えるものを先に調べる
+  const spots = await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    const out = [];
+    const seen = new Set();
+    for (const wall of Object.values(s.walls)) {
+      const a = s.nodes[wall.a];
+      const b = s.nodes[wall.b];
+      for (const t of [0.5, 0.25, 0.75]) {
+        const at = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        const hit = ed.pick(at, ed.pickRadius());
+        if (!hit) continue;
+        const key = `${hit.type}:${hit.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const p = ed.viewport.toScreen(at);
+        out.push({ ref: hit, screen: [p.x, p.y] });
+      }
+    }
+    return out;
+  });
+  assert.ok(spots.length >= 2, `拾えるものが ${spots.length} 個しかない`);
+  const [source, target] = spots;
+  const colorOfRef = (ref) => page.evaluate((r) => {
+    const s = window.minicad.editorInstance.store.scene;
+    const table = { wall: s.walls, opening: s.openings, blockInstance: s.instances,
+      shape: s.shapes, fixture: s.fixtures, measurement: s.measurements }[r.type];
+    return table?.[r.id]?.attrs?.color ?? null;
+  }, ref);
+
+  // 吸う側に色を付けてから吸う
+  await page.evaluate((r) => {
+    const ed = window.minicad.editorInstance;
+    ed.store.commit(() => {
+      const s = ed.store.scene;
+      const table = { wall: s.walls, opening: s.openings, blockInstance: s.instances,
+        shape: s.shapes, fixture: s.fixtures, measurement: s.measurements }[r.type];
+      table[r.id].attrs.color = '#ff0000';
+      return true;
+    });
+  }, source.ref);
+  await sleep(300);
+  await page.evaluate(() => window.minicad.selectTool('eyedrop'));
+  await sleep(300);
+  assert.equal((await state()).tool, 'eyedrop', 'スポイトに切り替わらない');
+  const planBox = await page.locator('#canvas').boundingBox();
+  await page.mouse.click(planBox.x + source.screen[0], planBox.y + source.screen[1]);
+  await sleep(300);
+  await page.keyboard.down('Alt');
+  await page.mouse.click(planBox.x + target.screen[0], planBox.y + target.screen[1]);
+  await page.keyboard.up('Alt');
+  await sleep(400);
+  assert.equal(await colorOfRef(target.ref), '#ff0000',
+    `スポイトで色が配れない（${source.ref.type} → ${target.ref.type}）`);
+  // 後片付け。色を消して選択ツールに戻す
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    ed.store.commit(() => {
+      const s = ed.store.scene;
+      for (const table of [s.walls, s.openings, s.instances, s.shapes, s.fixtures]) {
+        for (const e of Object.values(table)) if (e.attrs) e.attrs.color = null;
+      }
+      return true;
+    });
+    ed.store.clearSelection();
+  });
+  await page.evaluate(() => window.minicad.selectTool('select'));
+  await page.evaluate(() => window.minicad.setMode('normal'));
+  await sleep(300);
+  console.log('✔ 実体に色を指せて、スポイトで配れる');
 
   // --- 3D でドラッグして動かす ---
   await page.keyboard.press('F3');

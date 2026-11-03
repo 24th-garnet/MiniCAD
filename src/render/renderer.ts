@@ -12,6 +12,7 @@ import {
   type Vec,
 } from '../core/geometry.ts';
 import { isSnappable } from '../core/entity.ts';
+import { colorOf } from '../core/material.ts';
 import { wallEnds } from '../core/ops.ts';
 import { CONSTRAINT_SPECS } from '../core/constraints.ts';
 import { LAYER_IDS } from '../core/layer.ts';
@@ -198,7 +199,7 @@ function drawWalls(frame: Frame): void {
       ? theme.wallSelected
       : hover?.type === 'wall' && hover.id === wall.id
         ? theme.wallHover
-        : null;
+        : colorOf(scene, { type: 'wall', id: wall.id });
     // **床に着かない壁は塗らない。** 切断面より上にあるものなので、
     // 塗りつぶすと床に着く壁と見分けが付かない
     if (wall.base > 0) {
@@ -230,7 +231,7 @@ function drawWalls(frame: Frame): void {
       ? theme.wallSelected
       : hover?.type === 'wall' && hover.id === wall.id
         ? theme.wallHover
-        : null;
+        : colorOf(scene, { type: 'wall', id: wall.id });
     applyLayer(frame, layer, accent, wall.base > 0 ? 'hidden' : undefined);
     strokeSegments(frame, wallOutline(scene, wall));
   }
@@ -251,7 +252,7 @@ function drawOpenings(frame: Frame): void {
       ? theme.wallSelected
       : hover?.type === 'opening' && hover.id === op.id
         ? theme.wallHover
-        : null;
+        : colorOf(scene, { type: 'opening', id: op.id });
 
     // 小口（ジャム）は壁の幾何なので記号の表には入れない
     applyLayer(frame, layer, accent);
@@ -331,7 +332,7 @@ function drawFixtures(frame: Frame): void {
       ? theme.wallSelected
       : hover?.type === 'fixture' && hover.id === f.id
         ? theme.wallHover
-        : null;
+        : colorOf(scene, { type: 'fixture', id: f.id });
     drawPrimitives(frame, fixturePrimitives(f, scene.standard.textHeight.furniture), layer, accent);
   }
 }
@@ -345,7 +346,7 @@ function drawShapes(frame: Frame): void {
       ? theme.wallSelected
       : hover?.type === 'shape' && hover.id === s.id
         ? theme.wallHover
-        : null;
+        : colorOf(scene, { type: 'shape', id: s.id });
     drawPrimitives(frame, shapePrimitives(scene, s, scene.standard), layer, accent);
   }
 }
@@ -370,7 +371,7 @@ function drawMeasurements(frame: Frame): void {
       ? theme.wallSelected
       : hover?.type === 'measurement' && hover.id === m.id
         ? theme.wallHover
-        : null;
+        : colorOf(scene, { type: 'measurement', id: m.id });
     const color = accent ?? theme.snap;
     const sa = vp.toScreen(vec(m.a.x, m.a.y));
     const sb = vp.toScreen(vec(m.b.x, m.b.y));

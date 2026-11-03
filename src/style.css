@@ -842,3 +842,27 @@ input.layer-name:focus {
   border-color: #2563eb;
   color: #fff;
 }
+
+/* 色の欄。`<input type="color">` と「画層の色に戻す」を横に並べる */
+.field .color-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.field .color-cell input[type='color'] {
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  background: none;
+  cursor: pointer;
+}
+.field .color-cell button.subtle {
+  padding: 2px 6px;
+  font-size: 11px;
+  background: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--ink-soft);
+}

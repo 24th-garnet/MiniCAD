@@ -125,6 +125,31 @@ export function checkboxField(label: string, checked: boolean, onChange: (v: boo
   return el('div', { class: 'field checkbox' }, [input, el('label', { for: id }, [label])]);
 }
 
+/**
+ * 色の欄。**空欄（null）は「画層の色に従う」**で、色そのものとは別の状態。
+ *
+ * `<input type="color">` は空を表せないので、**「画層の色に従う」ボタンを
+ * 隣に置いて**消せるようにする。3 つの状態（指定なし／この色／食い違い）を
+ * 2 つに畳むと、複数選択で「触っていないのに揃ってしまう」が起きる。
+ */
+export function colorField(
+  label: string,
+  value: string | null,
+  onChange: (v: string | null) => void,
+): HTMLElement {
+  const input = el('input', { type: 'color', value: value ?? '#3f3f46' });
+  input.addEventListener('change', () => onChange((input as HTMLInputElement).value));
+  // **文言に「画層」を入れない。** 画層の欄を探す通しテストの絞り込みに引っかかる
+  const clear = el('button', {
+    type: 'button', class: 'subtle', title: '指定を外すと、画層の色に従います',
+  }, ['指定を外す']);
+  clear.addEventListener('click', () => onChange(null));
+  return el('div', { class: 'field' }, [
+    el('span', {}, [label]),
+    el('span', { class: 'color-cell' }, [input, clear]),
+  ]);
+}
+
 export function readonlyField(label: string, value: string): HTMLElement {
   return el('div', { class: 'field' }, [el('span', {}, [label]), el('span', { class: 'readonly' }, [value])]);
 }

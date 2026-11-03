@@ -130,38 +130,93 @@ export function dxfText(
  * R12 には LWPOLYLINE が無く、POLYLINE + VERTEX + SEQEND を組むか
  * LINE に分解するかの二択になる。読み手の互換性を優先して分解する。
  */
+/**
+ * R12 が持てる色は**番号 1〜255 の表**（ACI）だけで、任意の RGB は書けません。
+ * 実体に指した色は、**基本の 9 色のうちいちばん近いもの**に寄せます。
+ *
+ * 10 番以降は 24 色相 × 5 段 × 2 明度の規則で並んでいますが、その表を
+ * **手で書き起こすと間違いが混ざる**（確かめようが無い）ので、確実に分かる
+ * 9 色だけを使い、**寄せたことを書き出しの報告に出します**。
+ */
+const BASIC_ACI: { aci: number; rgb: [number, number, number] }[] = [
+  { aci: 1, rgb: [255, 0, 0] },       // 赤
+  { aci: 2, rgb: [255, 255, 0] },     // 黄
+  { aci: 3, rgb: [0, 255, 0] },       // 緑
+  { aci: 4, rgb: [0, 255, 255] },     // シアン
+  { aci: 5, rgb: [0, 0, 255] },       // 青
+  { aci: 6, rgb: [255, 0, 255] },     // マゼンタ
+  { aci: 7, rgb: [255, 255, 255] },   // 白（白地では黒く出る）
+  { aci: 8, rgb: [128, 128, 128] },   // 濃い灰
+  { aci: 9, rgb: [192, 192, 192] },   // 薄い灰
+];
+
+/** `#rrggbb` を 0〜255 の 3 つ組に。読めなければ null */
+export function parseHex(color: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** いちばん近い基本色の番号。読めない色は null（＝画層の色に従う） */
+export function nearestAci(color: string | null | undefined): number | null {
+  if (!color) return null;
+  const rgb = parseHex(color);
+  if (!rgb) return null;
+  let best = BASIC_ACI[0];
+  let bestD = Infinity;
+  for (const c of BASIC_ACI) {
+    const d = (c.rgb[0] - rgb[0]) ** 2 + (c.rgb[1] - rgb[1]) ** 2 + (c.rgb[2] - rgb[2]) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best.aci;
+}
+
 export function dxfPrimitives(
   prims: Primitive[],
   layer: Layer,
   std: DrawingStandard,
   escape: (s: string) => string,
+  aci?: number | null,
 ): DxfEntity[] {
   const out: DxfEntity[] = [];
+
+  /**
+   * 実体ごとの色を差し込む。**どの作り手も `['0', 種別, '8', 画層名, …]` で
+   * 始める**ので、4 番目の位置に `62` の組を入れれば AutoCAD の並びと同じになる。
+   */
+  const tint = (e: DxfEntity): DxfEntity =>
+    aci == null ? e : [...e.slice(0, 4), '62', String(aci), ...e.slice(4)];
 
   for (const prim of prims) {
     switch (prim.kind) {
       case 'segments':
-        for (const s of prim.segments) out.push(dxfLine(s.a, s.b, layer.name, prim.lineType));
+        for (const s of prim.segments) out.push(tint(dxfLine(s.a, s.b, layer.name, prim.lineType)));
         break;
 
       case 'arc':
-        out.push(
+        out.push(tint(
           dxfArc(prim.center, prim.radius, toDeg(prim.startAngle), toDeg(prim.endAngle), layer.name, prim.lineType),
-        );
+        ));
         break;
 
       case 'circle':
-        out.push(dxfCircle(prim.center, prim.radius, layer.name, prim.lineType));
+        out.push(tint(dxfCircle(prim.center, prim.radius, layer.name, prim.lineType)));
         break;
 
       case 'polygon':
         for (let i = 0; i < prim.points.length; i++) {
-          out.push(dxfLine(prim.points[i], prim.points[(i + 1) % prim.points.length], layer.name, prim.lineType));
+          out.push(tint(
+            dxfLine(prim.points[i], prim.points[(i + 1) % prim.points.length], layer.name, prim.lineType),
+          ));
         }
         break;
 
       case 'text':
-        out.push(
+        out.push(tint(
           dxfText(
             escape(prim.text),
             prim.at,
@@ -170,7 +225,7 @@ export function dxfPrimitives(
             layer.name,
             prim.align,
           ),
-        );
+        ));
         break;
     }
   }
@@ -201,9 +256,10 @@ export function dxfInsert(
   scaleY: number,
   rotationDeg: number,
   layerName: string,
+  aci?: number | null,
 ): DxfEntity {
   return [
-    '0', 'INSERT', '8', layerName, '2', name,
+    '0', 'INSERT', '8', layerName, ...(aci == null ? [] : ['62', String(aci)]), '2', name,
     '10', fmt(at.x), '20', fmt(at.y), '30', '0.0',
     '41', fmt(scaleX), '42', fmt(scaleY), '43', '1.0',
     '50', fmt(rotationDeg),

@@ -53,7 +53,17 @@ const dashAttrOf = (pattern: number[]): string =>
   pattern.length === 0 ? '' : ` stroke-dasharray="${pattern.map(round).join(' ')}"`;
 
 /** 中間表現を SVG に落とす3つのバックエンドのうちの1つ */
-export function svgPrimitives(prims: Primitive[], layer: Layer, std: DrawingStandard): string[] {
+/**
+ * `color` は実体に直に指した色（`Attrs.color`）。null なら画層の色に従う。
+ * 平面の `drawPrimitives(…, accent)` と同じ形にしてある。
+ */
+export function svgPrimitives(
+  prims: Primitive[],
+  layer: Layer,
+  std: DrawingStandard,
+  color?: string | null,
+): string[] {
+  const stroke = color ?? layer.color;
   const width = paperToWorld(layerWeight(layer, std), std);
   const layerDash = dashAttrOf(layerDashWorld(layer, std));
   const out: string[] = [];
@@ -67,7 +77,7 @@ export function svgPrimitives(prims: Primitive[], layer: Layer, std: DrawingStan
 
     switch (prim.kind) {
       case 'segments':
-        for (const s of prim.segments) out.push(lineTag(s.a, s.b, layer.color, width, dashAttr));
+        for (const s of prim.segments) out.push(lineTag(s.a, s.b, stroke, width, dashAttr));
         break;
 
       case 'arc': {
@@ -79,7 +89,7 @@ export function svgPrimitives(prims: Primitive[], layer: Layer, std: DrawingStan
         // y 反転したグループの中なので、反時計回りは sweep-flag 0 になる
         out.push(
           `<path d="M ${round(from.x)} ${round(from.y)} A ${round(prim.radius)} ${round(prim.radius)} 0 ${large} 0 ${round(to.x)} ${round(to.y)}"` +
-            ` fill="none" stroke="${layer.color}" stroke-width="${round(width)}"${dashAttr}/>`,
+            ` fill="none" stroke="${stroke}" stroke-width="${round(width)}"${dashAttr}/>`,
         );
         break;
       }
@@ -87,14 +97,14 @@ export function svgPrimitives(prims: Primitive[], layer: Layer, std: DrawingStan
       case 'circle':
         out.push(
           `<circle cx="${round(prim.center.x)}" cy="${round(prim.center.y)}" r="${round(prim.radius)}"` +
-            ` fill="none" stroke="${layer.color}" stroke-width="${round(width)}"${dashAttr}/>`,
+            ` fill="none" stroke="${stroke}" stroke-width="${round(width)}"${dashAttr}/>`,
         );
         break;
 
       case 'polygon': {
-        const fill = prim.fill === 'none' ? 'none' : prim.fill === 'paper' ? theme.paper : layer.color;
+        const fill = prim.fill === 'none' ? 'none' : prim.fill === 'paper' ? theme.paper : stroke;
         out.push(
-          `<polygon points="${pointsAttr(prim.points)}" fill="${fill}" stroke="${layer.color}" stroke-width="${round(width)}"${dashAttr}/>`,
+          `<polygon points="${pointsAttr(prim.points)}" fill="${fill}" stroke="${stroke}" stroke-width="${round(width)}"${dashAttr}/>`,
         );
         break;
       }
@@ -107,7 +117,7 @@ export function svgPrimitives(prims: Primitive[], layer: Layer, std: DrawingStan
             prim.at,
             (prim.angle * 180) / Math.PI,
             paperToWorld(prim.paperMm, std),
-            prim.color ?? layer.color,
+            prim.color ?? stroke,
             400,
             anchor,
           ),

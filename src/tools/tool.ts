@@ -30,6 +30,7 @@ export type ToolId =
   | 'room'
   | 'fixture'
   | 'solid'
+  | 'eyedrop'
   | 'assembly'
   | 'comment';
 
