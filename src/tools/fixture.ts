@@ -125,6 +125,7 @@ export class FixtureTool implements Tool {
       size: this.sizeOf(this.kind),
       // 置くときは種別の既定の輪郭。自前の輪郭は押し出しだけが持つ
       outline: null,
+      combine: null,
       // 既定のままにしておけば、階高を変えたときに柱と梁が自分で追従する
       base: null,
       height: null,

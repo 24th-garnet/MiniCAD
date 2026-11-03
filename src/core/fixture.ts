@@ -7,6 +7,7 @@ import type { Primitive } from './primitive.ts';
 import type { Segment } from './shape.ts';
 import type { SnapKind } from './snap.ts';
 import { ALL_USES, type Use } from './use.ts';
+import type { FixtureCombine } from './combine.ts';
 
 /**
  * 構造物。柱・梁・階段・スロープ・吹抜のように、**平面の footprint と
@@ -90,6 +91,14 @@ export interface Fixture {
   base: number | null;
   /** 立ち上がり (mm)。null なら種別の既定（柱と吹抜は階高） */
   height: number | null;
+  /**
+   * 立体どうしのブーリアン（合成・切り欠き・交差）の作り方。null なら素のまま。
+   *
+   * **相手の立体をここへしまい込む**（`scene.fixtures` からは消える）。
+   * 結果の形を持つのではなく作り方を持つので、あとから「分解」で戻せる。
+   * 詳しい理由は `core/combine.ts`。
+   */
+  combine: FixtureCombine | null;
   /** 記号の中に書く文字。吹抜 / PS / 煙道 はこれで書き分ける */
   label: string;
   layerId: LayerId;

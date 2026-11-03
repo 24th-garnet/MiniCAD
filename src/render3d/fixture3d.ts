@@ -4,6 +4,8 @@ import {
 } from '../core/fixture.ts';
 import { isSnappable } from '../core/entity.ts';
 import { levelOf, type Level } from '../core/level.ts';
+import { combineFingerprint } from '../core/combine.ts';
+import { csgOperate } from './csg.ts';
 import { vec, type Vec } from '../core/geometry.ts';
 import { theme } from '../render/theme.ts';
 import type { Id, Scene } from '../core/types.ts';
@@ -268,7 +270,31 @@ export function buildFixtureFaces(scene: Scene, fixtureId: Id, out: Face3[]): vo
   if (!isSnappable(scene, { type: 'fixture', id: fixtureId })) return;
   if (!FIXTURE_SPECS[f.kind].solid) return;
   const src: FaceSource = { ref: { type: 'fixture', id: fixtureId }, levelId: f.levelId };
-  FIXTURE_SOLIDS[f.kind](f, levelOf(scene, f.levelId), src, out);
+  const level = levelOf(scene, f.levelId);
+
+  if (!f.combine) {
+    FIXTURE_SOLIDS[f.kind](f, level, src, out);
+    return;
+  }
+  // **ブーリアンはここで掛ける。** 結果の形を持たず作り方を持つので、
+  // 立体を組むたびに走る（`meshCache` が効くので、変わったときだけ）
+  for (const face of combinedFaces(f, level, src)) out.push(face);
+}
+
+/** 作り方に従って、しまい込んだ相手と掛け合わせた面 */
+function combinedFaces(f: Fixture, level: Level, src: FaceSource): Face3[] {
+  const solid = (one: Fixture): Face3[] => {
+    const faces: Face3[] = [];
+    if (!FIXTURE_SPECS[one.kind].solid) return faces;
+    if (one.combine) return combinedFaces(one, level, src);
+    FIXTURE_SOLIDS[one.kind](one, level, src, faces);
+    return faces;
+  };
+  const base = { ...f, combine: null };
+  let acc = solid(base);
+  for (const part of f.combine!.parts) acc = csgOperate(acc, solid(part), f.combine!.op);
+  // **出どころは母体に揃える。** 切り欠いた面も母体をクリックしたことになる
+  return acc.map((face) => ({ ...face, ref: src.ref, levelId: src.levelId }));
 }
 
 /** 構造物の指紋。押し出す側が実際に読む欄だけを並べる */
@@ -278,6 +304,8 @@ export function fixtureFingerprint(scene: Scene, id: Id): string {
   const level = levelOf(scene, f.levelId);
   return [
     f.kind, f.x, f.y, f.angle, f.size.w, f.size.h, f.base, f.height,
+    // **しまい込んだ相手も入れる。** 入れ忘れると、相手を直しても 3D が古いまま
+    combineFingerprint(f),
     // **自前の輪郭を忘れない。** 入れ忘れると、輪郭を変えても指紋が同じままで
     // 3D が作り直されない（キャッシュが効き続ける）
     f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(' ') : '-',

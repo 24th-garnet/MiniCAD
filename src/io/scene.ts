@@ -16,12 +16,13 @@ import { BLOCK_PRESETS } from '../core/blockPresets.ts';
 import type { Shape } from '../core/shapes.ts';
 import type { Id } from '../core/id.ts';
 import { readShape } from './shapeRead.ts';
-import { FIXTURE_SPECS, isFixtureKind, isRoundFixture } from '../core/fixture.ts';
+import { FIXTURE_SPECS, isFixtureKind, isRoundFixture, type Fixture } from '../core/fixture.ts';
+import { isBooleanOp, type FixtureCombine } from '../core/combine.ts';
 import { isBayShape, type Bay } from '../core/bay.ts';
 import { readPoint3 } from '../core/annotation.ts';
 import { emptyBody, isEmptyBody, type Assembly } from '../core/assembly.ts';
 import { clampOpacity, DEFAULT_VIEW_ID, defaultViews, type DrawingView, type LayerViewState } from '../core/view.ts';
-import { emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
+import { newId, emptyScene, isOpeningKind, type Scene } from '../core/types.ts';
 import { CONSTRAINT_SPECS, isConstraintKind } from '../core/constraints.ts';
 import { defaultAttrs, isTakeoffMode, type Attrs } from '../core/attrs.ts';
 import { DEFAULT_LEVEL_ID, defaultLevel, levelsInOrder, type Level } from '../core/level.ts';
@@ -96,6 +97,67 @@ function readOutline(raw: unknown): Vec[] | null {
     out.push(vec(p.x, p.y));
   }
   return out.length >= 3 ? out : null;
+}
+
+/**
+ * 構造物 1 つ。**しまい込んだ相手（ブーリアン）があれば再帰で読む。**
+ *
+ * 読み込みと「壊れたものを捨てる」書き出しの両方がここを通る。
+ * 片方だけ直すと、読めるのに書けない（またはその逆の）欄が生まれる。
+ */
+function readFixture(
+  id: string,
+  raw: Record<string, unknown>,
+  layerOr: (v: unknown, fallback: LayerId) => LayerId,
+  levelId: string,
+): Fixture | null {
+  if (!isFixtureKind(raw?.kind)) return null;
+  if (typeof raw.x !== 'number' || typeof raw.y !== 'number') return null;
+  const spec = FIXTURE_SPECS[raw.kind];
+  const size = (typeof raw.size === 'object' && raw.size !== null ? raw.size : {}) as Record<string, unknown>;
+  const w = Math.max(1, numberOr(size.w, spec.defaultSize.w));
+  return {
+    id,
+    kind: raw.kind,
+    x: raw.x,
+    y: raw.y,
+    angle: numberOr(raw.angle, 0),
+    // 円柱は直径 1 つで決まる。奥行が別の値で書かれていても直径に揃える
+    size: { w, h: isRoundFixture(raw.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+    outline: readOutline(raw.outline),
+    combine: readCombine(raw.combine, layerOr, levelId),
+    base: typeof raw.base === 'number' ? raw.base : null,
+    height: typeof raw.height === 'number' ? raw.height : null,
+    label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
+    layerId: layerOr(raw.layerId, spec.defaultLayer),
+    levelId,
+    attrs: readAttrs(raw.attrs),
+  };
+}
+
+/** ブーリアンの作り方。**相手が 1 つも読めなければ null**（素の立体に戻る） */
+function readCombine(
+  raw: unknown,
+  layerOr: (v: unknown, fallback: LayerId) => LayerId,
+  levelId: string,
+): FixtureCombine | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const obj = raw as Record<string, unknown>;
+  if (!isBooleanOp(obj.op) || !Array.isArray(obj.parts)) return null;
+  const parts: Fixture[] = [];
+  for (const part of obj.parts) {
+    if (typeof part !== 'object' || part === null) continue;
+    const got = readFixture(
+      typeof (part as Record<string, unknown>).id === 'string'
+        ? String((part as Record<string, unknown>).id)
+        : newId('f'),
+      part as Record<string, unknown>,
+      layerOr,
+      levelId,
+    );
+    if (got) parts.push(got);
+  }
+  return parts.length > 0 ? { op: obj.op, parts } : null;
 }
 
 export function deserialize(raw: unknown): Scene {
@@ -218,27 +280,8 @@ export function deserialize(raw: unknown): Scene {
   }
 
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('fixtures'))) {
-    if (!isFixtureKind(raw?.kind)) continue;
-    if (typeof raw.x !== 'number' || typeof raw.y !== 'number') continue;
-    const spec = FIXTURE_SPECS[raw.kind];
-    const size = (typeof raw.size === 'object' && raw.size !== null ? raw.size : {}) as Record<string, unknown>;
-    const w = Math.max(1, numberOr(size.w, spec.defaultSize.w));
-    scene.fixtures[id] = {
-      id,
-      kind: raw.kind,
-      x: raw.x,
-      y: raw.y,
-      angle: numberOr(raw.angle, 0),
-      // 円柱は直径 1 つで決まる。奥行が別の値で書かれていても直径に揃える
-      size: { w, h: isRoundFixture(raw.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
-      outline: readOutline(raw.outline),
-      base: typeof raw.base === 'number' ? raw.base : null,
-      height: typeof raw.height === 'number' ? raw.height : null,
-      label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
-      layerId: layerOr(raw.layerId, spec.defaultLayer),
-      levelId: levelOr(raw.levelId),
-      attrs: readAttrs(raw.attrs),
-    };
+    const got = readFixture(id, raw ?? {}, layerOr, levelOr(raw?.levelId));
+    if (got) scene.fixtures[id] = got;
   }
 
   for (const [id, raw] of Object.entries(table<Record<string, unknown>>('assemblies'))) {
@@ -353,22 +396,10 @@ function readAssembly(
     };
   }
   for (const [fid, f] of Object.entries(tbl('fixtures'))) {
-    if (!isFixtureKind(f?.kind)) continue;
-    if (typeof f.x !== 'number' || typeof f.y !== 'number') continue;
-    const spec = FIXTURE_SPECS[f.kind];
-    const size = (typeof f.size === 'object' && f.size !== null ? f.size : {}) as Record<string, unknown>;
-    const w = Math.max(1, numberOr(size.w, spec.defaultSize.w));
-    body.fixtures[fid] = {
-      id: fid, kind: f.kind, x: f.x, y: f.y,
-      angle: numberOr(f.angle, 0),
-      size: { w, h: isRoundFixture(f.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
-      outline: readOutline(f.outline),
-      base: typeof f.base === 'number' ? f.base : null,
-      height: typeof f.height === 'number' ? f.height : null,
-      label: typeof f.label === 'string' ? f.label : spec.defaultLabel,
-      layerId: layerOr(f.layerId, spec.defaultLayer),
-      attrs: readAttrs(f.attrs),
-    };
+    const got = readFixture(fid, f ?? {}, layerOr, DEFAULT_LEVEL_ID);
+    if (!got) continue;
+    const { levelId: _drop, ...rest } = got;
+    body.fixtures[fid] = rest;
   }
 
   if (isEmptyBody(body)) return null;

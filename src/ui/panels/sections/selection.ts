@@ -12,6 +12,7 @@ import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
 import { FIXTURE_SPECS, isRoundFixture, type Fixture } from '../../../core/fixture.ts';
 import { closedPolygonOf, extrudeShapes } from '../../../core/extrude.ts';
+import { BOOLEAN_LABELS, BOOLEAN_OPS, combineFixtures, explodeFixture } from '../../../core/combine.ts';
 import { activeLevel } from '../../../core/level.ts';
 import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
@@ -35,6 +36,7 @@ export class SelectionSection implements Section {
         ...attrFields(ctx, sel),
         layerField(ctx),
         extrudeButton(ctx),
+        ...combineButtons(ctx),
         blockifyButton(ctx),
         groupButton(ctx),
         symbolifyButton(ctx),
@@ -51,6 +53,7 @@ export class SelectionSection implements Section {
       ...attrFields(ctx, sel),
       layerField(ctx),
       extrudeButton(ctx),
+      explodeButton(ctx),
       blockifyButton(ctx),
       groupButton(ctx),
       symbolifyButton(ctx),
@@ -602,6 +605,66 @@ function extrudeButton(ctx: PanelContext): HTMLElement | null {
       },
     },
     ['押し出す'],
+  );
+}
+
+/**
+ * 立体どうしのブーリアン（ワイヤー 5 枚目の「合成・切り欠き・分割」）。
+ *
+ * **押し出しと同じ、選択に効くボタン**にする。2 つ以上選んでいるときだけ出る。
+ * 1 つめが母体で、残りがしまい込まれる（詳しくは `core/combine.ts`）。
+ */
+function combineButtons(ctx: PanelContext): (HTMLElement | null)[] {
+  if (ctx.mode !== 'pro') return [];
+  const scene = ctx.editor.store.scene;
+  const ids = ctx.editor.store.selection
+    .filter((r) => r.type === 'fixture' && FIXTURE_SPECS[scene.fixtures[r.id]?.kind ?? 'void'].solid)
+    .map((r) => r.id);
+  if (ids.length < 2) return [];
+  return [
+    el('p', { class: 'empty-note' }, [
+      `先頭の立体に、残り ${ids.length - 1} 個を掛け合わせます（平面の記号は母体のままです）`,
+    ]),
+    ...BOOLEAN_OPS.map((op) => el(
+      'button',
+      {
+        class: 'wide',
+        type: 'button',
+        title: '掛け合わせた相手はしまい込まれます（「分解」で戻せます）',
+        onclick: () => {
+          let made: string | null = null;
+          ctx.edit(() => {
+            made = combineFixtures(scene, ids, op);
+            return made !== null;
+          });
+          if (made) ctx.editor.store.setSelection([{ type: 'fixture', id: made }]);
+        },
+      },
+      [BOOLEAN_LABELS[op]],
+    )),
+  ];
+}
+
+/** しまい込んだ相手を図面へ戻す */
+function explodeButton(ctx: PanelContext): HTMLElement | null {
+  const scene = ctx.editor.store.scene;
+  const sel = ctx.editor.store.selection;
+  if (sel.length !== 1 || sel[0].type !== 'fixture') return null;
+  const host = scene.fixtures[sel[0].id];
+  if (!host?.combine) return null;
+  const id = sel[0].id;
+  return el(
+    'button',
+    {
+      class: 'wide',
+      type: 'button',
+      title: 'しまい込んだ立体を図面に戻します',
+      onclick: () => {
+        ctx.edit(() => explodeFixture(scene, id) > 0);
+        ctx.editor.store.setSelection([{ type: 'fixture', id }]);
+      },
+    },
+    [`分解（${BOOLEAN_LABELS[host.combine.op]}を解く）`],
   );
 }
 

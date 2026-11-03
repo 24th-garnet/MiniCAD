@@ -183,7 +183,7 @@ test('輪郭が 3 点に満たないファイルは種別の既定に戻る', ()
   const scene = emptyScene();
   scene.fixtures.f = {
     id: 'f', kind: 'extrusion', x: 0, y: 0, angle: 0,
-    size: { w: 1000, h: 1000 }, outline: null, base: 0, height: 1000, label: '',
+    size: { w: 1000, h: 1000 }, outline: null, combine: null, base: 0, height: 1000, label: '',
     layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(),
   };
   const raw = JSON.parse(JSON.stringify(serialize(scene)));

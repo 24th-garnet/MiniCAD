@@ -144,6 +144,15 @@ export function paint(
       ctx.strokeStyle = theme.edge3d;
       ctx.lineWidth = dpr;
       ctx.stroke();
+    } else {
+      // **同じ色で髪の毛 1 本ぶんなぞる。** 面を割ると隣り合う断片ができ、
+      // 共有する辺でアンチエイリアスが半端に効いて**細い筋が見える**
+      // （ブーリアンで削った面は数十に割れるので、筋が縞になる）。
+      // 塗りと同じ色で縁をなぞれば隙間が埋まる。`ctx` に頼むのは
+      // 多角形の fill と stroke だけ、という約束はそのまま
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = dpr;
+      ctx.stroke();
     }
   }
 }
