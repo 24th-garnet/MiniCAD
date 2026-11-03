@@ -153,9 +153,12 @@ function crossGlyph(f: Fixture): Primitive[] {
 /**
  * 段板と上り勾配線。**形は `stairTreads` 1 箇所から引く。**
  *
- * 上り方向の矢印は、踏面の重心をつないだ折れ線で描く。
+ * 上り勾配線は**段鼻の中点**をつないだ折れ線で描く。両端だけは踏面の重心。
  * まっすぐな階段では真ん中を通る 1 本になり、コの字や回り段では
  * **実際に歩く道筋**になる——向きを種別ごとに書き分けずに済む。
+ *
+ * 重心だけでつなぐと、コの字の踊り場の重心が左右の真ん中に来るので、
+ * 勾配線が踊り場で高く尖る。段鼻の中点なら、踊り場でも流れの中心を通る。
  */
 function stepGlyph(f: Fixture): Primitive[] {
   if (!isStairKind(f.kind)) return [];
@@ -165,7 +168,11 @@ function stepGlyph(f: Fixture): Primitive[] {
   for (const t of treads) if (t.riser) segments.push({ a: at(t.riser[0]), b: at(t.riser[1]) });
   for (const g of guides) segments.push({ a: at(g[0]), b: at(g[1]) });
 
-  const path = treads.map((t) => at(centroid(t.poly)));
+  const path = [
+    at(centroid(treads[0].poly)),
+    ...treads.flatMap((t) => (t.riser ? [at(mid(t.riser[0], t.riser[1]))] : [])),
+    at(centroid(treads[treads.length - 1].poly)),
+  ];
   for (let i = 1; i < path.length; i++) segments.push({ a: path[i - 1], b: path[i] });
 
   // 矢印の頭。最後の 1 歩の向きに開く
@@ -181,6 +188,9 @@ function stepGlyph(f: Fixture): Primitive[] {
   }
   return [{ kind: 'segments', segments }];
 }
+
+/** 線分の中点 */
+const mid = (a: Vec, b: Vec): Vec => vec((a.x + b.x) / 2, (a.y + b.y) / 2);
 
 /** 多角形の重心。段の真ん中を拾うだけなので頂点の平均で足りる */
 const centroid = (poly: Vec[]): Vec => ({
