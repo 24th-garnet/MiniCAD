@@ -34,6 +34,9 @@ export const FIXTURE_KINDS = [
   // 汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）。
   // **柱と円柱の一般化**で、新しい描画の仕組みは要らない
   'box', 'prism', 'cylinder', 'cylinderH', 'cone', 'sphere', 'dome',
+  // 押し出し。**パレットには出ない**——閉じた図形から起こすものなので、
+  // 置き方が他と違う（`FixtureFamily` の `derived`）
+  'extrusion',
 ] as const;
 
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
@@ -44,12 +47,14 @@ export type FixtureKind = (typeof FIXTURE_KINDS)[number];
  * `structure` は建築の躯体（柱・梁・階段・吹抜）で、通常モードのパーツ一覧に並ぶ。
  * `solid` はプロモードの汎用ソリッド（直方体・円筒・球…）で、
  * 「ソリッド」ツールの「種類」欄にだけ並ぶ。
+ * `derived` は**他のものから起こす**もの（押し出し）で、どちらにも並ばない——
+ * クリックして置くものではないので、置く道具の「種類」に出すと嘘になる。
  *
  * **図面の中身は 1 つも変わらない。** 平面の記号・3D・ピック・積算・JSON・DXF は
  * どちらの系統も同じ道を通る。モードの判断を `core/` に持ち込まないために、
  * 「プロ専用か」ではなく「何の仲間か」で書いてある。
  */
-export type FixtureFamily = 'structure' | 'solid';
+export type FixtureFamily = 'structure' | 'solid' | 'derived';
 
 const FIXTURE_KIND_SET: ReadonlySet<string> = new Set<string>(FIXTURE_KINDS);
 
@@ -66,6 +71,17 @@ export interface Fixture {
   angle: number;
   /** 平面の大きさ (mm)。円柱は `w` を直径に使い `h` を見ない */
   size: { w: number; h: number };
+  /**
+   * 自前の平面の輪郭。ローカル座標（中心が原点）で反時計回り。null なら種別の既定。
+   *
+   * **押し出しのために足した。** `FixtureSpec.localOutline` は `{w, h}` しか
+   * 受け取らないので、任意の形を置く口が無かった。種別を 1 つ増やすより、
+   * 「既定の輪郭を上書きできる」ほうが押し出し・プッシュ/プル・将来の編集に効く。
+   *
+   * **`fixtureFingerprint` に必ず入れること。** 入れ忘れると、輪郭を変えても
+   * 3D が作り直されない（指紋が同じなのでキャッシュが効き続ける）。
+   */
+  outline: Vec[] | null;
   /**
    * 床からの下端 (mm)。null なら種別の既定。
    *
@@ -663,6 +679,29 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     family: 'solid',
     uses: ALL_USES,
   },
+  /**
+   * 押し出し。**閉じた図形から起こす。形は `Fixture.outline` が持つ。**
+   *
+   * `localOutline` は輪郭を持たない個体（壊れたファイルから来たものなど）の
+   * ための保険で、普段は使われない。
+   */
+  extrusion: {
+    label: '押し出し',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 1000, h: 1000 },
+    defaultLabel: '',
+    defaultBase: () => 0,
+    defaultHeight: () => 1000,
+    localOutline: rect,
+    glyph: () => [],
+    solid: true,
+    floorHole: false,
+    filled: false,
+    pickPriority: 4,
+    family: 'derived',
+    uses: ALL_USES,
+  },
+
   /** 半球（ドーム）。底が平らで、既定の高さは半径 */
   dome: {
     label: '半球',
@@ -701,14 +740,28 @@ export const specOf = (f: Fixture): FixtureSpec => FIXTURE_SPECS[f.kind];
 export const isRoundFixture = (kind: FixtureKind): boolean =>
   FIXTURE_SPECS[kind].localOutline === circle;
 
+/**
+ * 平面の輪郭が矩形か。**押し引きで側面を動かせるのはこれだけ。**
+ *
+ * 矩形なら「どの面を押したか」が `size.w` / `size.h` のどちらかに素直に落ちる。
+ * 円・三角・L 形・自前の輪郭では、1 つの面を動かした結果が
+ * `{w, h}` で表せない（辺を 1 本だけずらした形になる）。
+ */
+export const isBoxFixture = (kind: FixtureKind): boolean =>
+  FIXTURE_SPECS[kind].localOutline === rect;
+
 /** ローカル座標をワールドへ */
 export function toWorld(f: Fixture, p: Vec): Vec {
   return add(rotate(p, f.angle), vec(f.x, f.y));
 }
 
+/** ローカルの輪郭。自前の輪郭があればそちら、無ければ種別の既定 */
+export const localOutline = (f: Fixture): Vec[] =>
+  f.outline ?? specOf(f).localOutline(f.size);
+
 /** ワールドの輪郭。反時計回り */
 export function outline(f: Fixture): Vec[] {
-  return specOf(f).localOutline(f.size).map((p) => toWorld(f, p));
+  return localOutline(f).map((p) => toWorld(f, p));
 }
 
 /** 当たり判定用の折れ線 */
@@ -725,12 +778,17 @@ export function verticalRange(f: Fixture, level: Level): { z0: number; z1: numbe
   return { z0: level.floorZ + base, z1: level.floorZ + base + height };
 }
 
+/** これより頂点が多い輪郭はスナップ点を出さない。中心だけになる */
+const MAX_SNAP_VERTICES = 32;
+
 export function fixtureSnapPoints(f: Fixture): { point: Vec; kind: SnapKind }[] {
   const out: { point: Vec; kind: SnapKind }[] = [
     { point: vec(f.x, f.y), kind: 'center' },
   ];
-  // 円の近似多角形の頂点を 32 個ぜんぶ出すと、スナップが重くなるだけで役に立たない
-  if (!isRoundFixture(f.kind)) {
+  // 円の近似多角形の頂点を 32 個ぜんぶ出すと、スナップが重くなるだけで役に立たない。
+  // **押し出した形も同じ**——自由曲線から起こすと頂点が 100 個を超える
+  const poly = localOutline(f);
+  if (!isRoundFixture(f.kind) && poly.length <= MAX_SNAP_VERTICES) {
     for (const p of outline(f)) out.push({ point: p, kind: 'node' });
   }
   return out;

@@ -183,6 +183,26 @@ export function rayPlane(ray: Ray3, plane: Plane3, minCos = 0.05): Vec3 | null {
  *
  * 真上・真下から見下ろすと鉛直線は点に潰れ、平面が立たない。そのときは null。
  */
+/**
+ * `at` を通る任意の軸の上で、カーソルが指している位置。`at` からの符号付き距離を返す。
+ *
+ * `rayVerticalAt` の一般化で、考え方はまったく同じ——**軸を含んでカメラを向いた
+ * 平面**を立て、そこにレイを落とす。平面が軸を含むので、落ちた点は必ず軸の上に乗る。
+ * 押し引き（プッシュ/プル）が、水平を向いた面でもこれを使う。
+ *
+ * 軸が視線とほぼ重なると平面が立たない。そのときは null。
+ */
+export function rayOnAxis(ray: Ray3, at: Vec3, dir: Vec3, eye: Vec3): number | null {
+  const axis = normalize3(dir, vec3(0, 0, 1));
+  const toEye = sub3(eye, at);
+  // 視線のうち軸に直交する成分が、平面の法線
+  const side = sub3(toEye, scale3(axis, dot3(toEye, axis)));
+  const len = Math.hypot(side.x, side.y, side.z);
+  if (len < 1e-6) return null; // 軸を真正面から見ている。平面が立たない
+  const hit = rayPlane(ray, { origin: at, normal: scale3(side, 1 / len) }, 1e-6);
+  return hit ? dot3(sub3(hit, at), axis) : null;
+}
+
 export function rayVerticalAt(ray: Ray3, at: Vec3, eye: Vec3): number | null {
   // 軸からカメラへ向かう水平成分が、平面の法線
   const nx = eye.x - at.x;

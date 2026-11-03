@@ -26,6 +26,7 @@ function make(kind: FixtureKind, over: Partial<Fixture> = {}): Fixture {
     y: 2000,
     angle: 0,
     size: { ...spec.defaultSize },
+    outline: null,
     base: null,
     height: null,
     label: spec.defaultLabel,
@@ -205,7 +206,7 @@ test('天窓は床面積を減らさない。吹抜は減らす', async () => {
     const spec = FIXTURE_SPECS[kind];
     scene.fixtures.f = {
       id: 'f', kind, x: 3000, y: 3000, angle: 0,
-      size: { w: 2000, h: 2000 },
+      size: { w: 2000, h: 2000 }, outline: null,
       base: spec.defaultBase(level), height: spec.defaultHeight(level),
       label: spec.defaultLabel, layerId: spec.defaultLayer, levelId: level.id,
       attrs: defaultAttrs(),

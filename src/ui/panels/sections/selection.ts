@@ -11,6 +11,8 @@ import { measuredDistance } from '../../../core/annotation.ts';
 import { isTakeoffMode, type Attrs } from '../../../core/attrs.ts';
 import { BAY_LABELS, BAY_SHAPES, defaultBay, type BayShape } from '../../../core/bay.ts';
 import { FIXTURE_SPECS, isRoundFixture, type Fixture } from '../../../core/fixture.ts';
+import { closedPolygonOf, extrudeShapes } from '../../../core/extrude.ts';
+import { activeLevel } from '../../../core/level.ts';
 import { levelOf } from '../../../core/level.ts';
 import { blockOf, defineBlock, explodeInstance, instanceSize, renameBlock } from '../../../core/block.ts';
 import { resolveSelection, selectionCenter } from '../../../core/selection.ts';
@@ -32,6 +34,7 @@ export class SelectionSection implements Section {
         readonlyField('選択数', `${sel.length} 個`),
         ...attrFields(ctx, sel),
         layerField(ctx),
+        extrudeButton(ctx),
         blockifyButton(ctx),
         groupButton(ctx),
         symbolifyButton(ctx),
@@ -47,6 +50,7 @@ export class SelectionSection implements Section {
       ...fieldsFor(ctx, sel[0]),
       ...attrFields(ctx, sel),
       layerField(ctx),
+      extrudeButton(ctx),
       blockifyButton(ctx),
       groupButton(ctx),
       symbolifyButton(ctx),
@@ -548,6 +552,49 @@ function symbolUpdateButtons(ctx: PanelContext): (HTMLElement | null)[] {
           },
         }, [`古い ${report.stamps.length} 箇所を押し直す`]),
   ];
+}
+
+/**
+ * 閉じた図形を立体にする（ワイヤー 5 枚目の「押し出し」）。
+ *
+ * **ツールにしない。** 押し出しは「選んであるものを立てる」1 回きりの操作で、
+ * 置く場所も引く線も無い。`ToolId` を 1 つ使うとショートカットも 1 つ要る
+ * （もう空きが無い）。`blockifyButton` と同じ、選択に効くボタンにする。
+ *
+ * 高さは種別の既定（1000mm）で立てて、**あとはプロパティの高さ欄で直す**。
+ * ここで数値を聞くと、区画に状態を持たせることになる。
+ */
+function extrudeButton(ctx: PanelContext): HTMLElement | null {
+  if (ctx.mode !== 'pro') return null;
+  const scene = ctx.editor.store.scene;
+  const refs = ctx.editor.store.selection.filter((r) => r.type === 'shape');
+  // 閉じていない図形しか選ばれていないなら、押せるように見せない
+  if (!refs.some((r) => closedPolygonOf(scene, r.id))) return null;
+
+  return el(
+    'button',
+    {
+      class: 'wide',
+      type: 'button',
+      title: '閉じた図形を立体にする（元の図形は消えます。undo で戻ります）',
+      onclick: () => {
+        let made: EntityRef[] = [];
+        let skipped = 0;
+        ctx.edit(() => {
+          const r = extrudeShapes(
+            scene, refs, FIXTURE_SPECS.extrusion.defaultHeight(activeLevel(scene)));
+          made = r.created;
+          skipped = r.rejected;
+          return made.length > 0;
+        });
+        if (made.length > 0) ctx.editor.store.setSelection(made);
+        if (skipped > 0) {
+          window.alert(`${skipped} 個は押し出せませんでした（閉じていないか、自分自身と交わっています）。`);
+        }
+      },
+    },
+    ['押し出す'],
+  );
 }
 
 function blockifyButton(ctx: PanelContext): HTMLElement | null {

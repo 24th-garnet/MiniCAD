@@ -1735,6 +1735,107 @@ async function run() {
   await sleep(300);
   console.log('✔ 3D の中にソリッドを置ける（undo で戻る）');
 
+  // --- 押し出しとプッシュ/プル（20 段） ---
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  const beforeExtrude = await state();
+  // 凹の L 字を置いて押し出す。**凹でも三角形分割は要らない**
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    s.shapes.__L__ = {
+      id: '__L__', shape: 'polyline', closed: true, layerId: 'shape',
+      points: [[0, 0], [3000, 0], [3000, 1000], [1000, 1000], [1000, 3000], [0, 3000]]
+        .map(([x, y]) => ({ x: x + 20000, y })),
+      attrs: { groupId: null, stampId: null, color: null, materialRef: null,
+        takeoff: null, symbolId: null, symbolVersion: null },
+    };
+    ed.store.emit();
+    ed.store.setSelection([{ type: 'shape', id: '__L__' }]);
+    ed.notifyUi();
+  });
+  await sleep(300);
+  await page.getByRole('button', { name: '押し出す' }).click();
+  await sleep(400);
+  const extruded = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene;
+    const f = Object.values(s.fixtures).find((x) => x.kind === 'extrusion');
+    return { leftover: '__L__' in s.shapes, outline: f?.outline?.length ?? 0, id: f?.id ?? null };
+  });
+  assert.equal(extruded.leftover, false, '押し出しても元の図形が残っている');
+  assert.equal(extruded.outline, 6, `輪郭が ${extruded.outline} 点になった`);
+  assert.equal((await state()).fixtures, beforeExtrude.fixtures + 1, '押し出しで立体が増えない');
+  console.log('✔ 凹の図形を押し出せる（元の図形は消える）');
+
+  // 3D で上面を Alt+ドラッグして押し引きする。**掴める点は走査で探す**
+  await page.keyboard.press('F3');
+  await sleep(500);
+  // **カメラは控えを取ってから動かす。** このあとの「3D でドラッグして動かす」が
+  // 既定の構図を前提にしているので、見ている向きごと戻す
+  const savedCam = await page.evaluate(() => ({ ...window.minicad.viewer.camera }));
+  // **押し出したものに寄せる。** 走査で探す前に画面に入れておかないと、
+  // 遠くに置いた立体が小さすぎて当たらない
+  await page.evaluate((id) => {
+    const ed = window.minicad.editorInstance;
+    ed.store.setSelection([{ type: 'fixture', id }]);
+    const f = ed.store.scene.fixtures[id];
+    const cam = window.minicad.viewer.camera;
+    // **L 字の外接矩形の中心は、へこんだ側（形の外）にある。**
+    // 脚の上を狙わないと、画面の真ん中が素通しになる
+    cam.target = { x: f.x - 1000, y: f.y - 1000, z: f.height };
+    cam.distance = 6000;
+    cam.yaw = -Math.PI / 4;
+    cam.pitch = 0.9;
+    window.minicad.viewer.requestRender();
+  }, extruded.id);
+  await sleep(600);
+  const box3d = await page.locator('#canvas3d').boundingBox();
+  const heightOf = () => page.evaluate((id) =>
+    window.minicad.editorInstance.store.scene.fixtures[id].height, extruded.id);
+  const startHeight = await heightOf();
+  // 走査の前に、普通のクリックで掴める点があるか見る（無ければカメラが外れている）
+  const seen = await page.evaluate(() => window.minicad.editorInstance.store.selection.length);
+  assert.ok(seen > 0, '押し出したものが選択されていない');
+  let pushed = false;
+  for (const [dx, dy] of [[0, 0], [-60, 20], [60, 20], [0, -60], [-120, 0], [0, 60], [120, 0]]) {
+    const x = box3d.x + box3d.width / 2 + dx;
+    const y = box3d.y + box3d.height / 2 + dy;
+    await page.keyboard.down('Alt');
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 90, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await sleep(250);
+    if (await heightOf() !== startHeight) { pushed = true; break; }
+  }
+  assert.ok(pushed, 'Alt+ドラッグで面を押し引きできない');
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal(await heightOf(), startHeight, '押し引きが undo で戻らない');
+  // **後片付け。** 押し出しを取り消し、入れた図形も消して、カメラを元に戻す。
+  // 置きっぱなしにすると、このあとの「3D でドラッグして動かす」が
+  // 遠くに離れた立体を掴んでしまう
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    delete ed.store.scene.shapes.__L__;
+    ed.store.clearSelection();
+    ed.store.emit();
+  });
+  await page.evaluate((cam) => {
+    Object.assign(window.minicad.viewer.camera, cam);
+    window.minicad.viewer.requestRender();
+  }, savedCam);
+  await sleep(400);
+  assert.equal((await state()).fixtures, beforeExtrude.fixtures, '押し出しが undo で戻らない');
+  await page.keyboard.press('F3');
+  await sleep(300);
+  await page.evaluate(() => window.minicad.setMode('normal'));
+  await sleep(300);
+  console.log('✔ Alt+ドラッグで面を押し引きできる（undo で戻る）');
+
   // --- 3D でドラッグして動かす ---
   await page.keyboard.press('F3');
   await sleep(400);

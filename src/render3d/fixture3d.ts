@@ -257,6 +257,8 @@ export const FIXTURE_SOLIDS: Record<FixtureKind, SolidBuilder> = {
   cone,
   sphere,
   dome,
+  // 押し出しは底面を立てるだけ。**凹でも正しい**（`extrudePrism` は凸性を仮定しない）
+  extrusion: prismSolid,
 };
 
 /** 構造物 1 つぶん */
@@ -276,6 +278,9 @@ export function fixtureFingerprint(scene: Scene, id: Id): string {
   const level = levelOf(scene, f.levelId);
   return [
     f.kind, f.x, f.y, f.angle, f.size.w, f.size.h, f.base, f.height,
+    // **自前の輪郭を忘れない。** 入れ忘れると、輪郭を変えても指紋が同じままで
+    // 3D が作り直されない（キャッシュが効き続ける）
+    f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(' ') : '-',
     level.floorZ, level.wallHeight,
     isSnappable(scene, { type: 'fixture', id }) ? 1 : 0,
   ].join(',');

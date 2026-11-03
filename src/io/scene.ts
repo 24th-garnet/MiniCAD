@@ -8,6 +8,7 @@ import {
   type WeightRole,
 } from '../core/standard.ts';
 import { createWallDimensions } from '../core/dimension.ts';
+import { vec, type Vec } from '../core/geometry.ts';
 import { OPENING_SYMBOLS } from '../core/opening.ts';
 import { defaultSheet, type Sheet } from '../core/sheet.ts';
 import type { BlockDef } from '../core/block.ts';
@@ -80,6 +81,23 @@ export function serialize(scene: Scene): SceneFile {
 }
 
 /** 外部から来たJSONを信用せず、必要なテーブルだけ取り出して形を整える */
+/**
+ * 自前の輪郭。**3 点に満たなければ捨てて種別の既定に戻す。**
+ *
+ * 版は上げていない。欄が無い古いファイルは `null` になり、種別の既定の輪郭が出る
+ * ——移行の処理が要らないので、`FILE_VERSION` を動かす理由が無い。
+ */
+function readOutline(raw: unknown): Vec[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: Vec[] = [];
+  for (const p of raw) {
+    if (typeof p?.x !== 'number' || typeof p?.y !== 'number') return null;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    out.push(vec(p.x, p.y));
+  }
+  return out.length >= 3 ? out : null;
+}
+
 export function deserialize(raw: unknown): Scene {
   if (typeof raw !== 'object' || raw === null) throw new Error('JSON の形式が不正です');
   const obj = raw as Record<string, unknown>;
@@ -213,6 +231,7 @@ export function deserialize(raw: unknown): Scene {
       angle: numberOr(raw.angle, 0),
       // 円柱は直径 1 つで決まる。奥行が別の値で書かれていても直径に揃える
       size: { w, h: isRoundFixture(raw.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+      outline: readOutline(raw.outline),
       base: typeof raw.base === 'number' ? raw.base : null,
       height: typeof raw.height === 'number' ? raw.height : null,
       label: typeof raw.label === 'string' ? raw.label : spec.defaultLabel,
@@ -343,6 +362,7 @@ function readAssembly(
       id: fid, kind: f.kind, x: f.x, y: f.y,
       angle: numberOr(f.angle, 0),
       size: { w, h: isRoundFixture(f.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+      outline: readOutline(f.outline),
       base: typeof f.base === 'number' ? f.base : null,
       height: typeof f.height === 'number' ? f.height : null,
       label: typeof f.label === 'string' ? f.label : spec.defaultLabel,

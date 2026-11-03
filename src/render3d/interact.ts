@@ -1,5 +1,4 @@
 import { isSelectable } from '../core/entity.ts';
-import { levelOf, wallHeightOf } from '../core/level.ts';
 import { attrsOf } from '../core/material.ts';
 import { vec, type Vec } from '../core/geometry.ts';
 import { mergeNodesAt } from '../core/ops.ts';
@@ -12,9 +11,10 @@ import {
   type ResolvedSelection,
 } from '../core/selection.ts';
 import { solveScene } from '../core/constraintSolver.ts';
-import { sameRef, type EntityRef, type Id, type Scene } from '../core/types.ts';
+import { sameRef, type EntityRef, type Scene } from '../core/types.ts';
 import type { Editor } from '../ui/editor.ts';
-import { pickRay, rayPlane, rayVerticalAt, type Plane3, type Ray3, type RayHit } from './ray.ts';
+import { pickRay, rayOnAxis, rayPlane, type Plane3, type Ray3, type RayHit } from './ray.ts';
+import { applyPush, pushAxis, pushTargetOf, type PushTarget } from '../core/push.ts';
 import { vec3, type Vec3 } from './mat4.ts';
 import type { Face3 } from './mesh.ts';
 
@@ -91,24 +91,18 @@ type Drag3D =
       moved: boolean;
     }
   | {
-      kind: 'height';
+      kind: 'push';
       before: Scene;
-      wallId: Id;
-      /** 掴んだときの高さ (mm) */
-      startHeight: number;
-      /** 掴んだ点の z */
-      grabZ: number;
-      /** 上下に動かす軸の足元 */
-      axisAt: Vec3;
+      target: PushTarget;
+      /** 掴んだ点。押し引きの軸はここを通る */
+      at: Vec3;
+      /** 掴んだ点の、軸の上での位置。変位はここからの差 */
+      grab: number;
       moved: boolean;
     };
 
 /** これ以内の動きはクリック扱い */
 const DRAG_SLOP = 4;
-
-/** 壁の高さの下限 (mm)。インスペクタの `Math.max(1, v)` と揃える */
-const MIN_WALL_HEIGHT = 1;
-
 
 /** 壁の天端か。法線が真上を向いた壁の面 */
 export const isWallTop = (hit: RayHit): boolean =>
@@ -130,7 +124,7 @@ export class Select3D implements Tool3D {
   }
 
   isActive(): boolean {
-    return this.drag.kind === 'move' || this.drag.kind === 'height';
+    return this.drag.kind === 'move' || this.drag.kind === 'push';
   }
 
   onPointerDown(editor: Editor, p: Pointer3D): void {
@@ -148,21 +142,25 @@ export class Select3D implements Tool3D {
     else if (!editor.store.isSelected(ref)) editor.store.setSelection([ref]);
 
     const hit = p.hit!;
-    // **壁の天端を掴んだら高さを変える。** 側面を掴めば移動。
-    // 天端は法線が真上を向いた壁の面で、見えている通りに掴める
-    if (ref.type === 'wall' && isWallTop(hit)) {
-      const wall = editor.store.scene.walls[ref.id];
-      const level = levelOf(editor.store.scene, wall.levelId);
-      this.drag = {
-        kind: 'height',
-        before: structuredClone(editor.store.scene),
-        wallId: ref.id,
-        startHeight: wallHeightOf(wall, level),
-        grabZ: hit.point.z,
-        axisAt: vec3(hit.point.x, hit.point.y, level.floorZ),
-        moved: false,
-      };
-      return;
+    // **Alt で押し引き。** 修飾なしのドラッグは今まで通り移動で、
+    // 壁の天端だけは前から修飾なしで高さが変わる（その手触りを壊さない）
+    const push = p.alt || (ref.type === 'wall' && isWallTop(hit))
+      ? pushTargetOf(editor.store.scene, ref, hit.face.normal)
+      : null;
+    if (push) {
+      const axis = pushAxis(push);
+      const grab = rayOnAxis(p.ray, hit.point, vec3(axis.x, axis.y, axis.z), p.ray.origin);
+      if (grab !== null) {
+        this.drag = {
+          kind: 'push',
+          before: structuredClone(editor.store.scene),
+          target: push,
+          at: hit.point,
+          grab,
+          moved: false,
+        };
+        return;
+      }
     }
 
     this.drag = { kind: 'pending', ref, grab: hit.point, screen: p.screen };
@@ -197,8 +195,8 @@ export class Select3D implements Tool3D {
       return;
     }
 
-    if (drag.kind === 'height') {
-      this.applyHeight(editor, p);
+    if (drag.kind === 'push') {
+      this.applyPush(editor, p);
       return;
     }
 
@@ -211,7 +209,7 @@ export class Select3D implements Tool3D {
   onPointerUp(editor: Editor): void {
     const drag = this.drag;
     this.drag = { kind: 'none' };
-    if (drag.kind === 'height') {
+    if (drag.kind === 'push') {
       if (drag.moved) editor.store.commitFrom(drag.before);
       return;
     }
@@ -225,7 +223,7 @@ export class Select3D implements Tool3D {
   cancel(editor: Editor): boolean {
     const drag = this.drag;
     this.drag = { kind: 'none' };
-    if (drag.kind !== 'move' && drag.kind !== 'height') return false;
+    if (drag.kind !== 'move' && drag.kind !== 'push') return false;
     editor.store.scene = drag.before;
     editor.notifyChanged();
     return true;
@@ -260,28 +258,27 @@ export class Select3D implements Tool3D {
   }
 
   /**
-   * 壁の高さを上下に動かす。
+   * 掴んだ面を、その法線の向きに押し引きする（プッシュ/プル）。
    *
-   * **このフェーズで唯一「2D では出来ない編集」。** 書くのは `wall.height` だけで、
-   * ノードもノードの位置も動かさない。平面図は何も変わらず、立面図と 3D だけが変わる。
+   * **2D では出来ない編集。** 書くのは高さ・下端・大きさの数値だけで、
+   * ノードも輪郭も動かさない。壁の天端を掴んで高さを変える操作の一般化で、
+   * 何が動くかは `core/push.ts` が決める。
    */
-  private applyHeight(editor: Editor, p: Pointer3D): void {
+  private applyPush(editor: Editor, p: Pointer3D): void {
     const drag = this.drag;
-    if (drag.kind !== 'height') return;
-    const wall = editor.store.scene.walls[drag.wallId];
-    if (!wall) return;
+    if (drag.kind !== 'push') return;
 
-    const z = rayVerticalAt(p.ray, drag.axisAt, p.ray.origin);
-    // 真上から見下ろすと鉛直線が点に潰れて解が無い。直前の高さを保つ
-    if (z === null) return;
+    const axis = pushAxis(drag.target);
+    const now = rayOnAxis(p.ray, drag.at, vec3(axis.x, axis.y, axis.z), p.ray.origin);
+    // 軸を真正面から見ていると解が無い。直前の値を保つ
+    if (now === null) return;
 
-    let next = drag.startHeight + (z - drag.grabZ);
+    let d = now - drag.grab;
     const settings = editor.store.settings;
     if (settings.snapGrid && settings.gridSize > 0) {
-      next = Math.round(next / settings.gridSize) * settings.gridSize;
+      d = Math.round(d / settings.gridSize) * settings.gridSize;
     }
-    // インスペクタの下限と揃える
-    wall.height = Math.max(MIN_WALL_HEIGHT, next);
+    if (!applyPush(editor.store.scene, drag.target, d)) return;
     drag.moved = true;
     editor.notifyChanged();
   }
@@ -294,14 +291,14 @@ export class Select3D implements Tool3D {
   }
 
   status(editor: Editor): string {
-    if (this.drag.kind === 'height') {
-      const h = editor.store.scene.walls[this.drag.wallId]?.height;
-      return `壁の高さ ${h === null || h === undefined ? '—' : Math.round(h)}mm / Esc で取り消し`;
+    if (this.drag.kind === 'push') {
+      const t = this.drag.target;
+      return `${t.label} ${Math.round(sizeOf(editor.store.scene, t))}mm / Esc で取り消し`;
     }
     if (this.drag.kind === 'move') return 'ドラッグで移動 / Esc で取り消し';
     const n = editor.store.selection.length;
     if (n === 0) return 'クリックで選択 / ドラッグで回転 / Shift+ドラッグで平行移動 / ホイールで拡大縮小';
-    return `${n} 個を選択中（掴んで動かせます）`;
+    return `${n} 個を選択中（掴んで移動 / Alt+ドラッグで面を押し引き）`;
   }
 }
 
@@ -332,6 +329,16 @@ function dragPlane(editor: Editor, ref: EntityRef, grab: Vec3): Plane3 {
     }
   }
   return { origin: grab, normal: vec3(0, 0, 1) };
+}
+
+/** 押し引き中の数値。画面の下に出す */
+function sizeOf(scene: Scene, t: PushTarget): number {
+  if (t.ref.type === 'wall') return scene.walls[t.ref.id]?.height ?? t.start.height;
+  const f = scene.fixtures[t.ref.id];
+  if (!f) return 0;
+  if (t.what === 'bottom') return f.base ?? t.start.base;
+  if (t.what === 'side') return t.axis === 'x' ? f.size.w : f.size.h;
+  return f.height ?? t.start.height;
 }
 
 /** 選べるものだけを拾う。ロックした画層のものは奥へ素通りする */

@@ -1,4 +1,4 @@
-import { dist, type Vec } from './geometry.ts';
+import { dist, vec, type Vec } from './geometry.ts';
 import { resolveSelection } from './selection.ts';
 import { transformShape } from './shapes.ts';
 import { applyPoint, directionAngleAfter, isMirror, type Transform } from './transform.ts';
@@ -94,7 +94,9 @@ function moveEntities(
     f.y = p.y;
     f.angle = directionAngleAfter(t, f.angle);
     // 柱も階段も左右の区別が無い（階段は上り方向を角度で持つ）ので、
-    // ブロックのような尺度の符号による反転は要らない
+    // ブロックのような尺度の符号による反転は要らない。
+    // **自前の輪郭だけは別**——左右の区別があるので、鏡像ならローカルで裏返す
+    f.outline = mirrorOutline(f.outline, mirrored);
   }
   if (mirrored) {
     const movedWallIds = new Set(movedWalls.map((w) => w.id));
@@ -122,6 +124,22 @@ function moveEntities(
  * `fixtures` だけは前から複製していたので、残りをそれに揃える。
  */
 const freshAttrs = (attrs: Attrs): Attrs => ({ ...attrs });
+
+/**
+ * 自前の輪郭を複製する。鏡像なら**ローカル座標で上下を裏返す**。
+ *
+ * **なぜ y なのか。** `directionAngleAfter` は「ローカルの +x 軸を変換した向き」を
+ * 新しい角度にする。つまり鏡映 M は `M·R(a) = R(a')·S` と分解されていて、
+ * `S = R(-a')·M·R(a)` は **+x を動かさない行列式 −1 の直交行列**、
+ * すなわち `diag(1, -1)`——上下の反転になる。どの軸で折り返しても同じ。
+ *
+ * 裏返すと巻きが時計回りになり、押し出しの法線が内を向くので、並びも戻す。
+ */
+const mirrorOutline = (outline: Vec[] | null, mirrored: boolean): Vec[] | null => {
+  if (!outline) return null;
+  const copy = outline.map((p) => vec(p.x, mirrored ? -p.y : p.y));
+  return mirrored ? copy.reverse() : copy;
+};
 
 function copyEntities(
   scene: Scene,
@@ -220,6 +238,8 @@ function copyEntities(
       y: p.y,
       angle: directionAngleAfter(t, f.angle),
       size: { ...f.size },
+      // **配列ごと複製する。** `{ ...f }` は浅いので、複製の輪郭を直すと元まで変わる
+      outline: mirrorOutline(f.outline, mirrored),
       attrs: freshAttrs(f.attrs),
     };
     refs.push({ type: 'fixture', id: newFixtureId });
