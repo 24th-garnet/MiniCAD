@@ -3,6 +3,7 @@ import { activeLevel, levelOf, wallHeightOf } from '../core/level.ts';
 import type { Editor } from '../ui/editor.ts';
 import {
   applyCameraParams,
+  cameraBasis,
   cameraParams,
   defaultCamera,
   dolly,
@@ -21,6 +22,7 @@ import {
 import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D, type Tool3D } from './interact.ts';
 import { Place3D } from './place3d.ts';
 import { type Face3 } from './mesh.ts';
+import { buildBsp, bspOrder, type BspNode } from './bsp.ts';
 import { MeshCache } from './meshCache.ts';
 import { paint } from './paint.ts';
 import { COMMENT_BADGE_R } from '../render/renderer.ts';
@@ -55,6 +57,13 @@ import { screenRay } from './ray.ts';
  * 動かさずに離したときだけクリックとして `Select3D` に回す。
  * 「ドラッグで回す」は 3D の基本操作なので、修飾キー送りにはしない。
  */
+/** 面の顔ぶれが変わっていないか。`MeshCache` が使い回した配列をそのまま比べる */
+function sameFaces(a: readonly Face3[], b: readonly Face3[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /** 拾うときの near。`camera.ts` の NEAR と揃える */
 const NEAR_PICK = 50;
 
@@ -274,10 +283,28 @@ export class Viewer3D {
     this.requestRender();
   }
 
+  /**
+   * 面を割った木。**顔ぶれが変わったときだけ建て直す。**
+   *
+   * 判定は指紋ではなく**面の同一性**で見る。`MeshCache` は変わっていない実体の
+   * 面の配列をそのまま使い回すので、1 枚でも差し替わればここで分かる。
+   * 指紋をもう 1 つ持つと、`MeshCache` と二重管理になって片方だけ腐る。
+   */
+  private bsp: { faces: Face3[]; tree: BspNode | null } | null = null;
+
+  /** 奥から手前に並べた面。木が無ければ `paint` の重心ソートに任せる */
+  private ordered(mesh: Face3[]): Face3[] {
+    if (!this.bsp || !sameFaces(this.bsp.faces, mesh)) {
+      this.bsp = { faces: mesh, tree: buildBsp(mesh) };
+    }
+    return bspOrder(this.bsp.tree, cameraBasis(this.camera).eye);
+  }
+
   private draw(): void {
-    paint(this.ctx, this.camera, this.mesh, this.width, this.height, {
+    paint(this.ctx, this.camera, this.ordered(this.mesh), this.width, this.height, {
       showEdges: this.showEdges,
       dpr: this.dpr,
+      presorted: true,
       tint: highlightOf(this.editor, this.materials),
     });
     // **作図の補助は 2 回目の塗りで重ねる**（`PaintOptions.clear` の経緯）。
