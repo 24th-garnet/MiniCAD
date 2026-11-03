@@ -1,6 +1,6 @@
 import { transformPoint, type Vec3 } from './mat4.ts';
 import { lambert, shade } from './shading.ts';
-import { BUCKET_ORDER, type Face3 } from './mesh.ts';
+import { BUCKET_RANK, type Face3 } from './mesh.ts';
 import { viewProjection, type Camera3D } from './camera.ts';
 import { theme } from '../render/theme.ts';
 import type { EntityRef } from '../core/types.ts';
@@ -12,9 +12,13 @@ import type { EntityRef } from '../core/types.ts';
  * 毎フレーム 200 万回の JS ループになり 60fps は不可能）。
  *
  * 交差による破綻は、形を作る時点で避けている:
- * 床は**内法**ポリゴンなので壁と面で接するだけで食い込まず、
- * 床 → 壁 → 家具 → ガラス の固定順で塗れば層をまたぐ破綻は起きない。
- * 深度ソートは各層の内側だけで行う。
+ * 床は**内法**ポリゴンなので壁と面で接するだけで食い込まない。
+ *
+ * **塗る順は「床が先、あとは深さ順」**（`BUCKET_RANK`）。
+ * 以前は 床 → 壁 → 家具 → ガラス の固定順で、家具とガラスが壁より必ず後に
+ * 塗られていた。壁の向こうにあるものが**壁を透かして手前に出る**ので、
+ * サンプル間取りで画素の約 2 割が「塗られた色」と「本当に手前の面」で
+ * 食い違っていた（`tests/paint-order.test.ts`）。
  *
  * **`ctx` には多角形の fill と stroke しか頼まない。**
  * `clip` / `setTransform` / `scale` / グラデーションは使わない（テストの
@@ -100,12 +104,12 @@ export function paint(
     faces.push({
       points,
       depth: depth / clipped.length,
-      bucket: BUCKET_ORDER.indexOf(face.bucket),
+      bucket: BUCKET_RANK[face.bucket],
       color: shade(tint?.(face.ref) ?? face.color, lambert(face.normal)),
     });
   }
 
-  // 層の順が主キー。同じ層の中だけ、カメラ空間 z の小さい（奥の）ものから塗る
+  // 順位が主キー。**同じ順位のものは深さだけで並ぶ**（壁と家具が同じ順位）
   faces.sort((a, b) => a.bucket - b.bucket || a.depth - b.depth);
 
   for (const f of faces) {
