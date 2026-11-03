@@ -14,6 +14,7 @@ function sceneWith(kind: FixtureKind, over: Partial<Fixture> = {}): { scene: Sce
   scene.fixtures[id] = {
     id, kind, x: 0, y: 0, angle: 0,
     size: { ...spec.defaultSize },
+    tilt: null,
     outline: null,
     combine: null,
     edge: null,

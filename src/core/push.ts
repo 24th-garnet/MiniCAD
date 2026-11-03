@@ -1,4 +1,4 @@
-import { rotate, vec, type Vec } from './geometry.ts';
+import { rotate, vec, type Vec, type Vec3Like } from './geometry.ts';
 import { isBoxFixture, specOf } from './fixture.ts';
 import { levelOf, wallHeightOf } from './level.ts';
 import type { EntityRef, Scene } from './types.ts';
@@ -26,6 +26,9 @@ import type { EntityRef, Scene } from './types.ts';
 
 /** 高さと大きさの下限 (mm)。インスペクタの `Math.max(1, v)` と揃える */
 export const MIN_PUSH_SIZE = 1;
+
+/** 3D の点の最小の形。置き場は `core/geometry.ts` に移した */
+export type { Vec3Like };
 
 export type PushWhat = 'top' | 'bottom' | 'side';
 
@@ -93,13 +96,6 @@ export function pushTargetOf(scene: Scene, ref: EntityRef, normal: Vec3Like): Pu
     ref, what: 'side', normal: vec(normal.x, normal.y), vertical: false, axis, sign, start,
     label: axis === 'x' ? '幅' : '奥行',
   };
-}
-
-/** 3D の法線を受けるための最小の形。`render3d/` の `Vec3` に依存しないため */
-export interface Vec3Like {
-  x: number;
-  y: number;
-  z: number;
 }
 
 /**

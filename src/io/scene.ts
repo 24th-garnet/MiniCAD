@@ -125,6 +125,7 @@ function readFixture(
     angle: numberOr(raw.angle, 0),
     // 円柱は直径 1 つで決まる。奥行が別の値で書かれていても直径に揃える
     size: { w, h: isRoundFixture(raw.kind) ? w : Math.max(1, numberOr(size.h, spec.defaultSize.h)) },
+    tilt: readTilt(raw.tilt),
     outline: readOutline(raw.outline),
     combine: readCombine(raw.combine, layerOr, levelId),
     edge: readEdge(raw.edge),
@@ -135,6 +136,20 @@ function readFixture(
     levelId,
     attrs: readAttrs(raw.attrs),
   };
+}
+
+/**
+ * 水平軸まわりの傾き。**欄が無い古いファイルは null**（＝傾きなし）。
+ *
+ * 版は上げていない。読めない値は傾きなしに倒すので、移行の処理が要らない。
+ */
+function readTilt(raw: unknown): { x: number; y: number } | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const obj = raw as Record<string, unknown>;
+  const x = numberOr(obj.x, 0);
+  const y = numberOr(obj.y, 0);
+  // 0 と 0 は「傾きなし」と同じ。欄を持たせずに畳む
+  return x === 0 && y === 0 ? null : { x, y };
 }
 
 /** 稜線の仕上げ。大きさが 0 以下なら持たない（素の立体に戻る） */

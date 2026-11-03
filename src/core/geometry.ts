@@ -29,6 +29,22 @@ export function norm(a: Vec): Vec {
 /** 反時計回りに90度回した法線 */
 export const perp = (a: Vec): Vec => ({ x: -a.y, y: a.x });
 
+/**
+ * 3D の点の、いちばん小さい形。
+ *
+ * **`render3d/` の `Vec3` とは別に持つ。** `core/` は描画を知らない規則で、
+ * `render3d/mat4.ts` を呼ぶと依存の向きが逆になる。欄は同じ 3 つなので、
+ * `render3d/` 側はそのまま受け取れる。`core/push.ts` が同じ理由で
+ * 先に置いていたものを、ここへ移した。
+ */
+export interface Vec3Like {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export const vec3Like = (x: number, y: number, z: number): Vec3Like => ({ x, y, z });
+
 export function rotate(a: Vec, angle: number): Vec {
   const c = Math.cos(angle);
   const s = Math.sin(angle);

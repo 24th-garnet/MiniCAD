@@ -37,6 +37,7 @@ function make(kind: FixtureKind, over: Partial<Fixture> = {}): Fixture {
   return {
     id: `f-${kind}`, kind, x: 0, y: 0, angle: 0,
     size: { ...spec.defaultSize },
+    tilt: null,
     outline: null,
     combine: null,
     edge: null,

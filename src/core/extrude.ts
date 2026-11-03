@@ -134,6 +134,7 @@ function fixtureFrom(
     // **向きは 0 のまま。** 形はそのまま輪郭が持っているので、回すと二重に回る
     angle: 0,
     size: { w: Math.max(1, b.max.x - b.min.x), h: Math.max(1, b.max.y - b.min.y) },
+    tilt: null,
     outline: poly.map((p) => sub(p, center)),
     combine: null,
     edge: null,

@@ -1,5 +1,5 @@
 import type { Attrs } from './attrs.ts';
-import { add, rotate, signedArea, vec, type Vec } from './geometry.ts';
+import { add, rotate, signedArea, vec, vec3Like, type Vec, type Vec3Like } from './geometry.ts';
 import type { Id } from './id.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import type { Level } from './level.ts';
@@ -69,8 +69,25 @@ export interface Fixture {
   /** footprint の中心 */
   x: number;
   y: number;
-  /** z 軸まわりの回転（ラジアン） */
+  /**
+   * z 軸まわりの回転（ラジアン）。
+   *
+   * **2D の変換が動かすのはこれだけ。** 移動・回転・鏡像・配列複写・
+   * シンボルの展開は、どれも平面の中の話なので z 軸まわりで閉じている。
+   */
   angle: number;
+  /**
+   * 水平軸まわりの傾き（ラジアン）。null なら傾きなし。
+   *
+   * **ワイヤーのオブジェクト編集パネルは回転 X / Y / Z の 3 行を持っている。**
+   * z は `angle` が持っているので、足すのは x と y。
+   * 作業面の説明にも「斜面を作業面にすれば、置くときに回転する必要がなくなる」
+   * とあり、**普段は回転させて置く**前提で書かれている。
+   *
+   * **null の道は、傾きを入れる前とまったく同じ。** `toWorld3` が
+   * z まわりの回転と平行移動だけに退化するので、面が 1 枚も変わらない。
+   */
+  tilt: { x: number; y: number } | null;
   /** 平面の大きさ (mm)。円柱は `w` を直径に使い `h` を見ない */
   size: { w: number; h: number };
   /**
@@ -794,9 +811,58 @@ export const isRoundFixture = (kind: FixtureKind): boolean =>
 export const isBoxFixture = (kind: FixtureKind): boolean =>
   FIXTURE_SPECS[kind].localOutline === rect;
 
-/** ローカル座標をワールドへ */
+/** 傾いているか。**傾いていないものは、これまでと同じ道を通る** */
+export const isTilted = (f: Fixture): boolean =>
+  f.tilt !== null && (f.tilt.x !== 0 || f.tilt.y !== 0);
+
+/**
+ * ローカル座標をワールドへ（2 次元）。
+ *
+ * **傾いた立体では「上から見た位置」になる。** z を落としているので、
+ * 高さの情報は失われる。平面の記号と当たり判定のための関数。
+ */
 export function toWorld(f: Fixture, p: Vec): Vec {
-  return add(rotate(p, f.angle), vec(f.x, f.y));
+  if (!isTilted(f)) return add(rotate(p, f.angle), vec(f.x, f.y));
+  const q = toWorld3(f, p, 0);
+  return vec(q.x, q.y);
+}
+
+/**
+ * ローカル座標をワールドへ（3 次元）。**回転の順を知っているのはここだけ。**
+ *
+ * `Rz(angle) · Ry(tilt.y) · Rx(tilt.x)` の順に掛けてから中心へ移す。
+ * z は**ローカルの高さ**（立体の底を 0 とした値）で受け取り、
+ * 階の床からの絶対の z にするのは呼ぶ側の仕事。
+ *
+ * **行列は持ち込まない。** `render3d/mat4.ts` に軸まわりの回転は無く、
+ * そもそも `core/` から `render3d/` は呼べない。3 軸ぶん手で書くほうが短い。
+ */
+export function toWorld3(f: Fixture, p: Vec, z: number): Vec3Like {
+  let { x, y } = p;
+  let h = z;
+
+  const tilt = f.tilt;
+  if (tilt) {
+    // x 軸まわり（y-z 平面が回る）
+    if (tilt.x !== 0) {
+      const c = Math.cos(tilt.x);
+      const s = Math.sin(tilt.x);
+      const ny = y * c - h * s;
+      h = y * s + h * c;
+      y = ny;
+    }
+    // y 軸まわり（z-x 平面が回る）
+    if (tilt.y !== 0) {
+      const c = Math.cos(tilt.y);
+      const s = Math.sin(tilt.y);
+      const nx = x * c + h * s;
+      h = -x * s + h * c;
+      x = nx;
+    }
+  }
+  // z 軸まわり。高さは変わらない
+  const flat = rotate(vec(x, y), f.angle);
+  return vec3Like(flat.x + f.x, flat.y + f.y, h);
 }
 
 /** ローカルの輪郭。自前の輪郭があればそちら、無ければ種別の既定 */

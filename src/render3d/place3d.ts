@@ -106,6 +106,7 @@ export class Place3D implements Tool3D {
       angle: this.angle,
       size: { ...spec.defaultSize },
       // 置くときは種別の既定の輪郭。自前の輪郭は押し出しだけが持つ
+      tilt: null,
       outline: null,
       combine: null,
       edge: null,

@@ -25,7 +25,7 @@ function sceneWith(kind: FixtureKind, over: Partial<Fixture> = {}): { scene: Sce
   const spec = FIXTURE_SPECS[kind];
   const f: Fixture = {
     id: 'f', kind, x: 0, y: 0, angle: 0,
-    size: { ...spec.defaultSize }, outline: null, combine: null, edge: null,
+    size: { ...spec.defaultSize }, tilt: null, outline: null, combine: null, edge: null,
     base: null, height: null, label: spec.defaultLabel,
     layerId: spec.defaultLayer, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(),
     ...over,
