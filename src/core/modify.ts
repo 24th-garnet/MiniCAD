@@ -224,6 +224,66 @@ export function trimCurve(target: Curve, cutters: Curve[], pickPoint: Vec): Curv
 }
 
 /**
+ * 交点のところで全部に分ける。**トリムとは出口だけが違う。**
+ *
+ * トリムが「pick の入る 1 区間を落とす」のに対し、分割は**全部残す**。
+ * 切れていなければ null（＝何もしない）。1 本のままなら分けた意味が無いので、
+ * 2 本以上になったときだけ返す。
+ */
+export function splitCurve(target: Curve, cutters: Curve[]): Curve[] | null {
+  const bounds = curveBounds(target, cutters);
+  if (!bounds) return null;
+
+  if (target.kind === 'circle') {
+    // 円は閉じているので、境界どうしを順に結んで円弧の列にする
+    const out: Curve[] = [];
+    for (let i = 0; i < bounds.length; i++) {
+      const from = bounds[i];
+      const to = bounds[(i + 1) % bounds.length];
+      out.push({ kind: 'arc', arc: { center: target.center, radius: target.radius, start: from, end: to } });
+    }
+    return out.length >= 2 ? out : null;
+  }
+
+  const pieces = spanCurves(target, bounds);
+  return pieces.length >= 2 ? pieces : null;
+}
+
+/**
+ * 指した 2 点のあいだだけを落とす。**交点がなくても動く。**
+ *
+ * トリムと分割は「ほかの図形と交わっているところ」で切るが、
+ * 消しゴムは**指した範囲**で切る。壁に当たっていない線の途中を
+ * 消したいときに要る。
+ */
+export function eraseCurveSpan(target: Curve, from: Vec, to: Vec): Curve[] | null {
+  const span = target.kind === 'segment' ? 1 : target.kind === 'arc' ? arcSweepAngle(target.arc) : Math.PI * 2;
+  const a = paramOf(target, from);
+  const b = paramOf(target, to);
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  if (hi - lo <= EPS) return null;
+
+  if (target.kind === 'circle') {
+    // 円から一部を抜くと、残りは 1 本の円弧
+    return [{ kind: 'arc', arc: { center: target.center, radius: target.radius, start: hi, end: lo } }];
+  }
+  // 範囲が実体からはみ出していれば、重なっているところだけを落とす
+  const cutFrom = Math.max(0, lo);
+  const cutTo = Math.min(span, hi);
+  if (cutTo - cutFrom <= EPS) return null;
+
+  const bounds = dedupeNumbers([0, cutFrom, cutTo, span].sort((x, y) => x - y));
+  const out: Curve[] = [];
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    // 落とす範囲に収まっている区間だけを捨てる
+    if (bounds[i] >= cutFrom - EPS && bounds[i + 1] <= cutTo + EPS) continue;
+    out.push(...spanCurves(target, [bounds[i], bounds[i + 1]]));
+  }
+  return out;
+}
+
+/**
  * 区間の境界から、区間ごとの曲線を作る。**トリムと分割の共通部分。**
  * 長さが EPS に満たない区間は落とす（端で切れたときの屑）。
  */
@@ -355,6 +415,47 @@ export function trimShape(scene: Scene, id: Id, pickPoint: Vec): boolean {
   if (curves.length !== 1) return false; // ポリラインは対象外
 
   const pieces = trimCurve(curves[0], cutterCurves(scene, { shapeId: id }), pickPoint);
+  if (!pieces) return false;
+
+  delete scene.shapes[id];
+  for (const piece of pieces) {
+    const next = curveToShape(piece, shape);
+    if (next) scene.shapes[next.id] = next;
+  }
+  return true;
+}
+
+/**
+ * 交点のところで図形を分ける。**トリムと同じ道を通り、出口だけが違う。**
+ *
+ * `trimShape` と同じく元を消して破片を入れ直すので、**id は変わる**
+ * （延長が id を保つのと対照的。延長は 1 本のままだから）。
+ */
+export function splitShape(scene: Scene, id: Id, _pickPoint: Vec): boolean {
+  const shape = scene.shapes[id];
+  if (!shape) return false;
+  const curves = shapeCurves(shape);
+  if (curves.length !== 1) return false; // ポリラインは対象外
+
+  const pieces = splitCurve(curves[0], cutterCurves(scene, { shapeId: id }));
+  if (!pieces) return false;
+
+  delete scene.shapes[id];
+  for (const piece of pieces) {
+    const next = curveToShape(piece, shape);
+    if (next) scene.shapes[next.id] = next;
+  }
+  return true;
+}
+
+/** 指した 2 点のあいだを図形から抜く。交点がなくても動く */
+export function eraseShapeSpan(scene: Scene, id: Id, from: Vec, to: Vec): boolean {
+  const shape = scene.shapes[id];
+  if (!shape) return false;
+  const curves = shapeCurves(shape);
+  if (curves.length !== 1) return false;
+
+  const pieces = eraseCurveSpan(curves[0], from, to);
   if (!pieces) return false;
 
   delete scene.shapes[id];

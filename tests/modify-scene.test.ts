@@ -228,3 +228,80 @@ test('交差相手が無い壁は延長もトリムもできない', () => {
   assert.ok(near(dist(nodePos(scene, a), nodePos(scene, b)), 1000), '何もしないはずが動いている');
   assert.equal(openingsOnWall(scene, wall.id).length, 0);
 });
+
+/**
+ * 分割はトリムと**同じ道を通り、出口だけが違う**。
+ * トリムは pick の入る区間を落とし、分割は全部残す。
+ */
+test('交差する線を分割すると 2 本になる', async () => {
+  const { splitShape } = await import('../src/core/modify.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 3000, 0);
+  addLine(scene, 1500, -1000, 1500, 1000);
+
+  assert.ok(splitShape(scene, id, vec(500, 0)), '分割できない');
+  const lines = Object.values(scene.shapes).filter((s) => s.shape === 'line');
+  // 切った線が 2 本 + 刃の 1 本
+  assert.equal(lines.length, 3, `本数が合わない (${lines.length})`);
+  assert.equal(scene.shapes[id], undefined, '元の図形が残っている');
+
+  // **どちらも消えていない。** トリムなら片方が消える
+  const halves = lines.filter((s) => s.shape === 'line' && Math.abs(s.a.y) < 1e-6 && Math.abs(s.b.y) < 1e-6);
+  assert.equal(halves.length, 2, '横の線が 2 本になっていない');
+  const total = halves.reduce((sum, s) => sum + (s.shape === 'line' ? dist(s.a, s.b) : 0), 0);
+  assert.ok(Math.abs(total - 3000) < 1e-6, `合計の長さが変わった (${total})`);
+});
+
+test('交わっていなければ分割しない', async () => {
+  const { splitShape } = await import('../src/core/modify.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 3000, 0);
+  addLine(scene, 5000, -1000, 5000, 1000);
+  assert.equal(splitShape(scene, id, vec(500, 0)), false, '交わっていないのに分割した');
+  assert.ok(scene.shapes[id], '何もしないはずが消えている');
+});
+
+test('指した範囲だけを消しゴムで抜ける（交点が無くても）', async () => {
+  const { eraseShapeSpan } = await import('../src/core/modify.ts');
+  const scene = emptyScene();
+  // **刃になる図形を 1 つも置かない。** トリムも分割もここでは何もできない
+  const id = addLine(scene, 0, 0, 3000, 0);
+
+  assert.ok(eraseShapeSpan(scene, id, vec(1000, 0), vec(2000, 0)), '抜けない');
+  const lines = Object.values(scene.shapes).filter((s) => s.shape === 'line');
+  assert.equal(lines.length, 2, `2 本にならない (${lines.length})`);
+  const total = lines.reduce((sum, s) => sum + (s.shape === 'line' ? dist(s.a, s.b) : 0), 0);
+  assert.ok(Math.abs(total - 2000) < 1e-6, `抜いたぶんが合わない (${total})`);
+});
+
+test('端から抜くと 1 本だけ残る', async () => {
+  const { eraseShapeSpan } = await import('../src/core/modify.ts');
+  const scene = emptyScene();
+  const id = addLine(scene, 0, 0, 3000, 0);
+  assert.ok(eraseShapeSpan(scene, id, vec(-500, 0), vec(1000, 0)), '抜けない');
+  const lines = Object.values(scene.shapes).filter((s) => s.shape === 'line');
+  assert.equal(lines.length, 1, `1 本にならない (${lines.length})`);
+  const left = lines[0];
+  assert.ok(left.shape === 'line' && Math.abs(dist(left.a, left.b) - 2000) < 1e-6, '残りの長さが合わない');
+});
+
+test('壁も分割できて、開口が付いていれば引き継がれる', async () => {
+  const { makeOpening } = await import('./make.ts');
+  const { splitWall } = await import('../src/core/ops.ts');
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(6000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const op = makeOpening(wall.id, { kind: 'door', offset: 1000, width: 800 });
+  scene.openings[op.id] = op;
+
+  const mid = splitWall(scene, wall.id, vec(3000, 0));
+  assert.ok(mid, '分割できない');
+  assert.equal(Object.keys(scene.walls).length, 2, '2 本にならない');
+  // **開口が消えていない。** `splitWall` が引き継ぐ
+  assert.equal(Object.keys(scene.openings).length, 1, '開口が消えた');
+  const kept = Object.values(scene.openings)[0];
+  const host = scene.walls[kept.wallId];
+  assert.ok(host, '開口の乗る壁が無い');
+  assert.ok(Math.abs(kept.offset - 1000) < 1e-6, `開口の位置がずれた (${kept.offset})`);
+});

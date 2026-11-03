@@ -65,6 +65,8 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   offset: { make: () => new ModifyTool('offset', 'offset', 'オフセット', 'O'), glyph: '⫽', modes: PRO_ONLY, edits: true },
   trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), glyph: '✂', modes: PRO_ONLY, edits: true },
   extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), glyph: '⇥', modes: PRO_ONLY, edits: true },
+  split: { make: () => new ModifyTool('split', 'split', '分割', 'P'), glyph: '⨉', modes: PRO_ONLY, edits: true },
+  erase: { make: () => new ModifyTool('erase', 'erase', '消しゴム', 'Z'), glyph: '⌫', modes: PRO_ONLY, edits: true },
   wall: { make: () => new WallTool(), glyph: '▬', modes: BOTH_MODES, edits: true },
   // **構造は建具より上に並べる**（ワイヤーの奥谷さんの指摘）。
   // 躯体を決めてから建具を入れるのが実際の手順

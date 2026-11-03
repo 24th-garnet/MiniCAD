@@ -188,7 +188,7 @@ async function run() {
   // **既定は通常モード。** ワイヤーが 2 度明記している
   const normal = await state();
   assert.equal(normal.mode, 'normal', '既定が通常モードではない');
-  for (const hidden of ['offset', 'trim', 'extend', 'point', 'shape']) {
+  for (const hidden of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'erase']) {
     assert.ok(!normal.toolbar.includes(hidden), `通常モードに ${hidden} が出ている`);
   }
   for (const shown of ['select', 'wall', 'door', 'window', 'block', 'room']) {
@@ -206,7 +206,7 @@ async function run() {
   await sleep(250);
   const pro = await state();
   assert.equal(pro.mode, 'pro');
-  for (const shown of ['offset', 'trim', 'extend', 'point', 'shape']) {
+  for (const shown of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'erase']) {
     assert.ok(pro.toolbar.includes(shown), `プロモードに ${shown} が無い`);
   }
   for (const id of normal.toolbar) {

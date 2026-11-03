@@ -1,7 +1,10 @@
 import type { Vec } from '../core/geometry.ts';
 import { resolveLength, type CoordInput } from '../core/coord-input.ts';
 import { isSelectable } from '../core/entity.ts';
-import { extendShape, extendWall, offsetShape, offsetWall, trimShape, trimWall } from '../core/modify.ts';
+import {
+  eraseShapeSpan, extendShape, extendWall, offsetShape, offsetWall, splitShape, trimShape, trimWall,
+} from '../core/modify.ts';
+import { splitWall } from '../core/ops.ts';
 import { shapeOutline } from '../core/shapes.ts';
 import type { EntityRef } from '../core/types.ts';
 import { drawSnapMarker, type Frame } from '../render/renderer.ts';
@@ -10,7 +13,7 @@ import { theme } from '../render/theme.ts';
 import type { Editor } from '../ui/editor.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
-export type ModifyMode = 'offset' | 'trim' | 'extend';
+export type ModifyMode = 'offset' | 'trim' | 'extend' | 'split' | 'erase';
 
 /**
  * オフセット・トリム・延長。
@@ -29,6 +32,13 @@ export class ModifyTool implements Tool {
   private readonly mode: ModifyMode;
   /** オフセットの距離 (mm) */
   distance = 500;
+  /**
+   * 消しゴムのドラッグの始点。**消しゴムだけが状態を持つ。**
+   *
+   * 2 点要るのはこのモードだけで、しかも 1 回のドラッグで閉じるので、
+   * 複数クリックのように宙ぶらりんにならない（Esc の受け皿が要らない）。
+   */
+  private eraseFrom: { at: Vec; target: EntityRef } | null = null;
 
   constructor(mode: ModifyMode, id: ToolId, label: string, shortcut: string) {
     this.mode = mode;
@@ -46,8 +56,30 @@ export class ModifyTool implements Tool {
     const target = this.pickTarget(editor, p.raw);
     if (!target) return;
 
+    // 消しゴムは「どこからどこまで」をドラッグで取る
+    if (this.mode === 'erase') {
+      this.eraseFrom = { at: p.raw, target };
+      return;
+    }
     const store = editor.store;
     store.commit(() => this.apply(editor, target, p.raw));
+  }
+
+  onPointerUp(editor: Editor, p: PointerInfo): void {
+    const from = this.eraseFrom;
+    this.eraseFrom = null;
+    if (!from || from.target.type !== 'shape') return;
+    editor.store.commit(() => eraseShapeSpan(editor.store.scene, from.target.id, from.at, p.raw));
+    editor.requestRender();
+  }
+
+  isActive(): boolean {
+    return this.eraseFrom !== null;
+  }
+
+  cancel(editor: Editor): void {
+    this.eraseFrom = null;
+    editor.requestRender();
   }
 
   private apply(editor: Editor, target: EntityRef, at: Vec): boolean {
@@ -62,6 +94,15 @@ export class ModifyTool implements Tool {
       }
       case 'trim':
         return target.type === 'shape' ? trimShape(scene, target.id, at) : trimWall(scene, target.id, at);
+      // **トリムと同じ道を通り、出口だけが違う。** 落とさずに全部残す。
+      // 壁は `splitWall` が開口の引き継ぎと拘束の分割まで面倒を見る
+      case 'split':
+        return target.type === 'shape'
+          ? splitShape(scene, target.id, at)
+          : splitWall(scene, target.id, at) !== null;
+      // ドラッグで閉じるので、ここには来ない
+      case 'erase':
+        return false;
       case 'extend': {
         if (target.type === 'shape') return extendShape(scene, target.id, at);
         // 延長は既存ノードを交点へ動かすので拘束と衝突する。
@@ -117,6 +158,12 @@ export class ModifyTool implements Tool {
         { kind: 'note', text: '出したい側をクリック' },
       ];
     }
+    if (this.mode === 'split') {
+      return [{ kind: 'note', text: '交わっているところで分けます（図形も壁も）' }];
+    }
+    if (this.mode === 'erase') {
+      return [{ kind: 'note', text: '消したい範囲を図形の上でドラッグ（交点が無くても消せます）' }];
+    }
     return [{ kind: 'note', text: '表示中の図形と壁を相手に、クリックした箇所を処理します' }];
   }
 
@@ -148,6 +195,11 @@ export class ModifyTool implements Tool {
         return target ? 'クリックした側を落とします' : '切り落としたい部分にカーソルを合わせてクリック';
       case 'extend':
         return target ? '近い方の端を伸ばします' : '伸ばしたい側の端にカーソルを合わせてクリック';
+      case 'split':
+        return target ? '交わっているところで分けます' : '分けたい図形か壁にカーソルを合わせてクリック';
+      case 'erase':
+        if (this.eraseFrom) return 'ドラッグを離したところまでを消します';
+        return target ? '図形の上をドラッグすると、その範囲が消えます' : '消したい図形にカーソルを合わせてドラッグ';
     }
   }
 }

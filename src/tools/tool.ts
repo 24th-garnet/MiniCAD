@@ -13,6 +13,8 @@ export type ToolId =
   | 'offset'
   | 'trim'
   | 'extend'
+  | 'split'
+  | 'erase'
   | 'wall'
   | 'door'
   | 'window'
