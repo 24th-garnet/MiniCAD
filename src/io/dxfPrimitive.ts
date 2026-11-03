@@ -44,15 +44,34 @@ export const dxfLine = (a: Vec, b: Vec, layerName: string, lineType?: LineType):
 ];
 
 /**
+ * 辺を隠す札（グループコード 70）。辺 1〜4 がそれぞれ 1 / 2 / 4 / 8。
+ *
+ * 辺の番号は書いた点の順で、1 番が「点 1 → 点 2」。
+ * **大きい面を三角形に割ったときの内部の切れ目**を消すのに使う。
+ */
+export const EDGE_INVISIBLE = [1, 2, 4, 8] as const;
+
+/**
  * 3 点か 4 点の平らな面。R12 から使える唯一の立体エンティティ。
  *
  * **4 点に満たないときは最後の点を繰り返す。** `3DFACE` は常に 4 点を持ち、
  * 三角形は「4 点目が 3 点目と同じ」として表す、というのが R12 の約束。
  * 点を 3 つだけ書くと、読む側が 4 点目を原点と解釈して床まで伸びた面になる。
+ *
+ * `invisible` は隠す辺の組み合わせ（`EDGE_INVISIBLE` の和）。**0 のときは
+ * 書かない**——既定が 0 なので、要らない行を全部の面に足さずに済む。
+ *
+ * **70 は座標より前に書く。** 仕様書の並びでは座標のあとだが、
+ * `dxf-parser`（開発時のオラクル）の `parse3dFaceVertices` は、
+ * **座標のあとに別のグループが来ると最後の頂点を落として返す**
+ * （`default:` でその場に `return` する作り）。タグ列はコードで分岐して読むもので、
+ * 実体の中の並び順に意味は無いので、先に書いて困る読み手はまず無い。
+ * こうするとオラクルが 4 点とも読めて、**書いたものを検証し続けられる**。
  */
-export const dxf3dFace = (points: Vec3Like[], layerName: string): DxfEntity => {
+export const dxf3dFace = (points: Vec3Like[], layerName: string, invisible = 0): DxfEntity => {
   const p = [points[0], points[1], points[2], points[3] ?? points[2]];
   const out: DxfEntity = ['0', '3DFACE', '8', layerName];
+  if (invisible !== 0) out.push('70', String(invisible));
   for (let i = 0; i < 4; i++) {
     out.push(String(10 + i), fmt(p[i].x), String(20 + i), fmt(p[i].y), String(30 + i), fmt(p[i].z));
   }

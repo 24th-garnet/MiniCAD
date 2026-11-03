@@ -10,7 +10,7 @@ import { isSnappable } from '../core/entity.ts';
 import { buildFixtureFaces } from './fixture3d.ts';
 import { theme } from '../render/theme.ts';
 import type { EntityRef, Id, Opening, Room, Scene } from '../core/types.ts';
-import { cross3, normalize3, sub3, vec3, type Vec3 } from './mat4.ts';
+import { normalize3, vec3, type Vec3 } from './mat4.ts';
 
 /**
  * 立体の1面。頂点は**外向き法線に対して反時計回り**に並べる。
@@ -349,11 +349,33 @@ function ccw(poly: Vec[]): Vec[] {
   return signedArea(ring) < 0 ? ring.reverse() : ring;
 }
 
-/** 最初の3点から法線を出す。縮退していたら +z に落とす */
+/**
+ * 多角形の法線。**ニューウェル法**で、辺を 1 周して面積ベクトルを積む。
+ *
+ * **3 点の外積では足りない。** 以前は `points[0]` と `points[1]` を基点にした
+ * 外積を使っていたが、**凹多角形の反射頂点が `points[1]` に来ると裏返る**
+ * （実測で確認）。裏返ると `rayFace`（`ray.ts`）が背面として弾くので、
+ * **その立体が 3D で拾えなくなる**——見えているのにクリックが素通りする。
+ *
+ * ニューウェル法は全部の辺を使うので、
+ *
+ * - 凹でも正しい（面積ベクトルの向きは巻き方だけで決まる）
+ * - **頂点の並びをどこから始めても同じ答え**になる
+ * - 最初の 3 点が一直線でも落ちない
+ *
+ * 凸多角形では外積と同じ向きを返すので、これまでの面は 1 枚も変わらない。
+ */
 function faceNormal(points: Vec3[]): Vec3 {
-  for (let i = 2; i < points.length; i++) {
-    const n = cross3(sub3(points[1], points[0]), sub3(points[i], points[0]));
-    if (Math.hypot(n.x, n.y, n.z) > 1e-9) return normalize3(n);
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    x += (a.y - b.y) * (a.z + b.z);
+    y += (a.z - b.z) * (a.x + b.x);
+    z += (a.x - b.x) * (a.y + b.y);
   }
-  return vec3(0, 0, 1);
+  // 面積が 0（一直線・1 点に潰れた）なら向きが決まらない。真上を向かせる
+  return Math.hypot(x, y, z) > 1e-9 ? normalize3(vec3(x, y, z)) : vec3(0, 0, 1);
 }

@@ -1,7 +1,7 @@
 import { LAYER_IDS, getLayer, type Layer } from '../core/layer.ts';
 import type { EntityRef, Room, Scene } from '../core/types.ts';
 import { buildMesh, type Face3 } from '../render3d/mesh.ts';
-import { dxf3dFace, fmt, type DxfEntity } from './dxfPrimitive.ts';
+import { dxf3dFace, EDGE_INVISIBLE, fmt, type DxfEntity } from './dxfPrimitive.ts';
 
 /**
  * 3D を DXF に書き出す。
@@ -88,7 +88,15 @@ export function sceneToDxf3d(scene: Scene, rooms: Room[]): Dxf3dResult {
     // 5 点以上は扇状に割る。凹多角形では余分な面が出るので、あとで報告する
     fanned += 1;
     for (let i = 1; i + 1 < p.length; i++) {
-      entities.push(dxf3dFace([p[0], p[i], p[i + 1]], name));
+      // **割って出来た内部の切れ目を隠す。** 書かないと、L 字の床を
+      // AutoCAD で開いたときに扇の骨が線として見える。
+      // 三角形 (p0, pi, pi+1) の辺は 1:p0→pi / 2:pi→pi+1 / 4:退化 / 8:pi+1→p0。
+      // 外周に重なるのは、最初の三角形の 1 番と、最後の三角形の 8 番だけ
+      const invisible =
+        (i === 1 ? 0 : EDGE_INVISIBLE[0])
+        | EDGE_INVISIBLE[2]
+        | (i + 2 === p.length ? 0 : EDGE_INVISIBLE[3]);
+      entities.push(dxf3dFace([p[0], p[i], p[i + 1]], name, invisible));
     }
   }
 
@@ -96,6 +104,7 @@ export function sceneToDxf3d(scene: Scene, rooms: Room[]): Dxf3dResult {
   if (fanned > 0) {
     notes.push(
       `5 点以上の面 ${fanned} 枚を三角形に割りました（DXF の 3DFACE は 4 点まで）。`
+      + '割ってできた内部の辺は隠してあるので線としては見えませんが、'
       + 'L 字やコの字の床では、凹んだ側に余分な面が出ることがあります。',
     );
   }
