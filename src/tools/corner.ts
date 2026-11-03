@@ -1,4 +1,5 @@
 import { cornerEntities, type CornerKind } from '../core/corner.ts';
+import { joinEntities } from '../core/join.ts';
 import { isSelectable } from '../core/entity.ts';
 import { shapeOutline } from '../core/shapes.ts';
 import type { EntityRef } from '../core/types.ts';
@@ -27,7 +28,11 @@ export class CornerTool implements Tool {
   readonly cursor = 'crosshair';
   readonly group = 'modify' as const;
 
-  kind: CornerKind = 'fillet';
+  /**
+   * 何をするか。**どれも「2 つ選ぶ」という操作が同じ**なので 1 つのツールに
+   * まとめてある（建具が 11 種別を 2 ツールで出しているのと同じ考え方）。
+   */
+  kind: CornerKind | 'join' = 'fillet';
   /** 面取りで角から戻る距離 (mm) */
   distance = 300;
   /** 角の丸めの半径 (mm) */
@@ -77,11 +82,13 @@ export class CornerTool implements Tool {
     const first = this.first;
     this.first = null;
     editor.store.commit(() =>
-      cornerEntities(editor.store.scene, first, target, {
-        kind: this.kind,
-        distance: this.distance,
-        radius: this.radius,
-      }),
+      this.kind === 'join'
+        ? joinEntities(editor.store.scene, first, target)
+        : cornerEntities(editor.store.scene, first, target, {
+            kind: this.kind,
+            distance: this.distance,
+            radius: this.radius,
+          }),
     );
     editor.requestRender();
   }
@@ -102,13 +109,19 @@ export class CornerTool implements Tool {
         options: [
           { value: 'fillet', label: '角の丸め' },
           { value: 'chamfer', label: '面取り' },
+          { value: 'join', label: '結合' },
         ],
         onChange: (v) => {
-          this.kind = v === 'chamfer' ? 'chamfer' : 'fillet';
+          this.kind = v === 'chamfer' || v === 'join' ? v : 'fillet';
           this.first = null;
         },
       },
-      this.kind === 'fillet'
+      ...(this.kind === 'join'
+        ? [{ kind: 'note' as const, text: '端点が合っているものどうしを繋ぎます（伸ばしはしません）' }]
+        : []),
+      this.kind === 'join'
+        ? { kind: 'note', text: '壁は一直線に並んでいるときだけ 1 本になります' }
+        : this.kind === 'fillet'
         ? {
             kind: 'number',
             label: '半径',
@@ -151,7 +164,11 @@ export class CornerTool implements Tool {
   }
 
   status(editor: Editor): string {
-    const what = this.kind === 'fillet' ? `半径 ${this.radius}mm で丸めます` : `${this.distance}mm 戻して面取りします`;
+    const what = this.kind === 'join'
+      ? '端点で繋ぎます'
+      : this.kind === 'fillet'
+        ? `半径 ${this.radius}mm で丸めます`
+        : `${this.distance}mm 戻して面取りします`;
     if (this.first) return `もう 1 本をクリック（${what}）`;
     return this.pick(editor, editor.pointerWorld())
       ? `1 本目をクリック（${what}）`

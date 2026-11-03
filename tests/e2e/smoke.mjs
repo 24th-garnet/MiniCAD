@@ -341,6 +341,61 @@ async function run() {
     (s) => assert.equal(s.shapes, shapesBeforeDouble, '1 回の undo で戻らない'),
   );
 
+  // --- 角ツール（面取り・丸め・結合） ---
+  let shapesBeforeCorner = 0;
+  await step(
+    '端点が合う 2 本を結合して 1 本にできる',
+    async () => {
+      shapesBeforeCorner = (await state()).shapes;
+      // 端点が合う 2 本を置く
+      await page.evaluate(() => {
+        const ed = window.minicad.editorInstance;
+        const s = ed.store.scene;
+        const base = {
+          layerId: 'shape', levelId: s.activeLevelId,
+          attrs: { groupId: null, stampId: null, color: null, materialRef: null,
+            takeoff: null, symbolId: null, symbolVersion: null },
+        };
+        ed.store.commit(() => {
+          s.shapes.j1 = { ...base, id: 'j1', shape: 'line', a: { x: 1000, y: 7000 }, b: { x: 3000, y: 7000 } };
+          s.shapes.j2 = { ...base, id: 'j2', shape: 'line', a: { x: 3000, y: 7000 }, b: { x: 3000, y: 8500 } };
+        });
+      });
+      await sleep(250);
+      await page.evaluate(() => window.minicad.editorInstance.zoomToFit());
+      await sleep(300);
+      await page.keyboard.press('a');
+      await sleep(200);
+      await page.evaluate(() => {
+        const t = window.minicad.editorInstance.tool;
+        t.options().find((f) => f.label === '種類').onChange('join');
+      });
+      await sleep(150);
+      await clickWorld(2000, 7000);
+      await clickWorld(3000, 7800);
+      await sleep(300);
+    },
+    (s) => {
+      assert.equal(s.shapes, shapesBeforeCorner + 1, `1 本にまとまっていない (${s.shapes - shapesBeforeCorner})`);
+      assert.equal(s.lastShape.shape, 'polyline', '折れ線になっていない');
+      assert.equal(s.lastShape.points, 3, `3 点でない (${s.lastShape.points})`);
+    },
+  );
+
+  await step(
+    '結合は undo で戻る',
+    async () => {
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Meta+z');
+      await page.keyboard.press('Meta+z');
+      await sleep(300);
+    },
+    (s) => assert.equal(s.shapes, shapesBeforeCorner, 'undo で戻らない'),
+  );
+
+  await page.keyboard.press('f');
+  await sleep(200);
+
   await step(
     '作図は undo で戻る',
     async () => {

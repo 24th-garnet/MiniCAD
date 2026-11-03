@@ -374,3 +374,101 @@ test('壁の角は落とせるが、丸められない', async () => {
     assert.ok(wall.thickness > 0, '厚みを失った');
   }
 });
+
+/**
+ * 結合は**端点で繋ぐところまで**。閉じた図形どうしのブール演算は別物で、
+ * `core/geometry.ts` に多角形の論理演算が無い（確認事項 11）。
+ */
+test('端点が合う 2 本の線が 1 本の折れ線になる', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  const a = addLine(scene, 0, 0, 1000, 0);
+  const b = addLine(scene, 1000, 0, 1000, 800);
+
+  assert.ok(joinShapes(scene, a, b), '繋げない');
+  assert.equal(Object.keys(scene.shapes).length, 1, '1 つにまとまっていない');
+  const got = scene.shapes[a];
+  assert.equal(got.shape, 'polyline');
+  if (got.shape !== 'polyline') return;
+  assert.deepEqual(got.points.map((p) => [p.x, p.y]), [[0, 0], [1000, 0], [1000, 800]]);
+  assert.equal(got.closed, false);
+});
+
+test('向きが逆でも繋がる', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  // 2 本目が終点どうしで接している
+  const a = addLine(scene, 0, 0, 1000, 0);
+  const b = addLine(scene, 1000, 800, 1000, 0);
+  assert.ok(joinShapes(scene, a, b), '繋げない');
+  const got = scene.shapes[a];
+  assert.ok(got.shape === 'polyline' && got.points.length === 3, '3 点にならない');
+});
+
+test('端点が離れていれば繋がない（勝手に伸ばさない）', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  const a = addLine(scene, 0, 0, 1000, 0);
+  const b = addLine(scene, 1100, 0, 1100, 800);
+  // **伸ばして繋ぐことはしない。** どちらをどれだけ伸ばすかは人が決める
+  assert.equal(joinShapes(scene, a, b), false, '離れているのに繋いだ');
+  assert.equal(Object.keys(scene.shapes).length, 2, '図形が減っている');
+});
+
+test('一直線の壁 2 本が 1 本になり、開口の位置が保たれる', async () => {
+  const { joinWalls } = await import('../src/core/join.ts');
+  const { makeOpening } = await import('./make.ts');
+  const { wallEnds } = await import('../src/core/ops.ts');
+
+  for (const flip of [false, true]) {
+    const scene = emptyScene();
+    const left = findOrCreateNode(scene, vec(0, 0));
+    const mid = findOrCreateNode(scene, vec(3000, 0));
+    const right = findOrCreateNode(scene, vec(8000, 0));
+    // flip のときは、残す側の壁の向きを逆にして両方の経路を通す
+    const w1 = flip ? addWall(scene, mid, left, 120)! : addWall(scene, left, mid, 120)!;
+    const w2 = addWall(scene, mid, right, 120)!;
+    // それぞれの壁の、世界座標 x = 1000 と x = 5000 のところに建具を置く
+    const o1 = makeOpening(w1.id, { kind: 'door', offset: flip ? 2000 : 1000, width: 600 });
+    const o2 = makeOpening(w2.id, { kind: 'door', offset: 2000, width: 600 });
+    scene.openings[o1.id] = o1;
+    scene.openings[o2.id] = o2;
+
+    assert.ok(joinWalls(scene, w1.id, w2.id), `${flip}: 繋げない`);
+    assert.equal(Object.keys(scene.walls).length, 1, `${flip}: 1 本になっていない`);
+    assert.equal(Object.keys(scene.openings).length, 2, `${flip}: 建具が消えた`);
+
+    // **世界座標での位置が保たれる。** 壁の向きが変わっても動かない
+    const wall = Object.values(scene.walls)[0];
+    const [a, b] = wallEnds(scene, wall);
+    for (const [id, worldX] of [[o1.id, 1000], [o2.id, 5000]] as const) {
+      const op = scene.openings[id];
+      const t = op.offset / dist(a, b);
+      const x = a.x + (b.x - a.x) * t;
+      assert.ok(Math.abs(x - worldX) < 1e-6, `${flip}: ${id} が ${x}（${worldX} のはず）`);
+    }
+  }
+});
+
+test('角になっている壁や、3 本が集まるノードでは繋がない', async () => {
+  const { joinWalls } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  const corner = findOrCreateNode(scene, vec(0, 0));
+  const left = findOrCreateNode(scene, vec(-3000, 0));
+  const up = findOrCreateNode(scene, vec(0, 3000));
+  const w1 = addWall(scene, left, corner, 120)!;
+  const w2 = addWall(scene, corner, up, 120)!;
+  // 直角なので一直線ではない
+  assert.equal(joinWalls(scene, w1.id, w2.id), false, '角を繋いだ');
+
+  // 一直線でも、3 本目が取り付いていれば繋がない
+  const scene2 = emptyScene();
+  const a = findOrCreateNode(scene2, vec(0, 0));
+  const m = findOrCreateNode(scene2, vec(3000, 0));
+  const b = findOrCreateNode(scene2, vec(6000, 0));
+  const t = findOrCreateNode(scene2, vec(3000, 2000));
+  const s1 = addWall(scene2, a, m, 120)!;
+  const s2 = addWall(scene2, m, b, 120)!;
+  addWall(scene2, m, t, 120);
+  assert.equal(joinWalls(scene2, s1.id, s2.id), false, '3 本が集まるノードで繋いだ');
+});
