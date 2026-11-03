@@ -339,6 +339,54 @@ export function openingPrimitives(scene: Scene, opening: Opening): Primitive[] {
   return out;
 }
 
+/**
+ * 建具の同一性。**位置と幅以外のすべて。**
+ *
+ * 結合（`mergeOpeningSpan`）が「融かしてよいか」を決めるのに使う。
+ * 融かした結果は `Opening` 1 つなので、**食い違う欄はどれも失われる**。
+ * 位置と幅だけが、融かすことで正当に変わる欄。
+ */
+export type OpeningIdentity = Omit<Opening, 'id' | 'wallId' | 'offset' | 'width'>;
+
+/**
+ * 欄ごとの「同じか」。**`Opening` に欄を足すとここが型エラーになる。**
+ *
+ * 表にしてあるのは、足した人に「融かしてよい欄か」を必ず考えさせるため。
+ * 以前はこの判定が `kind` の比較 1 行で、掃き出し窓と腰窓を隣に置くと
+ * **黙って融けて窓台と符号が消えた**。
+ */
+const SAME_FIELD: { [K in keyof OpeningIdentity]: (a: OpeningIdentity[K], b: OpeningIdentity[K]) => boolean } = {
+  kind: (a, b) => a === b,
+  flipX: (a, b) => a === b,
+  flipY: (a, b) => a === b,
+  sillHeight: (a, b) => a === b,
+  height: (a, b) => a === b,
+  designation: (a, b) => a === b,
+  leaves: (a, b) => a === b,
+  layerId: (a, b) => a === b,
+  bay: (a, b) =>
+    a === null || b === null
+      ? a === b
+      : a.shape === b.shape && a.depth === b.depth && a.side === b.side,
+  attrs: (a, b) =>
+    a.materialRef === b.materialRef &&
+    a.takeoff === b.takeoff &&
+    a.color === b.color &&
+    a.groupId === b.groupId &&
+    a.symbolId === b.symbolId &&
+    a.symbolVersion === b.symbolVersion,
+};
+
+/** 融かしてよい相手か。欄が 1 つでも食い違えば融かさない */
+export function sameOpening(a: OpeningIdentity, b: OpeningIdentity): boolean {
+  for (const key of Object.keys(SAME_FIELD) as (keyof OpeningIdentity)[]) {
+    // 欄ごとに型が違うので、表引きの 1 箇所だけ緩める
+    const eq = SAME_FIELD[key] as (x: unknown, y: unknown) => boolean;
+    if (!eq(a[key], b[key])) return false;
+  }
+  return true;
+}
+
 /** 種別セレクタ用。ツールの系統で絞り込む */
 export const openingKindsOf = (family: 'door' | 'window'): OpeningKind[] =>
   OPENING_KINDS.filter((k) => OPENING_SYMBOLS[k].family === family);

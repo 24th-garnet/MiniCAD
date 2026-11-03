@@ -1,7 +1,8 @@
 import { defaultAttrs } from './attrs.ts';
 import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
-import { newId, type Id, type Opening, type OpeningKind, type Scene, type Wall } from './types.ts';
+import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
+import { sameOpening, type OpeningIdentity } from './opening.ts';
 import { dropConstraintsForWall, splitConstraints } from './constraintOps.ts';
 
 /** 同一ノードとみなす距離 (mm) */
@@ -149,8 +150,12 @@ export function clampOpening(scene: Scene, wallId: Id, offset: number, width: nu
  * **壁が既に持っている 1 次元のパラメータ空間での区間マージ。** CSG でも
  * ブーリアンでもない。ワイヤーの「ブーリアンのように見える処理」はこれで足りる。
  *
- * **同じ種別のものとしか結合しない。** ドアと窓を融かすと、出来たものが
- * どちらでもなくなる。種別が違うなら `clampOpening` が今までどおり脇へ逃がす。
+ * **同じものとしか結合しない。** ドアと窓を融かすと出来たものがどちらでも
+ * なくなるが、**それは種別だけの話ではない**。融かした結果は `Opening` 1 つ
+ * なので、窓台・符号・張り出し・枚数・画層・素材のどれが食い違っても、
+ * 片方の値が黙って消える。判定は `sameOpening`（`core/opening.ts`）に置いて
+ * あり、`Opening` に欄を足すとそこが型エラーになる。
+ * 融かさないときは `clampOpening` が今までどおり脇へ逃がす。
  *
  * **触れているだけでは結合しない。** 柱の無い位置に窓を 2 つ並べるのは
  * ふつうの作図で、隣に置いた瞬間に 1 つになると困る。
@@ -158,7 +163,7 @@ export function clampOpening(scene: Scene, wallId: Id, offset: number, width: nu
 export function mergeOpeningSpan(
   scene: Scene,
   wallId: Id,
-  kind: OpeningKind,
+  proto: OpeningIdentity,
   offset: number,
   width: number,
 ): { offset: number; width: number; absorb: Id[] } | null {
@@ -173,7 +178,7 @@ export function mergeOpeningSpan(
   for (let pass = 0; pass < Object.keys(scene.openings).length + 1; pass++) {
     let grew = false;
     for (const other of openingsOnWall(scene, wallId)) {
-      if (other.kind !== kind) continue;
+      if (!sameOpening(proto, other)) continue;
       if (absorb.includes(other.id)) continue;
       const oLo = other.offset - other.width / 2;
       const oHi = other.offset + other.width / 2;

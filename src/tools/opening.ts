@@ -2,6 +2,7 @@ import { defaultAttrs } from '../core/attrs.ts';
 import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
 import { clampOpening, mergeOpeningSpan, wallEnds, wallLength } from '../core/ops.ts';
 import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
+import type { OpeningIdentity } from '../core/opening.ts';
 import { openingFrame, openingQuad } from '../core/shape.ts';
 import { OPENING_SYMBOLS, openingKindsOf, openingPrimitives } from '../core/opening.ts';
 import { newId, type Id, type Opening, type OpeningKind } from '../core/types.ts';
@@ -122,6 +123,19 @@ export class OpeningTool implements Tool {
       wallId: candidate.wallId,
       offset: candidate.offset,
       width: candidate.width,
+      ...this.identity(layerId),
+    };
+  }
+
+  /**
+   * いまの設定で置くものの、**位置と幅以外のすべて**。
+   *
+   * 結合の判定（`mergeOpeningSpan`）が「融かしてよい相手か」を決めるのに使う。
+   * 置くものと同じ出どころにしてあるので、**設定を足したときに判定が
+   * 置き去りにならない**。
+   */
+  private identity(layerId: LayerId): OpeningIdentity {
+    return {
       kind: this.kind,
       flipX: this.flipX,
       flipY: this.flipY,
@@ -138,6 +152,7 @@ export class OpeningTool implements Tool {
   private findCandidate(editor: Editor, p: Vec): Candidate | null {
     const scene = editor.store.scene;
     const limit = editor.viewport.toWorldLength(40);
+    const layerId = resolveNewLayer(scene.layers, editor.store.settings.currentLayerId, LAYER_IDS.opening);
     let best: (Candidate & { d: number }) | null = null;
 
     for (const wall of Object.values(scene.walls)) {
@@ -147,9 +162,10 @@ export class OpeningTool implements Tool {
       if (c.dist > reach) continue;
       const raw = c.t * dist(a, b);
 
-      // **同じ種別と重なるならまとめる。** 壁が既に持っている 1 次元の
-      // パラメータ空間での区間マージで、CSG ではない
-      const merged = mergeOpeningSpan(scene, wall.id, this.kind, raw, this.width);
+      // **同じものと重なるならまとめる。** 壁が既に持っている 1 次元の
+      // パラメータ空間での区間マージで、CSG ではない。
+      // 画層は置くときに決まるので、判定もそのときの画層で行う
+      const merged = mergeOpeningSpan(scene, wall.id, this.identity(layerId), raw, this.width);
       const here: Candidate | null = merged
         ? { wallId: wall.id, offset: merged.offset, width: merged.width, absorb: merged.absorb }
         : (() => {
