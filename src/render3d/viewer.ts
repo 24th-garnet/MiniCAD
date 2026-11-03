@@ -18,7 +18,8 @@ import {
   type CameraParams,
   type View,
 } from './camera.ts';
-import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D } from './interact.ts';
+import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D, type Tool3D } from './interact.ts';
+import { Place3D } from './place3d.ts';
 import { type Face3 } from './mesh.ts';
 import { MeshCache } from './meshCache.ts';
 import { paint } from './paint.ts';
@@ -80,6 +81,13 @@ export class Viewer3D {
   private dragging: 'orbit' | 'pan' | null = null;
   private last = { x: 0, y: 0 };
   private readonly select = new Select3D();
+  /** ソリッドを 3D の中に置く道具。選択と入れ替えて使う */
+  readonly place = new Place3D();
+  /**
+   * いま効いている 3D の道具。**ツールバーには出ない。**
+   * 2D の `ToolId` とは別の、3D のビュータブから選ぶ小さな union
+   */
+  private tool: Tool3D = this.select;
   private downAt = { x: 0, y: 0 };
   private moved = false;
   private resizeObserver: ResizeObserver | null = null;
@@ -253,12 +261,31 @@ export class Viewer3D {
     };
   }
 
+  /** いま効いている 3D の道具 */
+  get tool3d(): Tool3D {
+    return this.tool;
+  }
+
+  /** 3D の道具を選ぶ。`null` で選択に戻る */
+  setTool3D(tool: Tool3D | null): void {
+    if (this.tool !== this.select) this.tool.cancel(this.editor);
+    this.tool = tool ?? this.select;
+    this.canvas.style.cursor = this.tool === this.select ? '' : 'crosshair';
+    this.requestRender();
+  }
+
   private draw(): void {
     paint(this.ctx, this.camera, this.mesh, this.width, this.height, {
       showEdges: this.showEdges,
       dpr: this.dpr,
       tint: highlightOf(this.editor, this.materials),
     });
+    // **作図の補助は 2 回目の塗りで重ねる**（`PaintOptions.clear` の経緯）。
+    // 図面の面と同じ列に混ぜると、壁に敷いた格子が壁に隠れる
+    const overlay = this.tool.overlay(this.editor);
+    if (overlay.length > 0) {
+      paint(this.ctx, this.camera, overlay, this.width, this.height, { dpr: this.dpr, clear: false });
+    }
     this.drawComments();
   }
 
@@ -316,7 +343,7 @@ export class Viewer3D {
 
   /** いまの状態の説明。ステータスバーが 3D のときに読む */
   status(): string {
-    return this.select.status(this.editor);
+    return this.tool.status(this.editor);
   }
 
   /**
@@ -421,9 +448,19 @@ export class Viewer3D {
         return;
       }
 
+      const p = this.pointer(e);
+
+      // **置く道具のときは、押した時点では何もしない。**
+      // 動かさずに離したら置く、動かしたら回す。ドラッグで回せなくなると
+      // 「置きたい場所を正面に持ってくる」ができなくなる
+      if (this.tool !== this.select) {
+        this.applyOrbitCenter(p);
+        this.dragging = 'orbit';
+        return;
+      }
+
       // **掴んだものがあれば動かす、無ければ回す。**
       // 「何も無いところをドラッグ＝回転」は 3D の基本操作なので残す
-      const p = this.pointer(e);
       if (p.hit?.ref) {
         this.dragging = null;
         this.select.onPointerDown(this.editor, p);
@@ -439,7 +476,7 @@ export class Viewer3D {
     canvas.addEventListener('pointermove', (e) => {
       if (!this.dragging) {
         // 選択中のものを掴んでいるか、ただのホバーか。Select3D が決める
-        this.select.onPointerMove(this.editor, this.pointer(e));
+        this.tool.onPointerMove(this.editor, this.pointer(e));
         this.requestRender();
         return;
       }
@@ -455,22 +492,26 @@ export class Viewer3D {
     });
 
     canvas.addEventListener('pointerleave', () => {
-      this.select.onPointerLeave(this.editor);
+      this.tool.onPointerLeave(this.editor);
       this.requestRender();
     });
 
     canvas.addEventListener('pointerup', (e) => {
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      const clicked = !this.moved;
       this.dragging = null;
       this.moved = false;
-      this.select.onPointerUp(this.editor);
+      // 置く道具は「動かさずに離した」ときだけ効く（回しただけでは置かない）
+      if (this.tool !== this.select && clicked) this.tool.onPointerDown(this.editor, this.pointer(e));
+      this.tool.onPointerUp(this.editor);
+      this.requestRender();
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       this.dragging = null;
       this.moved = false;
-      this.select.cancel(this.editor);
+      this.tool.cancel(this.editor);
     });
 
     // **Esc は捕捉段で取る。** `installKeymap` は window の keydown を見ていて、
@@ -478,9 +519,9 @@ export class Viewer3D {
     window.addEventListener(
       'keydown',
       (e) => {
-        if (!this.visible || !this.select.isActive()) return;
+        if (!this.visible || !this.tool.isActive()) return;
         if (e.key !== 'Escape') return;
-        if (this.select.cancel(this.editor)) {
+        if (this.tool.cancel(this.editor)) {
           e.stopPropagation();
           e.preventDefault();
           this.requestRender();

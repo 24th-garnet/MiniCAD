@@ -3,6 +3,7 @@ import { clear, el } from '../dom.ts';
 import type { Panel, PanelContext } from '../panel.ts';
 import { VIEW_LABELS, VIEW_MODES } from '../view-state.ts';
 import { ORBIT_CENTER_LABELS, type OrbitCenter } from '../../render3d/camera.ts';
+import { FIXTURE_SPECS, fixtureKindsOf, type FixtureKind } from '../../core/fixture.ts';
 
 /**
  * 2D / 3D / 分割の切り替え。
@@ -95,6 +96,43 @@ export class ViewTabs implements Panel {
           },
         },
         ['歩く'],
+      ),
+    );
+
+    // **3D の中にソリッドを置く。** 2D のツールバーには出さない——
+    // 3D でしか意味を持たない道具なので、3D のビュータブに置く
+    if (ctx.mode !== 'pro' || !ctx.can.edit) return;
+    const placing = this.viewer.tool3d === this.viewer.place;
+    this.host.append(
+      el(
+        'button',
+        {
+          type: 'button',
+          'aria-pressed': String(placing),
+          title: '3D の中に基本形状を置く（面にカーソルを合わせてクリック）',
+          onclick: () => {
+            this.viewer.setTool3D(placing ? null : this.viewer.place);
+            ctx.refresh();
+          },
+        },
+        ['置く'],
+      ),
+    );
+    if (!placing) return;
+    this.host.append(
+      el(
+        'select',
+        {
+          class: 'solid-kind',
+          title: '置くソリッドの種類',
+          onchange: (e: Event) => {
+            this.viewer.place.kind = (e.target as HTMLSelectElement).value as FixtureKind;
+            this.viewer.requestRender();
+          },
+        },
+        fixtureKindsOf('solid').map((k) =>
+          el('option', { value: k, selected: this.viewer.place.kind === k ? '' : undefined },
+            [FIXTURE_SPECS[k].label])),
       ),
     );
   }

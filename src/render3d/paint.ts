@@ -43,6 +43,16 @@ export interface PaintOptions {
    * 「多角形の fill と stroke しか使わない」という上の約束は生きたまま。
    */
   tint?: (ref: EntityRef | null) => string | null;
+  /**
+   * 空で塗りつぶしてから描くか。**重ねるときだけ false。**
+   *
+   * 作図の補助（作図面の格子・置こうとしている立体の仮の姿）は、
+   * 図面の面と**同じ列に混ぜない**。重心の深さで並べる方式では、
+   * 大きい壁の面の重心が、その壁に貼った小さい格子より手前に来ることがあり、
+   * **壁に敷いた格子が壁に隠れる**（実際にそうなって見つけた）。
+   * 補助は図面ではないので、2 回目の塗りで上に重ねるほうが正しい。
+   */
+  clear?: boolean;
 }
 
 interface DrawFace {
@@ -64,8 +74,10 @@ export function paint(
 ): void {
   const dpr = options.dpr ?? 1;
   ctx.setLineDash([]);
-  ctx.fillStyle = theme.sky3d;
-  ctx.fillRect(0, 0, width * dpr, height * dpr);
+  if (options.clear !== false) {
+    ctx.fillStyle = theme.sky3d;
+    ctx.fillRect(0, 0, width * dpr, height * dpr);
+  }
   if (width <= 0 || height <= 0) return;
 
   const view = viewProjection(cam, width, height);

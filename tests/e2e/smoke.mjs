@@ -1698,6 +1698,43 @@ async function run() {
   await sleep(300);
   console.log('✔ 3D で空を叩くと選択が解ける');
 
+  // --- 3D の中にソリッドを置く（19 段の作図面） ---
+  // **3D で「新しく描く」最初の 1 つ。** これまで 3D は選んで動かすだけだった
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  await page.keyboard.press('F3');
+  await sleep(400);
+  const beforePlace = await state();
+  await page.getByRole('button', { name: '置く', exact: true }).click();
+  await sleep(300);
+  // 種類を球にしてから置く。セレクタが道具に届いていることも一緒に見る
+  await page.locator('.solid-kind').selectOption('sphere');
+  await sleep(200);
+  // カーソルを面に合わせてから、動かさずにクリック
+  await page.mouse.move(mid.x, mid.y + 40);
+  await sleep(300);
+  await page.mouse.down();
+  await page.mouse.up();
+  await sleep(400);
+  const placedSolid = await state();
+  assert.equal(placedSolid.fixtures, beforePlace.fixtures + 1, '3D でソリッドが置けない');
+  assert.ok(placedSolid.fixtureKinds.includes('sphere'), '選んだ種類が置かれていない');
+  // 仮の立体は図面に残らない
+  const ghost = await page.evaluate(
+    () => '__ghost__' in window.minicad.editorInstance.store.scene.fixtures);
+  assert.equal(ghost, false, '仮の立体が図面に残っている');
+  // undo で戻る＝2D と同じ出口を通っている
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal((await state()).fixtures, beforePlace.fixtures, '3D で置いたものが undo で戻らない');
+  await page.getByRole('button', { name: '置く', exact: true }).click();
+  await sleep(200);
+  await page.keyboard.press('F3');
+  await sleep(300);
+  await page.evaluate(() => window.minicad.setMode('normal'));
+  await sleep(300);
+  console.log('✔ 3D の中にソリッドを置ける（undo で戻る）');
+
   // --- 3D でドラッグして動かす ---
   await page.keyboard.press('F3');
   await sleep(400);

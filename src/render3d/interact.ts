@@ -48,6 +48,32 @@ export interface Pointer3D {
   button: number;
 }
 
+/**
+ * 3D の道具。**`Tool`（2D の契約）とは別の、ずっと小さい口。**
+ *
+ * `Tool` は `drawOverlay(editor, frame)` に 2D の `Viewport` を、
+ * `numericEntry` に 2D の点を要求するので、3D 側は半分しか満たせない。
+ * **半端に実装して `Tool` の意味を薄めるより、必要な 8 つだけの union を持つ。**
+ * ツールバーにも `ToolId` にも出ない——3D の道具は 3D のビュータブから選ぶ。
+ *
+ * `overlay` が `Tool.drawOverlay` にあたる。`ctx` に直に描かず**面を返す**ので、
+ * `paint` の契約（多角形の fill と stroke だけ）がそのまま守られ、
+ * 仮の姿も本物と同じ深さ順に並ぶ。
+ */
+export interface Tool3D {
+  onPointerDown(editor: Editor, p: Pointer3D): void;
+  onPointerMove(editor: Editor, p: Pointer3D): void;
+  onPointerUp(editor: Editor): void;
+  onPointerLeave(editor: Editor): void;
+  /** 掴んでいる最中か。Esc を取るかの判断に使う */
+  isActive(): boolean;
+  /** 途中でやめる。戻したら true */
+  cancel(editor: Editor): boolean;
+  /** 面に重ねて描くもの。作図面の格子や仮の立体 */
+  overlay(editor: Editor): Face3[];
+  status(editor: Editor): string;
+}
+
 type Drag3D =
   | { kind: 'none' }
   | { kind: 'pending'; ref: EntityRef; grab: Vec3; screen: { x: number; y: number } }
@@ -95,8 +121,13 @@ export const isWallTop = (hit: RayHit): boolean =>
  * 通る。** インスペクタも `resolveSelection` も `ENTITY_KINDS` も undo も
  * 無改造で効く。新しい書き込みの経路は増えない。
  */
-export class Select3D {
+export class Select3D implements Tool3D {
   private drag: Drag3D = { kind: 'none' };
+
+  /** 選ぶだけなので、重ねて描くものは無い */
+  overlay(): Face3[] {
+    return [];
+  }
 
   isActive(): boolean {
     return this.drag.kind === 'move' || this.drag.kind === 'height';
