@@ -242,6 +242,26 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     defaultLeaves: 2,
     primitives: (f, op) => [{ kind: 'segments', segments: [...sashes(f), ...meetTicks(f, op.leaves)] }],
   },
+
+  /**
+   * 丸窓（FIX窓(丸窓)）。**記号そのものが違うので、ここだけは種別が要る。**
+   * 符号で分けていた片開き・上げ下げ・FIX とは事情が違う。
+   *
+   * **穴は丸くならない。** 開口は壁の上の 1 次元区間として持っているので、
+   * 3D の抜きも立面図の穴も矩形のまま。平面図だけが丸い。
+   * 丸い穴にするには `wallSpans` と `extrudeWall` が区間ではなく
+   * 形を受け取る造りに変わる。
+   */
+  windowRound: {
+    label: '丸窓',
+    family: 'window',
+    defaultWidth: 600,
+    usesFlipX: false,
+    usesFlipY: false,
+    usesLeaves: false,
+    defaultLeaves: 2,
+    primitives: (f) => [{ kind: 'circle', center: f.center, radius: f.width / 2 }],
+  },
 };
 
 /**
@@ -274,6 +294,9 @@ export const OPENING_PROFILES: Record<OpeningKind, OpeningProfile> = {
   // 掃き出し窓は種別を足さず、その開口の sillHeight を 0 に上書きして表す
   window: { sillHeight: 800, height: 1100 },
   windowSliding: { sillHeight: 800, height: 1100 },
+  // 丸窓は高さと幅が同じ。**既定の高さは直径ではなく既定幅に合わせる**
+  // （幅を変えたときに縦横が食い違うが、縦は 3D の矩形の穴にしか効かない）
+  windowRound: { sillHeight: 1200, height: 600 },
 };
 
 /**

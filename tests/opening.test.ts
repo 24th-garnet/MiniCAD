@@ -557,3 +557,32 @@ test('枚数を読まなかった頃のファイルは、種別ごとの既定�
   const now = deserialize(JSON.parse(JSON.stringify(file)));
   assert.equal(now.openings[first.id].leaves, 2, '現行版のファイルの枚数を書き換えた');
 });
+
+test('丸窓は平面では円、3D と立面の穴は矩形のまま', async () => {
+  const { OPENING_SYMBOLS, openingVertical } = await import('../src/core/opening.ts');
+  const { openingFrame } = await import('../src/core/shape.ts');
+  const { wallSpans } = await import('../src/core/shape.ts');
+
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(6000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const op = makeOpening(wall.id, { kind: 'windowRound', offset: 3000, width: 600 });
+  scene.openings[op.id] = op;
+
+  const prims = OPENING_SYMBOLS.windowRound.primitives(openingFrame(scene, op)!, op);
+  const circles = prims.filter((p) => p.kind === 'circle');
+  assert.equal(circles.length, 1, '平面が円 1 つになっていない');
+  assert.equal(circles[0].kind === 'circle' && circles[0].radius, 300, '半径が開口幅の半分でない');
+  assert.equal(prims.length, 1, '円のほかに線が出ている');
+
+  // **持っていないものは持っていないと書く。** 穴は 1 次元の区間のままなので、
+  // 壁を抜く幅は開口幅そのもの（丸くない）。ここが丸くなったら文書も直す
+  const holes = wallSpans(scene, wall)!.holes;
+  assert.equal(holes.length, 1, '穴が 1 つになっていない');
+  assert.equal(holes[0].hi - holes[0].lo, 600, '穴の幅が開口幅（＝直径）と違う');
+
+  const level = Object.values(scene.levels)[0];
+  const v = openingVertical(op, level);
+  assert.equal(v.head - v.sill, 600, '縦の穴の高さが直径と違う');
+});

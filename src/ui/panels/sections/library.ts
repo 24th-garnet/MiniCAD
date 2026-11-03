@@ -171,8 +171,8 @@ interface OpeningPart {
  * 使う人は「FIX窓を置く」と考えるので品名のボタンを出し、
  * 図面の中身は記号が同じものをまとめて持つ——**画面と内部でちょうど逆**にする。
  *
- * **まだ置けない品**（丸窓・天窓）はここに並べない。
- * 並べて別の記号を出すと、使う人は置いたつもりになって違うものを得る。
+ * **天窓はここに無い。** 壁に付かないので `Opening` では表せず、
+ * 吹抜と同じ「水平面に置く部品」として**構造の側**に置いてある。
  */
 const OPENING_PARTS: OpeningPart[] = [
   // ドア
@@ -199,6 +199,8 @@ const OPENING_PARTS: OpeningPart[] = [
   { label: 'FIX窓', family: 'window', kind: 'window', width: 900, sillHeight: 900, designation: 'FIX', uses: ['オ', '店'] },
   { label: '排煙窓', family: 'window', kind: 'window', width: 900, sillHeight: 1800, designation: 'HW-1', uses: ['オ', '店'] },
   { label: '横連窓', family: 'window', kind: 'window', width: 3600, sillHeight: 900, height: 1200, designation: 'AW-3', uses: ['オ', '店'] },
+  // 丸窓だけは記号が違うので種別がある。**3D と立面の穴は矩形のまま**
+  { label: 'FIX窓(丸窓)', family: 'window', kind: 'windowRound', width: 600, sillHeight: 1200, designation: 'FIX', uses: ['住', '店'] },
 
   // 出窓。窓に張り出しを足したもの
   { label: '角型出窓', family: 'window', kind: 'window', sillHeight: 800, bay: { shape: 'box', depth: 450, side: 1 }, uses: ['住'] },

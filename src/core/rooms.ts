@@ -153,7 +153,7 @@ function voidAreaIn(scene: Scene, innerPolygon: Vec[]): number {
   if (innerPolygon.length < 3) return 0;
   let total = 0;
   for (const f of Object.values(scene.fixtures)) {
-    if (FIXTURE_SPECS[f.kind].solid) continue; // 立体になるものは穴ではない
+    if (!FIXTURE_SPECS[f.kind].floorHole) continue; // 天窓は立体にならないが、抜くのは屋根
     if (!pointInPolygon(vec(f.x, f.y), innerPolygon)) continue;
     total += Math.abs(signedArea(outline(f)));
   }

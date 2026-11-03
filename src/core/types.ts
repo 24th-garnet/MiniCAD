@@ -75,6 +75,7 @@ export const OPENING_KINDS = [
   'opening',
   'window',
   'windowSliding',
+  'windowRound',
 ] as const;
 
 export type OpeningKind = (typeof OPENING_KINDS)[number];

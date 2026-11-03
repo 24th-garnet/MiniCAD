@@ -97,6 +97,8 @@ export const FIXTURE_SOLIDS: Record<FixtureKind, SolidBuilder> = {
   stair: steps,
   slope: wedge,
   void: nothing,
+  // 天窓は屋根の穴。この図面に屋根は無いので、3D には何も出ない
+  skylight: nothing,
 };
 
 /** 構造物 1 つぶん */

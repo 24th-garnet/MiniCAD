@@ -13,7 +13,8 @@ import {
 import { defaultAttrs } from '../src/core/attrs.ts';
 import { activeLevel, DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { emptyScene } from '../src/core/types.ts';
-import { signedArea } from '../src/core/geometry.ts';
+import { signedArea, vec } from '../src/core/geometry.ts';
+import { addWall, findOrCreateNode } from '../src/core/ops.ts';
 import { deserialize, serialize } from '../src/io/scene.ts';
 
 function make(kind: FixtureKind, over: Partial<Fixture> = {}): Fixture {
@@ -189,4 +190,39 @@ test('立体になる構造は床を食わない', async () => {
   for (let i = 0; i < 4; i++) addWall(scene, c[i], c[(i + 1) % 4], 100);
   scene.fixtures.k = make('column', { id: 'k', x: 2500, y: 2000 });
   assert.equal(detectRooms(scene)[0].voidArea, 0);
+});
+
+test('天窓は床面積を減らさない。吹抜は減らす', async () => {
+  const { detectRooms } = await import('../src/core/rooms.ts');
+  const { FIXTURE_SPECS } = await import('../src/core/fixture.ts');
+
+  const areaWith = (kind: 'void' | 'skylight'): number => {
+    const scene = emptyScene();
+    const level = Object.values(scene.levels)[0];
+    const corner = [vec(0, 0), vec(6000, 0), vec(6000, 6000), vec(0, 6000)].map((p) =>
+      findOrCreateNode(scene, p));
+    for (let i = 0; i < 4; i++) addWall(scene, corner[i], corner[(i + 1) % 4], 120);
+    const spec = FIXTURE_SPECS[kind];
+    scene.fixtures.f = {
+      id: 'f', kind, x: 3000, y: 3000, angle: 0,
+      size: { w: 2000, h: 2000 },
+      base: spec.defaultBase(level), height: spec.defaultHeight(level),
+      label: spec.defaultLabel, layerId: spec.defaultLayer, levelId: level.id,
+      attrs: defaultAttrs(),
+    };
+    return detectRooms(scene)[0].floorArea;
+  };
+
+  const plain = (() => {
+    const scene = emptyScene();
+    const corner = [vec(0, 0), vec(6000, 0), vec(6000, 6000), vec(0, 6000)].map((p) =>
+      findOrCreateNode(scene, p));
+    for (let i = 0; i < 4; i++) addWall(scene, corner[i], corner[(i + 1) % 4], 120);
+    return detectRooms(scene)[0].floorArea;
+  })();
+
+  // 吹抜は床の穴。2m × 2m ぶん減る
+  assert.ok(Math.abs(plain - areaWith('void') - 4) < 1e-6, '吹抜で床面積が 4m² 減っていない');
+  // **天窓が抜くのは屋根。** 床は 1mm² も減らない
+  assert.equal(areaWith('skylight'), plain, '天窓で床面積が減った');
 });

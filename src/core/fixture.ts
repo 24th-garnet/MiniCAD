@@ -27,7 +27,9 @@ import { ALL_USES, type Use } from './use.ts';
  * 種別ごとの違いは `FIXTURE_SPECS` の 1 行に閉じる。
  * `Record<FixtureKind, …>` なので、種別を足して書き忘れれば型検査が止まる。
  */
-export const FIXTURE_KINDS = ['column', 'roundColumn', 'beam', 'stair', 'slope', 'void'] as const;
+export const FIXTURE_KINDS = [
+  'column', 'roundColumn', 'beam', 'stair', 'slope', 'void', 'skylight',
+] as const;
 
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
 
@@ -82,6 +84,14 @@ export interface FixtureSpec {
    * 3D には何も出ない（[docs/host.md] の「まだ無いもの」に書いてある）。
    */
   solid: boolean;
+  /**
+   * 床に開いた穴か。**部屋の床面積から引かれる。**
+   *
+   * `solid` とは別の札にしてある。吹抜は立体にならず、かつ床を抜く。
+   * 天窓は立体にならないが、**抜くのは屋根**で床ではない。
+   * 1 つの札で兼ねていたときは、天窓を置くと床面積が減った。
+   */
+  floorHole: boolean;
   /** 輪郭を塗るか。柱は塗る（JIS の柱は塗りつぶし） */
   filled: boolean;
   /** ピックの優先度。小さいほど先に拾う */
@@ -164,6 +174,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     localOutline: rect,
     glyph: () => [],
     solid: true,
+    floorHole: false,
     filled: true,
     pickPriority: 2,
     uses: ALL_USES,
@@ -178,6 +189,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     localOutline: circle,
     glyph: () => [],
     solid: true,
+    floorHole: false,
     filled: true,
     pickPriority: 2,
     uses: ALL_USES,
@@ -193,6 +205,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     localOutline: rect,
     glyph: () => [],
     solid: true,
+    floorHole: false,
     filled: false,
     pickPriority: 3,
     uses: ALL_USES,
@@ -207,6 +220,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     localOutline: rect,
     glyph: stepGlyph,
     solid: true,
+    floorHole: false,
     filled: false,
     pickPriority: 4,
     uses: ['住'],
@@ -221,6 +235,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     localOutline: rect,
     glyph: () => [],
     solid: true,
+    floorHole: false,
     filled: false,
     pickPriority: 4,
     uses: ALL_USES,
@@ -234,12 +249,41 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     defaultHeight: (level) => level.wallHeight,
     localOutline: rect,
     glyph: crossGlyph,
-    // **穴なので立てない。** 床を抜くのはまだ出来ていない
+    // **穴なので立てない。** 3D で床を抜くのはまだ出来ていない
     solid: false,
+    floorHole: true,
     filled: false,
     pickPriority: 5,
     // 吹抜＜住＞・PS＜住オ店＞・煙道＜オ店＞を 1 つの種別で兼ねるので、絞らない
     uses: ALL_USES,
+  },
+
+  /**
+   * 天窓（トップライト）。**`Opening` では表せない。**
+   *
+   * 開口は `wallId` を必ず持ち、鉛直な壁の上の 1 次元区間として生きている。
+   * 天窓が付くのは屋根で、この図面に屋根という概念は無い。
+   * 吹抜と同じ「水平面に置いて平面に記号を描き、3D では実体を作らない」形で持つ。
+   *
+   * **床面積は減らない**（`floorHole: false`）。**積算に開口としては出ない**——
+   * 壁の数量を控除するのは `Opening` だけで、天窓は壁に穴を開けない。
+   */
+  skylight: {
+    label: '天窓',
+    defaultLayer: LAYER_IDS.shape,
+    defaultSize: { w: 900, h: 900 },
+    defaultLabel: '天窓',
+    // 天井の高さに置く。記号は平面に出るので、高さは 3D と積算のための札
+    defaultBase: (level) => level.wallHeight,
+    defaultHeight: () => 100,
+    localOutline: rect,
+    // 吹抜と同じ対角線。**区別は中に書く文字**で、PS や煙道と同じ流儀
+    glyph: crossGlyph,
+    solid: false,
+    floorHole: false,
+    filled: false,
+    pickPriority: 5,
+    uses: ['住'],
   },
 };
 
