@@ -425,10 +425,20 @@ src/
 tools/       開発用。DXF を外部パーサで読み戻して画像化する検証スクリプト
 ```
 
-**図形を1種類足すときに書くのは3箇所だけ**です。`SHAPE_GEOMETRY`（幾何）、
-`SHAPE_READERS`（JSON 読み取り）、`SHAPE_FIELDS`（プロパティ欄）。
+**図形を1種類足すときに書くのは4箇所**です。`SHAPE_GEOMETRY`（幾何）、
+`SHAPE_READERS`（JSON 読み取り）、`SHAPE_FIELDS`（プロパティ欄）、
+そして [tests/shapes.test.ts](tests/shapes.test.ts) の `SAMPLES` と `CURVES_INTO`。
 いずれも `Record<ShapeKind, ...>` なので、書き忘れると `npm run typecheck` が止まります。
 描画・SVG・DXF は中間表現（`Primitive`）を経由するので触る必要がありません。
+
+**ただし 1 箇所だけ、型検査では止まりません。**
+[src/core/modify.ts](src/core/modify.ts) の `shapeCurves` / `offsetShape` /
+`curveToShape` は `switch` の `default` で黙って落ちるので、書き忘れると
+**その図形だけトリム・延長・オフセットが無反応**になります。
+`CURVES_INTO` の表が「この図形は曲線に落ちるか」を宣言させ、テストが
+宣言と実際の挙動を突き合わせることで、足し忘れをそこで止めます。
+（`npm test` は型を剥がして走るので、表の書き忘れ自体は `npm run typecheck`
+でしか出ません。）
 
 **部屋検出** ([src/core/rooms.ts](src/core/rooms.ts)) が中核です。
 各有向半辺 (u→v) に対し、v における逆辺 (v→u) から反時計回り順で1つ手前の出辺を次の辺とすると、

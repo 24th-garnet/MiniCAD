@@ -260,3 +260,48 @@ test('点の大きさは尺度に追従する', () => {
   assert.ok(span(at100) > span(at50), '尺度を小さくしたのに記号が縮んでいない');
   assert.equal(span(at100) / span(at50), 2);
 });
+
+/**
+ * トリム・延長・オフセットが効く種別。
+ *
+ * **`src/core/modify.ts` の 3 つの `switch` は `default` で黙って落ちる。**
+ * 型検査では止まらないので、種別を足した人は気づかないまま
+ * 「新しい図形だけトリムもオフセットも無反応」を作れてしまう。
+ *
+ * この表は `Record<ShapeKind, …>` なので、**種別を足すとここが型エラーになる**。
+ * 足した人は「この図形は曲線に落ちるか」を必ず 1 度考えることになり、
+ * 下のテストが宣言と実際の挙動を突き合わせる。
+ */
+const CURVES_INTO: Record<ShapeKind, boolean> = {
+  line: true,
+  polyline: true,
+  arc: true,
+  circle: true,
+  // 注釈のたぐいは線ではないので、曲線にならないのが正しい
+  text: false,
+  point: false,
+  dimension: false,
+};
+
+test('曲線に落ちる種別が、宣言と一致する', async () => {
+  const { shapeCurves } = await import('../src/core/modify.ts');
+  for (const kind of SHAPE_KINDS) {
+    const got = shapeCurves(SAMPLES[kind]).length > 0;
+    assert.equal(got, CURVES_INTO[kind],
+      `${kind}: 曲線に落ちる＝${got} だが、表は ${CURVES_INTO[kind]} と言っている`);
+  }
+});
+
+test('曲線に落ちる種別は、オフセットにも反応する', async () => {
+  // `shapeCurves` と `offsetShape` は別の switch なので、片方だけ埋めると
+  // 「トリムは効くがオフセットは無反応」になる
+  const { offsetShape } = await import('../src/core/modify.ts');
+  for (const kind of SHAPE_KINDS) {
+    if (!CURVES_INTO[kind]) continue;
+    const scene = emptyScene();
+    scene.shapes[SAMPLES[kind].id] = structuredClone(SAMPLES[kind]);
+    const made = offsetShape(scene, SAMPLES[kind].id, 200, vec(9000, 9000));
+    assert.ok(made, `${kind}: オフセットが無反応`);
+    assert.ok(scene.shapes[made], `${kind}: オフセットの結果が図面に入っていない`);
+  }
+});
