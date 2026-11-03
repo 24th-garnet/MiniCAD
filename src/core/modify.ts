@@ -4,6 +4,7 @@ import {
   add,
   angleOf,
   arcContainsAngle,
+  arcPointAt,
   arcSweepAngle,
   circleCircleIntersection,
   closestOnSegment,
@@ -139,8 +140,13 @@ function rawIntersections(x: Curve, y: Curve): Vec[] {
   return c1 && c2 ? circleCircleIntersection(c1.center, c1.radius, c2.center, c2.radius) : [];
 }
 
-/** 対象上での位置をパラメータ化する。線分は 0..1、円弧・円は始点からの角度 */
-function paramOf(curve: Curve, p: Vec): number {
+/**
+ * 対象上での位置をパラメータ化する。線分は 0..1、円弧・円は始点からの角度。
+ *
+ * **`pointAtParam` と対になる。** 片方だけ直すと、切った位置と戻した点が
+ * 食い違う。消しゴム・分割もこの 2 つを通る。
+ */
+export function paramOf(curve: Curve, p: Vec): number {
   switch (curve.kind) {
     case 'segment':
       return projectParam(curve.a, curve.b, p);
@@ -152,55 +158,89 @@ function paramOf(curve: Curve, p: Vec): number {
 }
 
 /**
+ * パラメータから点に戻す。`paramOf` の逆。
+ *
+ * 以前はこの変換が `trimCurve` の中に 3 回展開されていて、
+ * 消しゴムと分割を足すと 5 回になるところだった。
+ */
+export function pointAtParam(curve: Curve, t: number): Vec {
+  switch (curve.kind) {
+    case 'segment':
+      return add(curve.a, mul(sub(curve.b, curve.a), t));
+    case 'arc':
+      return arcPointAt(curve.arc.center, curve.arc.radius, curve.arc.start + t);
+    case 'circle':
+      return arcPointAt(curve.center, curve.radius, t);
+  }
+}
+
+/**
+ * 対象を、交点で区切った区間の境界に分ける。
+ *
+ * **トリム・分割・消しゴムはここから分かれる。** トリムは pick の入る区間を
+ * 捨て、分割は全部残し、消しゴムは指した範囲だけを捨てる。
+ * 戻り値は昇順で、両端（線分なら 0 と 1、円弧なら 0 と掃き角）を含む。
+ * 切れていなければ null。
+ */
+export function curveBounds(target: Curve, cutters: Curve[]): number[] | null {
+  const hits = cutters.flatMap((c) => curveIntersections(target, c));
+  if (hits.length === 0) return null;
+
+  if (target.kind === 'circle') {
+    // 円は閉じているので端が無い。2 点以上で切れたときだけ意味を持つ
+    const angles = dedupeNumbers(hits.map((p) => paramOf(target, p)).sort((a, b) => a - b));
+    return angles.length < 2 ? null : angles;
+  }
+
+  const span = target.kind === 'segment' ? 1 : arcSweepAngle(target.arc);
+  // 端点ぴったりの交点は「切れていない」ので数えない。
+  // これを入れないと、端で接しているだけの相手で図形まるごとが消える
+  const cuts = hits.map((p) => paramOf(target, p)).filter((t) => t > EPS && t < span - EPS);
+  if (cuts.length === 0) return null;
+  return dedupeNumbers([0, span, ...cuts].sort((a, b) => a - b));
+}
+
+/**
  * pickPoint を含む区間を落とした残りを返す。
  * 交点が無ければ null（＝何もしない）。
  */
 export function trimCurve(target: Curve, cutters: Curve[], pickPoint: Vec): Curve[] | null {
-  const hits = cutters.flatMap((c) => curveIntersections(target, c));
-  if (hits.length === 0) return null;
-
+  const bounds = curveBounds(target, cutters);
+  if (!bounds) return null;
   const pick = paramOf(target, pickPoint);
 
-  if (target.kind === 'segment') {
-    // 端点ぴったりの交点は「切れていない」ので数えない。
-    // これを入れないと、端で接しているだけの相手で図形まるごとが消える
-    const cuts = hits.map((p) => paramOf(target, p)).filter((t) => t > EPS && t < 1 - EPS);
-    if (cuts.length === 0) return null;
-    const bounds = dedupeNumbers([0, 1, ...cuts].sort((a, b) => a - b));
-    const i = bounds.findIndex((t, idx) => idx + 1 < bounds.length && pick >= t - EPS && pick <= bounds[idx + 1] + EPS);
-    if (i < 0) return null;
-
-    const out: Curve[] = [];
-    const at = (t: number) => add(target.a, mul(sub(target.b, target.a), t));
-    if (bounds[i] > EPS) out.push({ kind: 'segment', a: target.a, b: at(bounds[i]) });
-    if (bounds[i + 1] < 1 - EPS) out.push({ kind: 'segment', a: at(bounds[i + 1]), b: target.b });
-    return out;
+  if (target.kind === 'circle') {
+    // 円は2点以上で切れたときだけ、残りを1本の円弧にする
+    const i = bounds.findIndex((t, idx) => pick >= t - EPS && pick <= (bounds[idx + 1] ?? t + Math.PI * 2) + EPS);
+    const from = bounds[i < 0 ? bounds.length - 1 : i];
+    const to = bounds[(i < 0 ? 0 : i + 1) % bounds.length];
+    return [{ kind: 'arc', arc: { center: target.center, radius: target.radius, start: to, end: from } }];
   }
 
-  if (target.kind === 'arc') {
-    const sweep = arcSweepAngle(target.arc);
-    const cuts = hits.map((p) => paramOf(target, p)).filter((t) => t > EPS && t < sweep - EPS);
-    if (cuts.length === 0) return null;
-    const bounds = dedupeNumbers([0, sweep, ...cuts].sort((a, b) => a - b));
-    const i = bounds.findIndex((t, idx) => idx + 1 < bounds.length && pick >= t - EPS && pick <= bounds[idx + 1] + EPS);
-    if (i < 0) return null;
+  const i = bounds.findIndex((t, idx) => idx + 1 < bounds.length && pick >= t - EPS && pick <= bounds[idx + 1] + EPS);
+  if (i < 0) return null;
+  // **pick の入る区間だけを落とす。** 分割はここで全部残す
+  return spanCurves(target, bounds).filter((_, idx) => idx !== i);
+}
 
-    const out: Curve[] = [];
-    const { center, radius, start } = target.arc;
-    if (bounds[i] > EPS) out.push({ kind: 'arc', arc: { center, radius, start, end: start + bounds[i] } });
-    if (bounds[i + 1] < sweep - EPS) {
-      out.push({ kind: 'arc', arc: { center, radius, start: start + bounds[i + 1], end: start + sweep } });
+/**
+ * 区間の境界から、区間ごとの曲線を作る。**トリムと分割の共通部分。**
+ * 長さが EPS に満たない区間は落とす（端で切れたときの屑）。
+ */
+function spanCurves(target: Curve, bounds: number[]): Curve[] {
+  const out: Curve[] = [];
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const from = bounds[i];
+    const to = bounds[i + 1];
+    if (to - from <= EPS) continue;
+    if (target.kind === 'segment') {
+      out.push({ kind: 'segment', a: pointAtParam(target, from), b: pointAtParam(target, to) });
+    } else if (target.kind === 'arc') {
+      const { center, radius, start } = target.arc;
+      out.push({ kind: 'arc', arc: { center, radius, start: start + from, end: start + to } });
     }
-    return out;
   }
-
-  // 円は2点以上で切れたときだけ、残りを1本の円弧にする
-  const angles = dedupeNumbers(hits.map((p) => paramOf(target, p)).sort((a, b) => a - b));
-  if (angles.length < 2) return null;
-  const i = angles.findIndex((t, idx) => pick >= t - EPS && pick <= (angles[idx + 1] ?? t + Math.PI * 2) + EPS);
-  const from = angles[i < 0 ? angles.length - 1 : i];
-  const to = angles[(i < 0 ? 0 : i + 1) % angles.length];
-  return [{ kind: 'arc', arc: { center: target.center, radius: target.radius, start: to, end: from } }];
+  return out;
 }
 
 /** pickPoint に近い側の端を、最も近い境界との交点まで伸ばす */
@@ -284,7 +324,7 @@ export function cutterCurves(scene: Scene, exclude: { shapeId?: Id; wallId?: Id 
 }
 
 /** 曲線を図形に戻す。元の図形の画層と階を引き継ぐ */
-function curveToShape(curve: Curve, template: Shape): Shape | null {
+export function curveToShape(curve: Curve, template: Shape): Shape | null {
   const id = newId('s');
   const { layerId, levelId } = template;
   const attrs = { ...template.attrs };

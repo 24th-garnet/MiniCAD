@@ -391,3 +391,45 @@ test('どの描き方でも、同じ 3 点からは同じ円弧が出る', async
     assert.ok(Math.abs(got.endAngle - byCenter.endAngle) < 1e-6, `${name}: 終点が違う`);
   }
 });
+
+/**
+ * `paramOf` と `pointAtParam` は対。片方だけ直すと、切った位置と
+ * 戻した点が食い違う。トリム・分割・消しゴムがどれもこの 2 つを通る。
+ */
+test('パラメータと点が往復する', async () => {
+  const { paramOf, pointAtParam } = await import('../src/core/modify.ts');
+  const cases: { name: string; curve: Curve; params: number[] }[] = [
+    { name: '線分', curve: seg(0, 0, 3000, 1000), params: [0, 0.25, 0.5, 1] },
+    {
+      name: '円弧',
+      curve: { kind: 'arc', arc: { center: vec(0, 0), radius: 1000, start: 0, end: Math.PI } },
+      params: [0, Math.PI / 4, Math.PI / 2, Math.PI - 1e-9],
+    },
+    {
+      name: '円',
+      curve: { kind: 'circle', center: vec(500, -200), radius: 800 },
+      params: [0, Math.PI / 3, Math.PI, Math.PI * 1.5],
+    },
+  ];
+  for (const { name, curve, params } of cases) {
+    for (const t of params) {
+      const back = paramOf(curve, pointAtParam(curve, t));
+      assert.ok(Math.abs(back - t) < 1e-6, `${name}: ${t} → ${back}`);
+    }
+  }
+});
+
+test('区間の境界は昇順で、両端を含む', async () => {
+  const { curveBounds } = await import('../src/core/modify.ts');
+  // x = 1000 と x = 2000 で縦に切る
+  const target = seg(0, 0, 3000, 0);
+  const cutters: Curve[] = [seg(1000, -500, 1000, 500), seg(2000, -500, 2000, 500)];
+  const bounds = curveBounds(target, cutters)!;
+  assert.ok(bounds, '境界が出ていない');
+  assert.deepEqual(bounds.map((t) => Math.round(t * 3000)), [0, 1000, 2000, 3000]);
+
+  // 交わらなければ null（＝何もしない）
+  assert.equal(curveBounds(target, [seg(5000, -500, 5000, 500)]), null);
+  // 端でだけ接する相手では切れていない
+  assert.equal(curveBounds(target, [seg(0, -500, 0, 500)]), null);
+});
