@@ -7,14 +7,18 @@
  * 組み立ては Chromium（通しテストで既に使っている）に任せる。
  * 和文の PDF をライブラリで組むと、フォントの埋め込みを自前で持つことになる。
  *
- *   npm run pdf -- docs/questions.md "MiniCAD — ワイヤーとの突き合わせ"
+ *   npm run pdf -- docs/questions.md "表題" [--landscape]
+ *
+ * 表が主体の文書は `--landscape`。縦だと列が潰れる。
  */
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const [, , mdPath, title] = process.argv;
+const args = process.argv.slice(2).filter((a) => a !== '--landscape');
+const landscape = process.argv.includes('--landscape');
+const [mdPath, title] = args;
 if (!mdPath) {
   console.error('使い方: npm run pdf -- docs/questions.md "表題"');
   process.exit(1);
@@ -24,13 +28,13 @@ const body = execFileSync('python3', ['-I', new URL('md2html.py', import.meta.ur
   { encoding: 'utf-8', maxBuffer: 1 << 24 });
 
 const css = `
-  @page { size: A4; margin: 18mm 16mm 20mm; }
+  @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 14mm 12mm 16mm; }
   :root { --ink: #26262b; --soft: #6b6b73; --line: #d8d5cc; --accent: #2563eb; }
   * { box-sizing: border-box; }
   body {
     margin: 0; color: var(--ink);
     font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
-    font-size: 9.6pt; line-height: 1.75; font-feature-settings: "palt";
+    font-size: ${landscape ? '8.2pt' : '9.6pt'}; line-height: 1.7; font-feature-settings: "palt";
   }
   h1 {
     font-size: 19pt; margin: 0 0 4mm; padding-bottom: 3mm;
@@ -55,15 +59,21 @@ const css = `
   li { margin-bottom: 1mm; }
   table {
     width: 100%; border-collapse: collapse; margin: 2mm 0 3.5mm;
-    font-size: 9pt; break-inside: avoid; page-break-inside: avoid;
+    font-size: ${landscape ? '7.6pt' : '9pt'}; line-height: 1.55;
   }
+  /* 表は行単位で割る。1 行が丸ごと次ページへ移る */
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
   th, td { border: 1px solid var(--line); padding: 1.6mm 2.2mm; text-align: left; vertical-align: top; }
   th { background: #f4f3ef; font-weight: 700; white-space: nowrap; }
-  /* 1 列目が印だけの表は詰める */
-  td:first-child { white-space: nowrap; }
+  /* 番号と印の列は詰める。残りの幅を本文に回す（項目の一覧だけ） */
+  .items th:nth-child(1), .items td:nth-child(1) { width: 6mm; text-align: right; white-space: nowrap; }
+  .items th:nth-child(2), .items td:nth-child(2) { width: 30mm; }
+  .items th:nth-child(3), .items td:nth-child(3) { width: 7mm; text-align: center; }
   hr { border: 0; border-top: 1px solid var(--line); margin: 6mm 0; }
-  /* 1 項目はページをまたがない。入りきらないときは見出しごと次のページへ */
-  section { break-inside: avoid; page-break-inside: avoid; }
+  /* 文章の塊はページをまたがない。**表を含む塊は行単位で割る**ので、
+     まとめて次ページへ送ると紙が無駄になる */
+  section.keep { break-inside: avoid; page-break-inside: avoid; }
   section > h2:first-child { margin-top: 0; }
 `;
 
@@ -72,7 +82,7 @@ const sectioned = body
   .split('<hr>')
   .map((chunk) => chunk.trim())
   .filter(Boolean)
-  .map((chunk) => `<section>${chunk}</section>`)
+  .map((chunk) => `<section class="${chunk.includes('<table') ? '' : 'keep'}">${chunk}</section>`)
   .join('');
 
 const page = `<!doctype html><html lang="ja"><head><meta charset="utf-8">
@@ -88,11 +98,12 @@ await tab.pdf({
   path: outPath,
   format: 'A4',
   printBackground: true,
-  margin: { top: '18mm', bottom: '20mm', left: '16mm', right: '16mm' },
+  landscape,
+  margin: { top: '14mm', bottom: '16mm', left: '12mm', right: '12mm' },
   displayHeaderFooter: true,
-  headerTemplate: `<div style="font-size:7pt;color:#6b6b73;width:100%;padding:0 16mm;
+  headerTemplate: `<div style="font-size:7pt;color:#6b6b73;width:100%;padding:0 12mm;
     font-family:'Hiragino Kaku Gothic ProN',sans-serif;">${title ?? ''}</div>`,
-  footerTemplate: `<div style="font-size:7pt;color:#6b6b73;width:100%;padding:0 16mm;text-align:right;
+  footerTemplate: `<div style="font-size:7pt;color:#6b6b73;width:100%;padding:0 12mm;text-align:right;
     font-family:'Hiragino Kaku Gothic ProN',sans-serif;">
     <span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
 });

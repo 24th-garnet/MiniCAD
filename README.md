@@ -333,7 +333,7 @@ madoriba の画面仕様（ワイヤー）の項目と突き合わせた一覧�
 出どころで、置いておくと必ず古くなるためです（`.gitignore` に入れてあります）。
 
 ```
-npm run pdf -- docs/questions.md "MiniCAD — ワイヤーとの突き合わせ"
+npm run pdf -- docs/questions.md "MiniCAD — ワイヤーとの突き合わせ" --landscape
 ```
 
 ## 組み込む

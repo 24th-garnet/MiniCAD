@@ -42,7 +42,9 @@ def convert(md: str) -> str:
             while i < len(lines) and lines[i].startswith("|"):
                 body.append(cells(lines[i]))
                 i += 1
-            out.append("<table><thead><tr>"
+            # 列が多い表（項目の一覧）だけ、幅を指定する相手として印を付ける
+            cls = " class='items'" if len(head) >= 6 else ""
+            out.append(f"<table{cls}><thead><tr>"
                        + "".join(f"<th>{inline(c)}</th>" for c in head)
                        + "</tr></thead><tbody>"
                        + "".join("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in r) + "</tr>" for r in body)
