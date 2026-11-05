@@ -623,9 +623,11 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
   // 平面の輪郭・ピック・積算・JSON・DXF は構造物と同じ道を通るので、
   // ここと `FIXTURE_SOLIDS`（`render3d/fixture3d.ts`）を埋めるだけで済む。
   //
-  // **傾きは持たない。** `toWorld` が z 軸まわりの 2 次元回転なので、
-  // 寝かせた円筒は種別として持つ（ワイヤーも「水平」「垂直」と分けて書いている）。
-  // 任意の傾きが要るかは `docs/questions.md` の 11。
+  // **傾けられる**（`Fixture.tilt`）。ワイヤーのオブジェクト編集パネルが
+  // 回転 X / Y / Z の 3 行を持っていて、作業面の説明も「斜面を作業面にすれば
+  // 置くときに回転する必要がなくなる」と書いている。
+  // 「水平の円筒」「垂直の円筒」はよく使う向きのプリセットで、種別としても残す
+  // （既存のファイルが読めなくなるため）。
   //
   // **塗らない。** 柱を塗るのは JIS の決まりで、汎用の立体にその理由は無い。
   // 塗ると平面で柱と見分けが付かなくなる。
@@ -886,6 +888,34 @@ export function verticalRange(f: Fixture, level: Level): { z0: number; z1: numbe
   const base = f.base ?? spec.defaultBase(level);
   const height = f.height ?? spec.defaultHeight(level);
   return { z0: level.floorZ + base, z1: level.floorZ + base + height };
+}
+
+/**
+ * ローカルの高さの範囲。**立体の底が 0。**
+ *
+ * 3D の組み立てはこちらを使う。ワールドのどこに立つかは、組んだあとに
+ * `toWorld3` と下端で一度に当てる（`render3d/fixture3d.ts`）。
+ *
+ * **傾きはこの原点（底面の中心）まわりに回る。** 置いた足元を軸に倒れるので、
+ * 梁のように高いところにあるものを傾けても、遠くへ飛んでいかない。
+ */
+export function localRange(f: Fixture, level: Level): { z0: number; z1: number } {
+  const spec = specOf(f);
+  return { z0: 0, z1: f.height ?? spec.defaultHeight(level) };
+}
+
+/** 立体の底が、階の床からどれだけ上か (mm) */
+export const baseOf = (f: Fixture, level: Level): number =>
+  f.base ?? specOf(f).defaultBase(level);
+
+/**
+ * ローカルの向きベクトルをワールドへ。**平行移動は当てない。**
+ * 面の法線を移すのに使う（切れ端から出し直すと向きが飛ぶので、回すだけにする）。
+ */
+export function rotateToWorld(f: Fixture, n: Vec3Like): Vec3Like {
+  const o = toWorld3(f, vec(0, 0), 0);
+  const p = toWorld3(f, vec(n.x, n.y), n.z);
+  return vec3Like(p.x - o.x, p.y - o.y, p.z - o.z);
 }
 
 /** これより頂点が多い輪郭はスナップ点を出さない。中心だけになる */

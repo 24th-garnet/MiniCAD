@@ -125,3 +125,126 @@ test('欄が無い古いファイルは傾きなしになる', () => {
   raw.scene.fixtures.f.tilt = { x: 0, y: 0 };
   assert.equal(deserialize(raw).fixtures.f.tilt, null, '0 と 0 は畳む');
 });
+
+// --- ここから 2 段目（3D をローカルで組んで、出口で 1 回だけ移す） ---
+
+import { buildFixtureFaces, fixtureFingerprint } from '../src/render3d/fixture3d.ts';
+import { combineFingerprint, combineFixtures } from '../src/core/combine.ts';
+import { FIXTURE_KINDS } from '../src/core/fixture.ts';
+import { rotate } from '../src/core/geometry.ts';
+import type { Face3 } from '../src/render3d/mesh.ts';
+import type { Vec3 } from '../src/render3d/mat4.ts';
+
+const facesOf = (f: Fixture): Face3[] => {
+  const scene = emptyScene();
+  scene.fixtures[f.id] = f;
+  const out: Face3[] = [];
+  buildFixtureFaces(scene, f.id, out);
+  return out;
+};
+
+test('傾き無しなら、置いた場所と向きは「z で回して動かす」だけ', () => {
+  // **2 段目の土台。** ビルダーはローカルで組み、出口で 1 回だけ移す。
+  // 傾きが無いとき、その変換が「z まわりの回転＋平行移動」に退化することを見る。
+  // ここが崩れると、既にある柱・階段・出窓・ソリッドが静かにずれる
+  const angle = -1.3;
+  const dx = 1200;
+  const dy = -800;
+  for (const kind of FIXTURE_KINDS) {
+    const origin = facesOf(make(kind, { x: 0, y: 0, angle: 0 }));
+    const moved = facesOf(make(kind, { x: dx, y: dy, angle }));
+    assert.equal(moved.length, origin.length, `${kind}: 面の数が変わった`);
+
+    for (const [i, face] of origin.entries()) {
+      assert.equal(moved[i].points.length, face.points.length, `${kind}: 頂点の数が違う`);
+      for (const [j, p] of face.points.entries()) {
+        const want = rotate(vec(p.x, p.y), angle);
+        const got = moved[i].points[j];
+        assert.ok(near(got.x, want.x + dx, 1e-6) && near(got.y, want.y + dy, 1e-6),
+          `${kind}: 面 ${i} の頂点 ${j} が合わない`);
+        assert.ok(near(got.z, p.z, 1e-9), `${kind}: 高さが変わった`);
+      }
+    }
+  }
+});
+
+test('傾けると立体が倒れ、底面は置いた足元に残る', () => {
+  // 傾きの軸は**底面の中心**。梁のように高いところにあるものを倒しても、
+  // 足元が動かないので遠くへ飛んでいかない
+  const f = make('box', { x: 2000, y: 1000, base: 500, height: 1000, tilt: { x: Math.PI / 2, y: 0 } });
+  const zs = facesOf(f).flatMap((x) => x.points.map((p) => p.z));
+  // 90 度倒したので、高さの広がりは「幅」になる（600 の箱なら 600）
+  assert.ok(near(Math.max(...zs) - Math.min(...zs), FIXTURE_SPECS.box.defaultSize.h, 1e-6),
+    `高さの広がりが ${Math.max(...zs) - Math.min(...zs)}`);
+  // 足元（底面の中心）の高さは変わらない
+  assert.ok(Math.min(...zs) <= 500 + 1e-6, '足元より下に出ていない');
+});
+
+/** 有向の稜線。`a→b` と `b→a` が 1 本ずつなら水密で向きが揃っている */
+function edgeProblems(faces: readonly Face3[]): number {
+  const key = (p: Vec3): string => `${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}`;
+  const counts = new Map<string, number>();
+  for (const f of faces) {
+    for (let i = 0; i < f.points.length; i++) {
+      const k = `${key(f.points[i])}|${key(f.points[(i + 1) % f.points.length])}`;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+  let bad = 0;
+  for (const [k, n] of counts) {
+    const [a, b] = k.split('|');
+    if (n !== 1 || !counts.has(`${b}|${a}`)) bad += 1;
+  }
+  return bad;
+}
+
+test('傾けても立体は水密のまま', () => {
+  // 回転は形を変えないので、倒しても稜線の繋がりは崩れないはず
+  for (const kind of ['box', 'prism', 'cylinder', 'cone', 'sphere', 'dome', 'cylinderH'] as FixtureKind[]) {
+    for (const tilt of [{ x: 0.4, y: 0 }, { x: 0, y: -0.9 }, { x: 0.6, y: 1.1 }]) {
+      const faces = facesOf(make(kind, { tilt, angle: 0.3 }));
+      assert.equal(edgeProblems(faces), 0, `${kind} を (${tilt.x}, ${tilt.y}) 倒すと水密でない`);
+    }
+  }
+});
+
+test('傾けても法線は外を向く', () => {
+  // **裏返ると `rayFace` が背面として弾き、拾えなくなる**
+  for (const kind of ['box', 'prism', 'cylinder', 'cone', 'sphere', 'dome'] as FixtureKind[]) {
+    const faces = facesOf(make(kind, { tilt: { x: 0.6, y: -0.8 }, angle: 1.1 }));
+    const all = faces.flatMap((x) => x.points);
+    const c = {
+      x: all.reduce((s, p) => s + p.x, 0) / all.length,
+      y: all.reduce((s, p) => s + p.y, 0) / all.length,
+      z: all.reduce((s, p) => s + p.z, 0) / all.length,
+    };
+    for (const face of faces) {
+      const m = face.points.reduce((s, p) => ({ x: s.x + p.x / face.points.length, y: s.y + p.y / face.points.length, z: s.z + p.z / face.points.length }), { x: 0, y: 0, z: 0 });
+      const d = face.normal.x * (m.x - c.x) + face.normal.y * (m.y - c.y) + face.normal.z * (m.z - c.z);
+      assert.ok(d > 0, `${kind}: 内を向いた面がある (${d.toFixed(1)})`);
+    }
+    // 回しただけなので、法線の長さは 1 のまま
+    for (const face of faces) {
+      const n = Math.hypot(face.normal.x, face.normal.y, face.normal.z);
+      assert.ok(near(n, 1, 1e-9), `${kind}: 法線の長さが ${n}`);
+    }
+  }
+});
+
+test('傾きを変えると指紋が 2 つとも変わる', () => {
+  // **片方を忘れると、ブーリアンの相手を倒しても 3D が作り直されない**
+  const scene = emptyScene();
+  scene.fixtures.a = make('box', { id: 'a', size: { w: 1000, h: 1000 } });
+  scene.fixtures.b = make('box', { id: 'b', x: 500, size: { w: 1000, h: 1000 } });
+
+  const plain = fixtureFingerprint(scene, 'a');
+  scene.fixtures.a.tilt = { x: 0.3, y: 0 };
+  assert.notEqual(fixtureFingerprint(scene, 'a'), plain, '母体を倒しても指紋が同じ');
+
+  scene.fixtures.a.tilt = null;
+  combineFixtures(scene, ['a', 'b'], 'subtract');
+  const before = combineFingerprint(scene.fixtures.a);
+  scene.fixtures.a.combine!.parts[0].tilt = { x: 0, y: 0.5 };
+  assert.notEqual(combineFingerprint(scene.fixtures.a), before, '相手を倒しても指紋が同じ');
+  assert.notEqual(fixtureFingerprint(scene, 'a'), fixtureFingerprint(scene, 'b'));
+});

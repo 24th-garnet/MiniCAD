@@ -78,6 +78,7 @@ export function combineFingerprint(f: Fixture): string {
   if (!f.combine) return '-';
   return `${f.combine.op}:` + f.combine.parts
     .map((p) => `${p.kind},${p.x},${p.y},${p.angle},${p.size.w},${p.size.h},${p.base},${p.height}`
+      + `,${p.tilt ? `${p.tilt.x}:${p.tilt.y}` : '-'}`
       + `,${p.outline ? p.outline.map((v) => `${v.x}:${v.y}`).join(' ') : '-'}`
       + `,${combineFingerprint(p)}`)
     .join('|');
