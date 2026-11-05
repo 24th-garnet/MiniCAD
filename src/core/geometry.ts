@@ -107,6 +107,79 @@ export function segmentIntersection(
 
 /** 符号付き面積。y軸上向きの世界で反時計回りなら正 */
 /**
+ * 多角形の角を落とす。**面取り（直線 1 本）か、丸め（円弧）。**
+ *
+ * **角柱の縦の稜線は、平面の輪郭の頂点そのもの。** だから縦の面取り・丸めは
+ * 3D の問題ではなく 2D の問題で、ここで落とせば**平面の記号にも 3D にも
+ * 同時に効く**（`insetOutline` が上下の稜線でやっているのと同じ考え方を、
+ * もう 1 つの軸でやる）。
+ *
+ * - `chamfer` は辺に沿って `size` ずつ戻した 2 点を結ぶ
+ * - `fillet` は `size` を**半径**として、両辺に接する円弧を入れる
+ *
+ * **行きすぎは隣の辺の半分で止める。** 止めないと辺が裏返って、
+ * 面積が負の多角形になる。まっすぐな頂点（曲がりが小さい）は触らない。
+ */
+export function cutCorners(
+  poly: readonly Vec[],
+  kind: "chamfer" | "fillet",
+  size: number,
+): Vec[] {
+  if (!(size > 0) || poly.length < 3) return [...poly];
+  const n = poly.length;
+  const out: Vec[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const cur = poly[i];
+    const next = poly[(i + 1) % n];
+    const toPrev = sub(prev, cur);
+    const toNext = sub(next, cur);
+    const lenPrev = len(toPrev);
+    const lenNext = len(toNext);
+    if (lenPrev < EPS || lenNext < EPS) {
+      out.push(cur);
+      continue;
+    }
+    const d1 = mul(toPrev, 1 / lenPrev);
+    const d2 = mul(toNext, 1 / lenNext);
+    // 頂点での開き。π に近ければ「まっすぐ」なので触らない
+    const open = Math.acos(Math.max(-1, Math.min(1, dot(d1, d2))));
+    if (open > Math.PI - CORNER_EPS || open < CORNER_EPS) {
+      out.push(cur);
+      continue;
+    }
+    const half = open / 2;
+    const want = kind === "chamfer" ? size : size / Math.tan(half);
+    const t = Math.min(want, lenPrev / 2, lenNext / 2);
+    if (t < EPS) {
+      out.push(cur);
+      continue;
+    }
+    const a = add(cur, mul(d1, t));
+    const b = add(cur, mul(d2, t));
+    if (kind === "chamfer") {
+      out.push(a, b);
+      continue;
+    }
+    // 丸め。中心は二等分線の上、頂点から t / cos(half)
+    const bisect = norm(add(d1, d2));
+    const radius = t * Math.tan(half);
+    const center = add(cur, mul(bisect, t / Math.cos(half)));
+    const from = angleOf(sub(a, center));
+    const to = angleOf(sub(b, center));
+    // 短いほうへ回る。頂点をまたがない側が外へ膨らまない
+    let sweep = normalizeAngle(to - from);
+    if (sweep > Math.PI) sweep -= Math.PI * 2;
+    out.push(...arcPolyline(center, radius, from, sweep));
+  }
+  return out;
+}
+
+/** これより小さい曲がりは「まっすぐ」とみなす（ラジアン） */
+const CORNER_EPS = 1e-6;
+
+/**
  * 凸包（単調連鎖）。**反時計回りで返す。**
  *
  * 傾いた立体を上から見た形に使う。本当の輪郭は凹むことも自己交差することも

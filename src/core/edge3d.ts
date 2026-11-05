@@ -1,4 +1,4 @@
-import { boundsOf, offsetPolyline, signedArea, type Vec } from './geometry.ts';
+import { boundsOf, offsetPolyline, signedArea, type Vec } from "./geometry.ts";
 
 /**
  * 立体の上下の稜線の仕上げ——テーパ・面取り・丸め（ワイヤー 5 枚目）。
@@ -17,28 +17,62 @@ import { boundsOf, offsetPolyline, signedArea, type Vec } from './geometry.ts';
  * | 面取り | 上下の端だけ縮める（4 段） |
  * | 丸め | 上下の端を四分円に沿って縮める（段を刻む） |
  *
- * **上下の稜線にしか効かない。** 縦の稜線（角柱の角）を落とすには、
- * やはり隣り合わせの情報が要る。**できないことは画面に書く。**
+ * **縦の稜線は別の軸で落とす。** 角柱の縦の稜線は**平面の輪郭の頂点そのもの**
+ * なので、隣り合わせの情報は要らない——輪郭の角を落とせば済む
+ * （`core/geometry.ts` の `cutCorners`）。どちらを落とすかは
+ * {@link FixtureEdge.where} が決める。
  */
 
-export const EDGE_KINDS = ['taper', 'chamfer', 'fillet'] as const;
+export const EDGE_KINDS = ["taper", "chamfer", "fillet"] as const;
 
 export type EdgeKind = (typeof EDGE_KINDS)[number];
 
 export const EDGE_LABELS: Record<EdgeKind, string> = {
-  taper: 'テーパ',
-  chamfer: '面取り',
-  fillet: '角の丸め',
+  taper: "テーパ",
+  chamfer: "面取り",
+  fillet: "角の丸め",
+};
+
+/** どの稜線に効かせるか */
+export const EDGE_WHERE = ["topBottom", "corners", "all"] as const;
+
+export type EdgeWhere = (typeof EDGE_WHERE)[number];
+
+export const EDGE_WHERE_LABELS: Record<EdgeWhere, string> = {
+  topBottom: "上下の稜線",
+  corners: "縦の稜線",
+  all: "上下と縦",
 };
 
 export interface FixtureEdge {
   kind: EdgeKind;
   /** 縮める量 (mm)。丸めでは半径 */
   size: number;
+  /**
+   * どの稜線に効かせるか。**欄が無い古いファイルは上下だけ**
+   * （縦が入る前に保存されたものは、上下のつもりで作られている）。
+   */
+  where: EdgeWhere;
 }
 
+export const isEdgeWhere = (v: unknown): v is EdgeWhere =>
+  typeof v === "string" && (EDGE_WHERE as readonly string[]).includes(v);
+
+/** 上下の稜線に効くか */
+export const hasTopBottomEdge = (edge: FixtureEdge | null): boolean =>
+  edge !== null && edge.where !== "corners";
+
+/**
+ * 縦の稜線に効くか。
+ *
+ * **テーパは縦に意味が無い。** あれは「上へ行くほど細くする」もので、
+ * 角を落とす話ではない。画面でも選べないようにしてある。
+ */
+export const hasCornerEdge = (edge: FixtureEdge | null): boolean =>
+  edge !== null && edge.where !== "topBottom" && edge.kind !== "taper";
+
 export const isEdgeKind = (v: unknown): v is EdgeKind =>
-  typeof v === 'string' && (EDGE_KINDS as readonly string[]).includes(v);
+  typeof v === "string" && (EDGE_KINDS as readonly string[]).includes(v);
 
 /** 押し出す途中の 1 段 */
 export interface EdgeRing {
@@ -57,14 +91,28 @@ const FILLET_STEPS = 4;
  * `size` は高さの半分と、輪郭が潰れない範囲に収める。
  * 収めないと上下が交差した立体になり、体積が負になる。
  */
-export function edgeRings(edge: FixtureEdge, height: number, maxInset: number): EdgeRing[] {
-  const d = Math.max(0, Math.min(edge.size, maxInset, edge.kind === 'taper' ? height : height / 2));
-  if (d <= 0) return [{ dz: 0, inset: 0 }, { dz: height, inset: 0 }];
+export function edgeRings(
+  edge: FixtureEdge,
+  height: number,
+  maxInset: number,
+): EdgeRing[] {
+  const d = Math.max(
+    0,
+    Math.min(edge.size, maxInset, edge.kind === "taper" ? height : height / 2),
+  );
+  if (d <= 0)
+    return [
+      { dz: 0, inset: 0 },
+      { dz: height, inset: 0 },
+    ];
 
-  if (edge.kind === 'taper') {
-    return [{ dz: 0, inset: 0 }, { dz: height, inset: d }];
+  if (edge.kind === "taper") {
+    return [
+      { dz: 0, inset: 0 },
+      { dz: height, inset: d },
+    ];
   }
-  if (edge.kind === 'chamfer') {
+  if (edge.kind === "chamfer") {
     return [
       { dz: 0, inset: d },
       { dz: d, inset: 0 },
@@ -89,7 +137,10 @@ export function edgeRings(edge: FixtureEdge, height: number, maxInset: number): 
  * `offsetPolyline` は自己交差を除かないので、縮めすぎると裏返った形が返る。
  * 向きが変わったか（符号付き面積）で見て、変わっていたら諦める。
  */
-export function insetOutline(points: readonly Vec[], inset: number): Vec[] | null {
+export function insetOutline(
+  points: readonly Vec[],
+  inset: number,
+): Vec[] | null {
   if (inset <= 1e-9) return [...points];
   // **行きすぎは先に断る。** マイターのオフセットは縮めすぎても
   // 向きを保ったまま小さい形を返す（1000 角を 600 縮めると 200 角が返る）ので、
@@ -99,7 +150,8 @@ export function insetOutline(points: readonly Vec[], inset: number): Vec[] | nul
   // **反時計回りなら正のオフセットが内側。** 逆に書くと外へ膨らむ
   const got = offsetPolyline([...points], area > 0 ? inset : -inset, true);
   if (!got || got.length < 3) return null;
-  if (!got.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) return null;
+  if (!got.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)))
+    return null;
   const inner = signedArea(got);
   // 向きが変わった、または小さくなっていない＝縮められていない
   if (inner * area <= 0 || Math.abs(inner) >= Math.abs(area)) return null;

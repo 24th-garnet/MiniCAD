@@ -47,7 +47,15 @@ import {
   combineFixtures,
   explodeFixture,
 } from "../../../core/combine.ts";
-import { EDGE_KINDS, EDGE_LABELS, isEdgeKind } from "../../../core/edge3d.ts";
+import {
+  EDGE_KINDS,
+  EDGE_LABELS,
+  EDGE_WHERE,
+  EDGE_WHERE_LABELS,
+  hasCornerEdge,
+  isEdgeKind,
+  isEdgeWhere,
+} from "../../../core/edge3d.ts";
 import { activeLevel } from "../../../core/level.ts";
 import { levelOf } from "../../../core/level.ts";
 import {
@@ -566,6 +574,9 @@ function edgeFields(ctx: PanelContext, f: Fixture): (HTMLElement | null)[] {
     ];
   }
   const edge = f.edge;
+  // **テーパに縦は無い。** 「上へ行くほど細くする」もので、角を落とす話ではない
+  const wheres =
+    edge && edge.kind === "taper" ? (["topBottom"] as const) : EDGE_WHERE;
   return [
     selectField(
       "稜線の仕上げ",
@@ -577,7 +588,13 @@ function edgeFields(ctx: PanelContext, f: Fixture): (HTMLElement | null)[] {
       (v) =>
         ctx.edit(() => {
           f.edge = isEdgeKind(v)
-            ? { kind: v, size: f.edge?.size ?? 100 }
+            ? {
+                kind: v,
+                size: f.edge?.size ?? 100,
+                // テーパに切り替えたら上下へ戻す（縦は効かないので）
+                where:
+                  v === "taper" ? "topBottom" : (f.edge?.where ?? "topBottom"),
+              }
             : null;
         }),
     ),
@@ -587,14 +604,36 @@ function edgeFields(ctx: PanelContext, f: Fixture): (HTMLElement | null)[] {
           edge.size,
           (v) =>
             ctx.edit(
-              () => void (f.edge = { kind: edge.kind, size: Math.max(1, v) }),
+              () =>
+                void (f.edge = {
+                  kind: edge.kind,
+                  size: Math.max(1, v),
+                  where: edge.where,
+                }),
             ),
           { step: 25, min: 1, suffix: "mm" },
         )
       : null,
+    edge && wheres.length > 1
+      ? selectField(
+          "どの稜線",
+          edge.where,
+          wheres.map((w) => ({ value: w, label: EDGE_WHERE_LABELS[w] })),
+          (v) =>
+            ctx.edit(() => {
+              if (isEdgeWhere(v)) {
+                f.edge = { kind: edge.kind, size: edge.size, where: v };
+              }
+            }),
+        )
+      : null,
     edge
       ? el("p", { class: "empty-note" }, [
-          "上下の稜線だけです（縦の角は落とせません）。平面の記号は変わりません。",
+          edge.kind === "taper"
+            ? "テーパは上下の稜線だけです（上へ行くほど細くする仕上げなので、縦の角には効きません）。"
+            : hasCornerEdge(edge)
+              ? "縦の稜線は輪郭の角を落とすので、平面の記号にも出ます。"
+              : "上下の稜線だけなので、平面の記号は変わりません。",
         ])
       : null,
   ];

@@ -1,17 +1,35 @@
 import {
-  FIXTURE_SPECS, baseOf, isStairKind, localOutline, localRange, rotateToWorld,
-  stairTreads, toWorld3, type Fixture, type FixtureKind,
-} from '../core/fixture.ts';
-import { isSnappable } from '../core/entity.ts';
-import { levelOf, type Level } from '../core/level.ts';
-import { combineFingerprint } from '../core/combine.ts';
-import { edgeRings, insetOutline, maxInsetOf } from '../core/edge3d.ts';
-import { csgOperate } from './csg.ts';
-import { vec, type Vec } from '../core/geometry.ts';
-import { theme } from '../render/theme.ts';
-import type { Id, Scene } from '../core/types.ts';
-import { extrudePrism, polygonFace, type Face3, type FaceSource } from './mesh.ts';
-import { vec3, type Vec3 } from './mat4.ts';
+  FIXTURE_SPECS,
+  baseOf,
+  isStairKind,
+  localOutline,
+  localRange,
+  rotateToWorld,
+  stairTreads,
+  toWorld3,
+  type Fixture,
+  type FixtureKind,
+} from "../core/fixture.ts";
+import { isSnappable } from "../core/entity.ts";
+import { levelOf, type Level } from "../core/level.ts";
+import { combineFingerprint } from "../core/combine.ts";
+import {
+  edgeRings,
+  hasTopBottomEdge,
+  insetOutline,
+  maxInsetOf,
+} from "../core/edge3d.ts";
+import { csgOperate } from "./csg.ts";
+import { vec, type Vec } from "../core/geometry.ts";
+import { theme } from "../render/theme.ts";
+import type { Id, Scene } from "../core/types.ts";
+import {
+  extrudePrism,
+  polygonFace,
+  type Face3,
+  type FaceSource,
+} from "./mesh.ts";
+import { vec3, type Vec3 } from "./mat4.ts";
 
 /**
  * 構造物を立体にする。
@@ -28,14 +46,20 @@ import { vec3, type Vec3 } from './mat4.ts';
  * - **スロープは楔。** 上り口から上端まで一定の勾配で上がる
  * - **吹抜は穴なので何も出さない。** 床を抜くのはまだ出来ていない
  */
-type SolidBuilder = (f: Fixture, level: Level, src: FaceSource, out: Face3[]) => void;
+type SolidBuilder = (
+  f: Fixture,
+  level: Level,
+  src: FaceSource,
+  out: Face3[],
+) => void;
 
 /** 柱と梁は躯体なので壁と同じ色にする */
 const structural: SolidBuilder = (f, level, src, out) => {
   const { z0, z1 } = localRange(f, level);
   // 柱にもテーパを付けられる。段の積み方は汎用ソリッドと同じ
-  if (f.edge) extrudeProfile(f, localOutline(f), z0, z1, theme.wall3d, src, out);
-  else extrudePrism(localOutline(f), z0, z1, theme.wall3d, 'wall', src, out);
+  if (hasTopBottomEdge(f.edge))
+    extrudeProfile(f, localOutline(f), z0, z1, theme.wall3d, src, out);
+  else extrudePrism(localOutline(f), z0, z1, theme.wall3d, "wall", src, out);
 };
 
 /**
@@ -57,7 +81,15 @@ const steps: SolidBuilder = (f, level, src, out) => {
   const treads = stairTreads(f.kind, f.size).treads;
   const rise = (z1 - z0) / treads.length;
   treads.forEach((tread, i) => {
-    extrudePrism(tread.poly, z0, z0 + rise * (i + 1), theme.furniture3d, 'furniture', src, out);
+    extrudePrism(
+      tread.poly,
+      z0,
+      z0 + rise * (i + 1),
+      theme.furniture3d,
+      "furniture",
+      src,
+      out,
+    );
   });
 };
 
@@ -93,8 +125,13 @@ const nothing: SolidBuilder = () => {};
 
 const p3 = (p: Vec, z: number): Vec3 => vec3(p.x, p.y, z);
 
-const push = (out: Face3[], points: Vec3[], color: string, src: FaceSource): void => {
-  out.push(polygonFace(points, color, 'furniture', src));
+const push = (
+  out: Face3[],
+  points: Vec3[],
+  color: string,
+  src: FaceSource,
+): void => {
+  out.push(polygonFace(points, color, "furniture", src));
 };
 
 // ---- ここから汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）----
@@ -119,7 +156,7 @@ const MERIDIANS = 24;
 const PARALLELS = 12;
 
 const solidFace = (points: Vec3[], src: FaceSource): Face3 =>
-  polygonFace(points, SOLID_COLOR, 'wall', src);
+  polygonFace(points, SOLID_COLOR, "wall", src);
 
 /** ローカルの水平な円を 1 周。反時計回り（上から見て）なので上面の法線が +z になる */
 function ringOf(r: number, z: number): Vec3[] {
@@ -145,9 +182,14 @@ function dedupe(points: Vec3[]): Vec3[] {
  * 円錐・球・半球がこれ 1 本で出る。**蓋は半径が 0 でないときだけ張る**
  * （円錐の頂点に蓋を張ると、面積 0 の面が 1 枚増えてソートを濁らせる）。
  */
-function revolve(rings: { r: number; z: number }[], src: FaceSource, out: Face3[]): void {
+function revolve(
+  rings: { r: number; z: number }[],
+  src: FaceSource,
+  out: Face3[],
+): void {
   const rows = rings.map((ring) =>
-    ring.r < 1e-6 ? [p3(vec(0, 0), ring.z)] : ringOf(ring.r, ring.z));
+    ring.r < 1e-6 ? [p3(vec(0, 0), ring.z)] : ringOf(ring.r, ring.z),
+  );
 
   for (let j = 0; j + 1 < rows.length; j++) {
     const lo = rows[j];
@@ -155,8 +197,10 @@ function revolve(rings: { r: number; z: number }[], src: FaceSource, out: Face3[
     for (let i = 0; i < MERIDIANS; i++) {
       const k = (i + 1) % MERIDIANS;
       const quad = dedupe([
-        lo[i % lo.length], lo[k % lo.length],
-        hi[k % hi.length], hi[i % hi.length],
+        lo[i % lo.length],
+        lo[k % lo.length],
+        hi[k % hi.length],
+        hi[i % hi.length],
       ]);
       if (quad.length >= 3) out.push(solidFace(quad, src));
     }
@@ -172,11 +216,11 @@ function revolve(rings: { r: number; z: number }[], src: FaceSource, out: Face3[
 /** 底面を押し出すだけのソリッド。直方体・三角柱・垂直の円筒 */
 const prismSolid: SolidBuilder = (f, level, src, out) => {
   const { z0, z1 } = localRange(f, level);
-  if (f.edge) {
+  if (hasTopBottomEdge(f.edge)) {
     extrudeProfile(f, localOutline(f), z0, z1, SOLID_COLOR, src, out);
     return;
   }
-  extrudePrism(localOutline(f), z0, z1, SOLID_COLOR, 'wall', src, out);
+  extrudePrism(localOutline(f), z0, z1, SOLID_COLOR, "wall", src, out);
 };
 
 /**
@@ -209,7 +253,7 @@ function extrudeProfile(
     rows.push({ z: z0 + ring.dz, points });
   }
   if (rows.length < 2) {
-    extrudePrism(world, z0, z1, color, 'wall', src, out);
+    extrudePrism(world, z0, z1, color, "wall", src, out);
     return;
   }
   // 上まで届かなかったら、最後の輪郭をまっすぐ伸ばして閉じる
@@ -220,7 +264,8 @@ function extrudeProfile(
   for (let r = 0; r + 1 < rows.length; r++) {
     const lo = rows[r];
     const hi = rows[r + 1];
-    if (Math.abs(hi.z - lo.z) < 1e-9 && samePoints(lo.points, hi.points)) continue;
+    if (Math.abs(hi.z - lo.z) < 1e-9 && samePoints(lo.points, hi.points))
+      continue;
     for (let i = 0; i < n; i++) {
       const k = (i + 1) % n;
       const a = p3(lo.points[i], lo.z);
@@ -234,18 +279,34 @@ function extrudeProfile(
     }
   }
   // 蓋。下は裏返して法線を下へ
-  pushIfReal(out, rows[0].points.map((p) => p3(p, rows[0].z)).reverse(), color, src);
+  pushIfReal(
+    out,
+    rows[0].points.map((p) => p3(p, rows[0].z)).reverse(),
+    color,
+    src,
+  );
   const top = rows[rows.length - 1];
-  pushIfReal(out, top.points.map((p) => p3(p, top.z)), color, src);
+  pushIfReal(
+    out,
+    top.points.map((p) => p3(p, top.z)),
+    color,
+    src,
+  );
 }
 
 const samePoints = (a: readonly Vec[], b: readonly Vec[]): boolean =>
-  a.length === b.length && a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-9);
+  a.length === b.length &&
+  a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-9);
 
 /** 面積のある面だけ入れる。潰れた三角形は塗っても見えず、ソートを濁らせるだけ */
-function pushIfReal(out: Face3[], points: Vec3[], color: string, src: FaceSource): void {
+function pushIfReal(
+  out: Face3[],
+  points: Vec3[],
+  color: string,
+  src: FaceSource,
+): void {
   if (points.length < 3) return;
-  const face = polygonFace(points, color, 'wall', src);
+  const face = polygonFace(points, color, "wall", src);
   if (!Number.isFinite(face.normal.x)) return;
   out.push(face);
 }
@@ -253,7 +314,14 @@ function pushIfReal(out: Face3[], points: Vec3[], color: string, src: FaceSource
 /** 円錐。底の輪 1 つと頂点 1 つ */
 const cone: SolidBuilder = (f, level, src, out) => {
   const { z0, z1 } = localRange(f, level);
-  revolve([{ r: f.size.w / 2, z: z0 }, { r: 0, z: z1 }], src, out);
+  revolve(
+    [
+      { r: f.size.w / 2, z: z0 },
+      { r: 0, z: z1 },
+    ],
+    src,
+    out,
+  );
 };
 
 /**
@@ -345,12 +413,19 @@ export const FIXTURE_SOLIDS: Record<FixtureKind, SolidBuilder> = {
 };
 
 /** 構造物 1 つぶん */
-export function buildFixtureFaces(scene: Scene, fixtureId: Id, out: Face3[]): void {
+export function buildFixtureFaces(
+  scene: Scene,
+  fixtureId: Id,
+  out: Face3[],
+): void {
   const f = scene.fixtures[fixtureId];
   if (!f) return;
-  if (!isSnappable(scene, { type: 'fixture', id: fixtureId })) return;
+  if (!isSnappable(scene, { type: "fixture", id: fixtureId })) return;
   if (!FIXTURE_SPECS[f.kind].solid) return;
-  const src: FaceSource = { ref: { type: 'fixture', id: fixtureId }, levelId: f.levelId };
+  const src: FaceSource = {
+    ref: { type: "fixture", id: fixtureId },
+    levelId: f.levelId,
+  };
   const level = levelOf(scene, f.levelId);
   for (const face of worldFaces(f, level, src)) out.push(face);
 }
@@ -402,20 +477,28 @@ function place(f: Fixture, level: Level, face: Face3): Face3 {
 /** 構造物の指紋。押し出す側が実際に読む欄だけを並べる */
 export function fixtureFingerprint(scene: Scene, id: Id): string {
   const f = scene.fixtures[id];
-  if (!f) return '';
+  if (!f) return "";
   const level = levelOf(scene, f.levelId);
   return [
-    f.kind, f.x, f.y, f.angle, f.size.w, f.size.h, f.base, f.height,
+    f.kind,
+    f.x,
+    f.y,
+    f.angle,
+    f.size.w,
+    f.size.h,
+    f.base,
+    f.height,
     // **傾きを忘れない。** 入れ忘れると、倒しても 3D が作り直されない
-    f.tilt ? `${f.tilt.x}:${f.tilt.y}` : '-',
+    f.tilt ? `${f.tilt.x}:${f.tilt.y}` : "-",
     // **しまい込んだ相手も入れる。** 入れ忘れると、相手を直しても 3D が古いまま
     combineFingerprint(f),
     // **稜線の仕上げも入れる。** 入れ忘れると、面取りを変えても 3D が古いまま
-    f.edge ? `${f.edge.kind}:${f.edge.size}` : '-',
+    f.edge ? `${f.edge.kind}:${f.edge.size}:${f.edge.where}` : "-",
     // **自前の輪郭を忘れない。** 入れ忘れると、輪郭を変えても指紋が同じままで
     // 3D が作り直されない（キャッシュが効き続ける）
-    f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(' ') : '-',
-    level.floorZ, level.wallHeight,
-    isSnappable(scene, { type: 'fixture', id }) ? 1 : 0,
-  ].join(',');
+    f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(" ") : "-",
+    level.floorZ,
+    level.wallHeight,
+    isSnappable(scene, { type: "fixture", id }) ? 1 : 0,
+  ].join(",");
 }

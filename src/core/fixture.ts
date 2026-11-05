@@ -3,6 +3,7 @@ import {
   add,
   angleOf,
   convexHull,
+  cutCorners,
   rotate,
   signedArea,
   sub,
@@ -18,7 +19,7 @@ import type { Primitive } from "./primitive.ts";
 import type { Segment } from "./shape.ts";
 import { ALL_USES, type Use } from "./use.ts";
 import type { FixtureCombine } from "./combine.ts";
-import type { FixtureEdge } from "./edge3d.ts";
+import { hasCornerEdge, type FixtureEdge } from "./edge3d.ts";
 
 /**
  * 構造物。柱・梁・階段・スロープ・吹抜のように、**平面の footprint と
@@ -949,9 +950,20 @@ export function toWorld3(f: Placed, p: Vec, z: number): Vec3Like {
   return vec3Like(flat.x + f.x, flat.y + f.y, h);
 }
 
-/** ローカルの輪郭。自前の輪郭があればそちら、無ければ種別の既定 */
-export const localOutline = (f: Fixture): Vec[] =>
-  f.outline ?? specOf(f).localOutline(f.size);
+/**
+ * ローカルの輪郭。自前の輪郭があればそちら、無ければ種別の既定。
+ *
+ * **縦の稜線の仕上げはここで効く。** 角柱の縦の稜線は輪郭の頂点そのものなので、
+ * ここで角を落とせば**平面の記号にも 3D にも同時に**反映される。
+ * 上下の段（`edgeRings`）は、落としたあとの輪郭に対して効く。
+ */
+export const localOutline = (f: Fixture): Vec[] => {
+  const base = f.outline ?? specOf(f).localOutline(f.size);
+  const edge = f.edge;
+  if (!hasCornerEdge(edge) || edge === null || edge.kind === "taper")
+    return base;
+  return cutCorners(base, edge.kind, edge.size);
+};
 
 /**
  * ワールドの輪郭 ＝ **上から見た形。** 反時計回りの単純多角形。

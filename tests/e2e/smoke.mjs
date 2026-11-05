@@ -1920,6 +1920,43 @@ async function run() {
   await sleep(300);
   console.log('✔ プロパティ欄の回転 X / Y が立体にだけ出る');
 
+  // --- 縦の稜線の面取り・丸め（第 6 版の 4 段目） ---
+  // **角柱の縦の稜線は平面の輪郭の頂点そのもの。** 落とすと平面にも 3D にも出る
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  await seedTiltable('box');
+  await sleep(400);
+  const outlineLen = () => page.evaluate(async () => {
+    const fx = await import('/src/core/fixture.ts');
+    return fx.localOutline(window.minicad.editorInstance.store.scene.fixtures.tiltme).length;
+  });
+  assert.equal(await outlineLen(), 4, '素の箱が四角でない');
+  await selectByLabel('稜線の仕上げ', '面取り');
+  await sleep(400);
+  assert.equal(await outlineLen(), 4, '上下の仕上げで平面が変わった');
+  await selectByLabel('どの稜線', '縦の稜線');
+  await sleep(400);
+  assert.equal(await outlineLen(), 8, '縦の稜線を落としても平面が変わらない');
+  const cornerNote = await page.evaluate(() =>
+    [...document.querySelectorAll('.empty-note')].some((n) => n.textContent.includes('平面の記号にも出ます')));
+  assert.ok(cornerNote, '縦の稜線の断りが出ていない');
+  // テーパに切り替えると「どの稜線」が消え、上下へ戻る
+  await selectByLabel('稜線の仕上げ', 'テーパ');
+  await sleep(400);
+  assert.equal(await outlineLen(), 4, 'テーパなのに平面の角が落ちている');
+  const whereGone = await page.evaluate(() =>
+    [...document.querySelectorAll('.field > span')].every((n) => n.textContent.trim() !== 'どの稜線'));
+  assert.ok(whereGone, 'テーパなのに「どの稜線」が出ている');
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    delete ed.store.scene.fixtures.tiltme;
+    ed.store.setSelection([]);
+    ed.store.emit();
+  });
+  await page.evaluate(() => window.minicad.setMode('normal'));
+  await sleep(300);
+  console.log('✔ 縦の稜線を落とすと、平面の記号にも 3D にも出る');
+
   // --- 押し出しとプッシュ/プル（20 段） ---
   await page.evaluate(() => window.minicad.setMode('pro'));
   await sleep(300);
