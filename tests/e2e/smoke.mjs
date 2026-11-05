@@ -1743,6 +1743,68 @@ async function run() {
   await sleep(300);
   console.log('✔ 3D の中にソリッドを置ける（undo で戻る）');
 
+  // --- プロパティ欄の回転 X / Y（第 5 版の 8 段目） ---
+  // **ワイヤーのオブジェクト編集パネルが回転 X / Y / Z の 3 行。** 同じ形にする
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  const seedTiltable = (kind) => page.evaluate((k) => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    const attrs = () => ({ groupId: null, stampId: null, color: null, materialRef: null,
+      takeoff: null, symbolId: null, symbolVersion: null });
+    s.fixtures.tiltme = { id: 'tiltme', kind: k, x: 0, y: 0, angle: 0, tilt: null,
+      size: { w: 900, h: 900 }, outline: null, combine: null, edge: null, base: 0,
+      height: 1200, label: '', layerId: 'shape', levelId: s.activeLevelId, attrs: attrs() };
+    ed.store.emit();
+    ed.store.setSelection([{ type: 'fixture', id: 'tiltme' }]);
+  }, kind);
+  const fieldNames = () => page.evaluate(() =>
+    [...document.querySelectorAll('.field > span')].map((n) => n.textContent.trim()));
+
+  await seedTiltable('box');
+  await sleep(400);
+  const solidFields = await fieldNames();
+  for (const want of ['回転 X (°)', '回転 Y (°)', '回転 Z (°)']) {
+    assert.ok(solidFields.includes(want), `立体に ${want} の欄が無い`);
+  }
+  // **立体にならないものには出さない。** 倒しても 3D に何も出ない
+  await seedTiltable('void');
+  await sleep(400);
+  const voidFields = await fieldNames();
+  assert.ok(voidFields.includes('角度 (°)'), '吹抜の角度の欄が消えた');
+  assert.ok(!voidFields.includes('回転 X (°)'), '立体にならないものに回転 X が出ている');
+
+  // 打ち込むと傾き、0 に戻すと「傾きなし」へ戻る
+  await seedTiltable('box');
+  await sleep(400);
+  const rotX = page.locator('.field', { hasText: '回転 X' }).locator('input').first();
+  await rotX.fill('30');
+  await rotX.press('Enter');
+  await sleep(400);
+  const tilted = await page.evaluate(
+    () => window.minicad.editorInstance.store.scene.fixtures.tiltme.tilt);
+  assert.ok(tilted && Math.abs(tilted.x - Math.PI / 6) < 1e-9, `回転 X が効かない (${JSON.stringify(tilted)})`);
+  const tiltNote = await page.evaluate(() =>
+    [...document.querySelectorAll('.empty-note')].some((n) => n.textContent.includes('倒すと平面の記号')));
+  assert.ok(tiltNote, '倒したときの断りが出ていない');
+  await rotX.fill('0');
+  await rotX.press('Enter');
+  await sleep(400);
+  assert.equal(
+    await page.evaluate(() => window.minicad.editorInstance.store.scene.fixtures.tiltme.tilt),
+    null,
+    '0 に戻しても「傾きなし」に戻らない',
+  );
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    delete ed.store.scene.fixtures.tiltme;
+    ed.store.setSelection([]);
+    ed.store.emit();
+  });
+  await page.evaluate(() => window.minicad.setMode('normal'));
+  await sleep(300);
+  console.log('✔ プロパティ欄の回転 X / Y が立体にだけ出る');
+
   // --- 押し出しとプッシュ/プル（20 段） ---
   await page.evaluate(() => window.minicad.setMode('pro'));
   await sleep(300);
