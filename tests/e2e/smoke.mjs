@@ -1801,6 +1801,63 @@ async function run() {
 
   console.log('✔ 3D の中にソリッドを置ける（undo で戻る）');
 
+  // --- 3D の中で多角形を描いて立体にする（第 6 版の 3 段目） ---
+  // ワイヤー ※3「3D多角形で作成した 2D に対してプッシュ/プルで高さを与えて立体化」
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  if (!(await page.evaluate(() => window.minicad.view.shows3d))) {
+    await page.keyboard.press('F3');
+  }
+  await sleep(600);
+  const beforeDraw = (await state()).fixtures;
+  await page.click('button[title="作図面の上に多角形を描いて立体にする（1 点目か右クリックで閉じる）"]');
+  await sleep(300);
+  // 床の上に 3 点打って、右クリックで閉じる
+  const floorSpots = await page.evaluate(() => {
+    const v = window.minicad.viewer;
+    const r = v.canvas.getBoundingClientRect();
+    const hits = [];
+    for (let y = 80; y < r.height - 80; y += 10)
+      for (let x = 80; x < r.width - 80; x += 10)
+        if (v.hitAt(x, y)) hits.push({ x: r.left + x, y: r.top + y, sx: x, sy: y });
+    if (hits.length < 20) return null;
+    const cx = hits.reduce((t, h) => t + h.sx, 0) / hits.length;
+    const cy = hits.reduce((t, h) => t + h.sy, 0) / hits.length;
+    const near = (dx, dy) => hits.reduce((best, h) =>
+      Math.hypot(h.sx - (cx + dx), h.sy - (cy + dy))
+        < Math.hypot(best.sx - (cx + dx), best.sy - (cy + dy)) ? h : best);
+    return [near(-70, -40), near(70, -40), near(0, 60)];
+  });
+  assert.ok(floorSpots, '3D で面が拾えない');
+  for (const spot of floorSpots) {
+    await page.mouse.move(spot.x, spot.y);
+    await sleep(220);
+    await page.mouse.down();
+    await page.mouse.up();
+    await sleep(220);
+  }
+  await page.mouse.click(floorSpots[2].x + 25, floorSpots[2].y + 15, { button: 'right' });
+  await sleep(500);
+  const drawn = await page.evaluate(() => {
+    const list = Object.values(window.minicad.editorInstance.store.scene.fixtures);
+    const f = list[list.length - 1];
+    return f ? { kind: f.kind, pts: f.outline ? f.outline.length : 0 } : null;
+  });
+  assert.ok(drawn, '3D で描いた立体が出来ていない');
+  assert.equal(drawn.kind, 'extrusion', '押し出しになっていない');
+  assert.equal(drawn.pts, 3, `打った 3 点が輪郭になっていない (${drawn.pts})`);
+  assert.equal((await state()).fixtures, beforeDraw + 1, '立体が増えていない');
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal((await state()).fixtures, beforeDraw, '3D で描いたものが undo で戻らない');
+  await page.click('button[title="作図面の上に多角形を描いて立体にする（1 点目か右クリックで閉じる）"]');
+  await sleep(200);
+  await page.keyboard.press('F3');
+  await sleep(300);
+  await page.evaluate(() => window.minicad.setMode('normal'));
+  await sleep(300);
+  console.log('✔ 3D の中で多角形を描いて立体にできる（undo で戻る）');
+
   // --- プロパティ欄の回転 X / Y（第 5 版の 8 段目） ---
   // **ワイヤーのオブジェクト編集パネルが回転 X / Y / Z の 3 行。** 同じ形にする
   await page.evaluate(() => window.minicad.setMode('pro'));

@@ -1,13 +1,17 @@
-import { defaultAttrs } from './attrs.ts';
+import { defaultAttrs } from "./attrs.ts";
+import { FIXTURE_SPECS, type Fixture } from "./fixture.ts";
 import {
-  FIXTURE_SPECS, type Fixture,
-} from './fixture.ts';
-import {
-  boundsOf, dist, segmentIntersection, signedArea, sub, vec, type Vec,
-} from './geometry.ts';
-import { resolveNewLayer, type LayerId } from './layer.ts';
-import { shapeOutline } from './shapes.ts';
-import { newId, type EntityRef, type Id, type Scene } from './types.ts';
+  boundsOf,
+  dist,
+  segmentIntersection,
+  signedArea,
+  sub,
+  vec,
+  type Vec,
+} from "./geometry.ts";
+import { resolveNewLayer, type LayerId } from "./layer.ts";
+import { shapeOutline } from "./shapes.ts";
+import { newId, type EntityRef, type Id, type Scene } from "./types.ts";
 
 /**
  * 閉じた図形を押し出して立体にする（ワイヤー 5 枚目の「押し出し」）。
@@ -44,12 +48,15 @@ export function closedPolygonOf(scene: Scene, shapeId: Id): Vec[] | null {
   for (let i = 1; i < segments.length; i++) {
     if (dist(segments[i - 1].b, segments[i].a) > CLOSE_EPS) return null;
   }
-  if (dist(segments[segments.length - 1].b, segments[0].a) > CLOSE_EPS) return null;
+  if (dist(segments[segments.length - 1].b, segments[0].a) > CLOSE_EPS)
+    return null;
 
-  const points = segments.map((s) => s.a).filter((p, i, all) => {
-    const prev = all[(i + all.length - 1) % all.length];
-    return dist(p, prev) > CLOSE_EPS;
-  });
+  const points = segments
+    .map((s) => s.a)
+    .filter((p, i, all) => {
+      const prev = all[(i + all.length - 1) % all.length];
+      return dist(p, prev) > CLOSE_EPS;
+    });
   if (points.length < 3) return null;
   if (Math.abs(signedArea(points)) < 1) return null; // 面積が無いものは立てられない
   if (selfIntersects(points)) return null;
@@ -100,7 +107,7 @@ export function extrudeShapes(
   let rejected = 0;
 
   for (const ref of refs) {
-    if (ref.type !== 'shape') continue;
+    if (ref.type !== "shape") continue;
     const shape = scene.shapes[ref.id];
     if (!shape) continue;
     const poly = closedPolygonOf(scene, ref.id);
@@ -111,7 +118,7 @@ export function extrudeShapes(
     const f = fixtureFrom(scene, poly, height, shape.layerId);
     scene.fixtures[f.id] = f;
     delete scene.shapes[ref.id];
-    created.push({ type: 'fixture', id: f.id });
+    created.push({ type: "fixture", id: f.id });
   }
   return { created, rejected };
 }
@@ -125,25 +132,62 @@ function fixtureFrom(
 ): Fixture {
   const b = boundsOf(poly)!;
   const center = vec((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2);
+  return extrusionFixture(scene, {
+    outline: poly.map((p) => sub(p, center)),
+    at: { x: center.x, y: center.y, base: 0 },
+    tilt: null,
+    height,
+    layerId: shapeLayer,
+  });
+}
+
+/** {@link extrusionFixture} に渡すもの */
+export interface ExtrusionPlacement {
+  /** **ローカルの**輪郭。反時計回りで、原点（0, 0）はこの中にある */
+  outline: Vec[];
+  /** 原点のワールド位置。`base` は**階の床からの高さ** */
+  at: { x: number; y: number; base: number };
+  /** 底面の向き。null なら水平 */
+  tilt: { x: number; y: number } | null;
+  height: number;
+  /** 引き継ぐ画層 */
+  layerId: LayerId;
+}
+
+/**
+ * 押し出した立体を 1 つ作る。**押し出しの形を知っているのはここだけ。**
+ *
+ * 2D の図形から起こす道（`extrudeShapes`）と、3D の作図面の上で描く道
+ * （`render3d/draw3d.ts`）の両方がここを通る。片方だけ直すと、同じ
+ * 「押し出し」なのに持ち物が食い違う。
+ */
+export function extrusionFixture(
+  scene: Scene,
+  place: ExtrusionPlacement,
+): Fixture {
+  const b = boundsOf(place.outline)!;
   const spec = FIXTURE_SPECS.extrusion;
   return {
-    id: newId('f'),
-    kind: 'extrusion',
-    x: center.x,
-    y: center.y,
+    id: newId("f"),
+    kind: "extrusion",
+    x: place.at.x,
+    y: place.at.y,
     // **向きは 0 のまま。** 形はそのまま輪郭が持っているので、回すと二重に回る
     angle: 0,
-    size: { w: Math.max(1, b.max.x - b.min.x), h: Math.max(1, b.max.y - b.min.y) },
-    tilt: null,
-    outline: poly.map((p) => sub(p, center)),
+    size: {
+      w: Math.max(1, b.max.x - b.min.x),
+      h: Math.max(1, b.max.y - b.min.y),
+    },
+    tilt: place.tilt,
+    outline: place.outline.map((p) => vec(p.x, p.y)),
     combine: null,
     edge: null,
-    base: 0,
-    height: Math.max(1, height),
+    base: place.at.base,
+    height: Math.max(1, place.height),
     label: spec.defaultLabel,
     // **元の図形の画層を引き継ぐ。** 消えた図形の代わりに立つものなので、
     // 「これから描く画層」ではなく元の画層に揃えるほうが驚きが少ない
-    layerId: resolveNewLayer(scene.layers, shapeLayer, spec.defaultLayer),
+    layerId: resolveNewLayer(scene.layers, place.layerId, spec.defaultLayer),
     levelId: scene.activeLevelId,
     attrs: defaultAttrs(),
   };

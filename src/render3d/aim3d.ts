@@ -62,6 +62,25 @@ export function aimOnPlane(editor: Editor, p: Pointer3D): Aim3D | null {
 }
 
 /**
+ * **作図面を固定したまま**狙う。多角形を描くときに使う。
+ *
+ * 1 点目で面が決まったあとも「いま指している面」を見てしまうと、2 点目が
+ * 別の面に落ちて**平らでない多角形**になる。そうなると押し出した立体が
+ * 破れるので、2 点目からはカーソルの光線をその面に当てた点を使う。
+ */
+export function aimOnFixedPlane(
+  editor: Editor,
+  p: Pointer3D,
+  plane: WorkPlane,
+): Aim3D | null {
+  const at = rayPlane(p.ray, { origin: plane.origin, normal: plane.normal });
+  if (!at) return null;
+  const settings = editor.store.settings;
+  const grid = settings.snapGrid ? settings.gridSize : 0;
+  return { plane, at: roundOnPlane(plane, at, grid) };
+}
+
+/**
  * 狙いが動いたか。**変わったときだけ知らせる**ために使う——
  * 毎回知らせると、カーソルを動かすたびに全パネルが描き直される。
  *

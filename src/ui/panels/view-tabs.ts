@@ -181,6 +181,41 @@ export class ViewTabs implements Panel {
         ["置く"],
       ),
     );
+    // **作図面の上に多角形を描く。** 描いた瞬間に押し出した立体になる
+    const drawing = this.viewer.tool3d === this.viewer.draw;
+    this.host.append(
+      el(
+        "button",
+        {
+          type: "button",
+          "aria-pressed": String(drawing),
+          title:
+            "作図面の上に多角形を描いて立体にする（1 点目か右クリックで閉じる）",
+          onclick: () => {
+            this.viewer.setTool3D(drawing ? null : this.viewer.draw);
+            ctx.refresh();
+          },
+        },
+        ["描く"],
+      ),
+    );
+    if (drawing) {
+      this.host.append(
+        el("input", {
+          type: "number",
+          class: "draw-height",
+          title: "立ち上げる高さ (mm)",
+          value: String(this.viewer.draw.height),
+          min: "1",
+          step: "100",
+          onchange: (e: Event) => {
+            const v = Number((e.target as HTMLInputElement).value);
+            if (Number.isFinite(v)) this.viewer.draw.height = Math.max(1, v);
+          },
+        }),
+      );
+    }
+
     if (!placing) return;
     this.host.append(
       el(

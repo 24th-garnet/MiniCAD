@@ -887,7 +887,16 @@ export const isBoxFixture = (kind: FixtureKind): boolean =>
   FIXTURE_SPECS[kind].localOutline === rect;
 
 /** 傾いているか。**傾いていないものは、これまでと同じ道を通る** */
-export const isTilted = (f: Fixture): boolean =>
+/**
+ * 向きと置き場所だけを持つもの。**`Fixture` を丸ごと作らずに向きを問える。**
+ *
+ * 3D の作図面の上で多角形を描いているときのように、**形がまだ決まっていない**
+ * 段階でローカルの軸が要ることがある。`Fixture` を無理に組み立てると、
+ * 要らない欄に嘘の値を入れることになる。
+ */
+export type Placed = Pick<Fixture, "x" | "y" | "angle" | "tilt">;
+
+export const isTilted = (f: Placed): boolean =>
   f.tilt !== null && (f.tilt.x !== 0 || f.tilt.y !== 0);
 
 /**
@@ -896,7 +905,7 @@ export const isTilted = (f: Fixture): boolean =>
  * **傾いた立体では「上から見た位置」になる。** z を落としているので、
  * 高さの情報は失われる。平面の記号と当たり判定のための関数。
  */
-export function toWorld(f: Fixture, p: Vec): Vec {
+export function toWorld(f: Placed, p: Vec): Vec {
   if (!isTilted(f)) return add(rotate(p, f.angle), vec(f.x, f.y));
   const q = toWorld3(f, p, 0);
   return vec(q.x, q.y);
@@ -912,7 +921,7 @@ export function toWorld(f: Fixture, p: Vec): Vec {
  * **行列は持ち込まない。** `render3d/mat4.ts` に軸まわりの回転は無く、
  * そもそも `core/` から `render3d/` は呼べない。3 軸ぶん手で書くほうが短い。
  */
-export function toWorld3(f: Fixture, p: Vec, z: number): Vec3Like {
+export function toWorld3(f: Placed, p: Vec, z: number): Vec3Like {
   let { x, y } = p;
   let h = z;
 
@@ -1014,7 +1023,7 @@ export const baseOf = (f: Fixture, level: Level): number =>
  * ローカルの向きベクトルをワールドへ。**平行移動は当てない。**
  * 面の法線を移すのに使う（切れ端から出し直すと向きが飛ぶので、回すだけにする）。
  */
-export function rotateToWorld(f: Fixture, n: Vec3Like): Vec3Like {
+export function rotateToWorld(f: Placed, n: Vec3Like): Vec3Like {
   const o = toWorld3(f, vec(0, 0), 0);
   const p = toWorld3(f, vec(n.x, n.y), n.z);
   return vec3Like(p.x - o.x, p.y - o.y, p.z - o.z);
@@ -1027,7 +1036,7 @@ export function rotateToWorld(f: Fixture, n: Vec3Like): Vec3Like {
  * `Rx(-tilt.x) · Ry(-tilt.y) · Rz(-angle)`——**掛ける順も逆になる。**
  * 面の法線を「立体にとっての上下左右」に読み替えるのに使う。
  */
-export function rotateToLocal(f: Fixture, n: Vec3Like): Vec3Like {
+export function rotateToLocal(f: Placed, n: Vec3Like): Vec3Like {
   // z 軸まわりを先に戻す
   const flat = rotate(vec(n.x, n.y), -f.angle);
   let x = flat.x;

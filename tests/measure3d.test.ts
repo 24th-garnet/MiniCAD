@@ -50,7 +50,7 @@ function pointerAt(at: Vec3, normal: Vec3 = vec3(0, 0, 1)): Pointer3D {
       },
       distance: 1,
     },
-    ray: { origin: vec3(0, 0, 10000), dir: vec3(0, 0, -1) },
+    ray: { origin: vec3(0, 0, 10000), direction: vec3(0, 0, -1) },
     shift: false,
     alt: false,
     meta: false,

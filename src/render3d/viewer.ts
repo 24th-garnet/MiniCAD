@@ -30,6 +30,7 @@ import {
 import { Place3D } from "./place3d.ts";
 import { Measure3D, measurementFaces } from "./measure3d.ts";
 import { Comment3D } from "./comment3d.ts";
+import { Draw3D } from "./draw3d.ts";
 import { getLayer, LAYER_IDS } from "../core/layer.ts";
 import { distanceOf } from "../core/annotation.ts";
 import { type Face3 } from "./mesh.ts";
@@ -107,6 +108,8 @@ export class Viewer3D {
   readonly measure = new Measure3D();
   /** 3D の中でコメントを置く道具。シーンには入らない（ホストの持ち物） */
   readonly comment = new Comment3D();
+  /** 作図面の上に多角形を描いて、その場で押し出した立体にする道具 */
+  readonly draw = new Draw3D();
   /**
    * いま効いている 3D の道具。**ツールバーには出ない。**
    * 2D の `ToolId` とは別の、3D のビュータブから選ぶ小さな union
@@ -161,7 +164,7 @@ export class Viewer3D {
    * 直前の編集がまだ乗っていないことがある。
    */
   async capture(): Promise<Blob | null> {
-    this.draw();
+    this.paintFrame();
     return new Promise((resolve) =>
       this.canvas.toBlob((b) => resolve(b), "image/png"),
     );
@@ -239,7 +242,7 @@ export class Viewer3D {
     this.frameRequested = true;
     requestAnimationFrame(() => {
       this.frameRequested = false;
-      this.draw();
+      this.paintFrame();
     });
   }
 
@@ -299,7 +302,7 @@ export class Viewer3D {
 
     const rooms = time(() => void this.editor.rooms);
     const mesh = time(() => void this.mesh);
-    const paintMs = time(() => this.draw());
+    const paintMs = time(() => this.paintFrame());
     return {
       rooms: Number(rooms.toFixed(3)),
       mesh: Number(mesh.toFixed(3)),
@@ -338,7 +341,8 @@ export class Viewer3D {
     return bspOrder(this.bsp.tree, cameraBasis(this.camera).eye);
   }
 
-  private draw(): void {
+  /** 1 フレーム塗る。**多角形を描く道具（）とは無関係** */
+  private paintFrame(): void {
     paint(
       this.ctx,
       this.camera,
