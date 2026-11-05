@@ -1719,6 +1719,14 @@ async function run() {
   const placedSolid = await state();
   assert.equal(placedSolid.fixtures, beforePlace.fixtures + 1, '3D でソリッドが置けない');
   assert.ok(placedSolid.fixtureKinds.includes('sphere'), '選んだ種類が置かれていない');
+  // **作図面が向きも決める。** 壁の面を指したので、面に沿って傾いているはず
+  const leaned = await page.evaluate(() => {
+    const fx = Object.values(window.minicad.editorInstance.store.scene.fixtures);
+    const f = fx[fx.length - 1];
+    return f.tilt;
+  });
+  assert.ok(leaned && (leaned.x !== 0 || leaned.y !== 0),
+    `立った面に置いたのに傾いていない (${JSON.stringify(leaned)})`);
   // 仮の立体は図面に残らない
   const ghost = await page.evaluate(
     () => '__ghost__' in window.minicad.editorInstance.store.scene.fixtures);

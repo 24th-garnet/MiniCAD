@@ -1068,6 +1068,37 @@ export function rotateToLocal(f: Fixture, n: Vec3Like): Vec3Like {
   return vec3Like(x, y, h);
 }
 
+/**
+ * ローカルの +z を `n` の向きに合わせる傾き。**{@link toWorld3} の逆引き。**
+ *
+ * 作図面の上に立体を置くのに使う——ワイヤーの注記「斜面を作業面として
+ * 設定すると、立方体を配置するときに回転する必要がなくなる」がこれ。
+ *
+ * **`angle` も受け取る。** `Rz` は最後に掛かるので、`angle` を先に戻してから
+ * x と y を解かないと、向きを変えたとたん立体が作図面から浮く。こうしておけば
+ * **どの `angle` でも底面は作図面に乗ったまま**になる。
+ *
+ * 解き方。`Ry(ty) · Rx(tx) · ẑ = (cos tx · sin ty, −sin tx, cos tx · cos ty)` なので、
+ * y 成分から `tx`、残りから `ty` が出る。真横（`n` が ±y）では `cos tx` が 0 に
+ * なって `ty` が決まらないので 0 に倒す——その向きなら `tx` だけで足りる。
+ *
+ * 傾き無しで済むなら **null を返す**（倒していない道をこれまでどおり通す）。
+ */
+export function tiltTo(
+  n: Vec3Like,
+  angle = 0,
+): { x: number; y: number } | null {
+  const len = Math.hypot(n.x, n.y, n.z);
+  if (len < 1e-9) return null;
+  const flat = rotate(vec(n.x / len, n.y / len), -angle);
+  const nz = n.z / len;
+
+  const x = -Math.asin(Math.max(-1, Math.min(1, flat.y)));
+  const cx = Math.cos(x);
+  const y = cx < 1e-9 ? 0 : Math.atan2(flat.x, nz);
+  return x === 0 && y === 0 ? null : { x, y };
+}
+
 /** これより頂点が多い輪郭はスナップ点を出さない。中心だけになる */
 const MAX_SNAP_VERTICES = 32;
 

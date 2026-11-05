@@ -1,6 +1,15 @@
-import { add3, cross3, dot3, normalize3, scale3, sub3, vec3, type Vec3 } from './mat4.ts';
-import { polygonFace, type Face3, type FaceSource } from './mesh.ts';
-import type { Id } from '../core/types.ts';
+import {
+  add3,
+  cross3,
+  dot3,
+  normalize3,
+  scale3,
+  sub3,
+  vec3,
+  type Vec3,
+} from "./mat4.ts";
+import { polygonFace, type Face3, type FaceSource } from "./mesh.ts";
+import type { Id } from "../core/types.ts";
 
 /**
  * 作図面。**3D の中で「どこに置くか」を決める 1 枚の面。**
@@ -13,10 +22,11 @@ import type { Id } from '../core/types.ts';
  * SketchUp と同じで、モードもボタンも要らない。何にも当たっていなければ
  * その階の床面を使う。`Plane3`（`ray.ts`）は原点と法線だけなので別の型にしてある。
  *
- * **ここは「置く場所」だけを決める。立体の向きは変えない。** `Fixture` は
- * z 軸まわりにしか回らないので、壁の面を指しても立体は立ったまま、
- * 指した点の高さに置かれる。傾けられるかのように見せるほうが嘘になる
- * （`docs/questions.md` の 11）。
+ * **ここが置く場所と向きの両方を決める。** ワイヤーの注記「斜面に立方体を
+ * 配置したい場合にその斜面を作業面として設定すると、立方体を配置するときに
+ * 回転する必要がなくなる」がそれで、向きを決めるのは作図面の仕事。
+ * 法線から傾きを出すのは `core/fixture.ts` の `tiltTo`——回転の順を知っている
+ * 場所をここに増やさない。
  */
 export interface WorkPlane {
   origin: Vec3;
@@ -29,7 +39,7 @@ export interface WorkPlane {
 }
 
 /** 水平な作図面。既定はその階の床 */
-export const floorPlane = (z: number, label = '床'): WorkPlane => ({
+export const floorPlane = (z: number, label = "床"): WorkPlane => ({
   origin: vec3(0, 0, z),
   normal: vec3(0, 0, 1),
   u: vec3(1, 0, 0),
@@ -43,7 +53,11 @@ export const floorPlane = (z: number, label = '床'): WorkPlane => ({
  * 2 軸は法線から導く。**水平な面では u をワールドの x に合わせる**ので、
  * 床の上の格子が平面図の格子と同じ向きになる。
  */
-export function planeFromNormal(normal: Vec3, at: Vec3, label: string): WorkPlane {
+export function planeFromNormal(
+  normal: Vec3,
+  at: Vec3,
+  label: string,
+): WorkPlane {
   const n = normalize3(normal);
   // **種を面へ落として 1 本目にする**（グラム・シュミット）。横を向いた面では
   // 真上が、上下を向いた面ではワールドの x が u になるので、**床の上の格子は
@@ -126,10 +140,14 @@ export function planeGridFaces(
    * 向きが逆だと `paint` が背面として落とし、格子が丸ごと消える。
    */
   const band = (corners: PlaneUV[]): void => {
-    out.push(polygonFace(
-      corners.map((uv) => add3(fromPlane(plane, uv), lift)),
-      color, 'wall', src,
-    ));
+    out.push(
+      polygonFace(
+        corners.map((uv) => add3(fromPlane(plane, uv), lift)),
+        color,
+        "wall",
+        src,
+      ),
+    );
   };
 
   for (let i = -half; i <= half; i++) {
