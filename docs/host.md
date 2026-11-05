@@ -172,7 +172,7 @@ interface Capabilities {
 | 実測 JSON | `sceneToMeasures(scene, rooms, { planId })` → `mdr-measures-1`。[QuantityTakeoff][qt] が読む |
 | DXF | `sceneToDxf(...)`。R12、mm 1:1。Jw_cad 用の Shift-JIS も |
 | SVG | `sceneToSvg(...)`。用紙枠を出していれば実寸 |
-| 立面図 | `sceneToElevations(scene)` → SVG |
+| 立面図 | `sceneToElevations(scene)` → SVG。画面からは「立面ビュー」1 ボタン＋選択 |
 | 印刷 | `buildPrintDocument(svg, standard)`。PDF はブラウザの「PDF として保存」 |
 | キャプチャ | canvas → PNG |
 | 断面図 | `sectionToSvg(sectionAlong(scene, a, b))` → SVG |
@@ -182,9 +182,16 @@ interface Capabilities {
 | カメラ | `getCamera()` / `setCamera()`。ウォークスルーと AI パースへ渡す形 |
 | 変更の通知 | 編集のたびに発火。保存するかどうかはホストが決める |
 
-**PDF は書かない。** 日本語を PDF に埋めるには CID フォントのサブセット埋め込みが
-要り、「実行時の依存ライブラリなし」と正面衝突する。SVG と実寸印刷を出すので、
-変換が要るならホスト側で。README が JWW と DWG に当てているのと同じ理屈。
+**PDF はホスト側で作る。** ワイヤーは 2D の出力を PDF と書いている
+（1 枚目「出力できる拡張子／2D＝PDF」）が、**MiniCAD は SVG までを出し、
+PDF への変換はサービス側が受け持つ**分担にした。日本語を PDF に埋めるには
+CID フォントのサブセット埋め込みが要り、「実行時の依存ライブラリなし」と
+正面衝突する。サーバなら変換器を選べるので、そちらのほうが安く確実。
+README が JWW と DWG に当てているのと同じ理屈。
+
+出す SVG は用紙枠を出していれば実寸なので、**縮尺はそのまま PDF に移る。**
+`buildPrintDocument` が作る印刷用の文書を使えば、ブラウザの「PDF として保存」
+でも同じものが出る。
 
 ## 守ってほしいこと
 
@@ -222,6 +229,9 @@ interface Capabilities {
   （拾い側が `openings[]` を壁面積の控除にも使っているため）
 - **3D でのコメントの配置。** 3D ではバッジを叩いて開けますが、置けるのは 2D からだけです
   （3D では面の上の点を取る必要があり、`Select3D` の持ち物になります）
+- **倒した立体の、切り欠きの平面投影。** 傾けた立体は上から見た形で平面に出ますが、
+  **当たり判定と図面範囲は凸包**なので、へこんだ形では実物より少し広く拾えます。
+  切り欠き（ブーリアンの結果）は平面に出ません——2D の多角形ブール演算が要ります
 - **レンダリング。** カメラの引数は出しますが、絵は作りません（実行時依存ゼロと
   正面衝突します）。ワイヤーの「2 点透視（垂直補正）」も持っていません——縦線を
   常に垂直に保つには投影の中心をずらした錐台が要り、`screenRay` と当たり判定も
