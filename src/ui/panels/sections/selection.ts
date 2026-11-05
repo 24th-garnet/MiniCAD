@@ -1125,6 +1125,9 @@ function splitButton(ctx: PanelContext): HTMLElement | null {
  * そのまま輪郭になるので**戻す道（分解）が無い**こと——undo で戻す。
  */
 function shapeBooleanButtons(ctx: PanelContext): (HTMLElement | null)[] {
+  // **プロモードだけ。** トリム・角・オフセットと同じ CAD の道具で、
+  // ワイヤーも「結合/合成」をプロモードの 2D 作図機能にだけ挙げている
+  if (ctx.mode !== "pro") return [];
   const scene = ctx.editor.store.scene;
   const ids = ctx.editor.store.selection
     .filter((r) => r.type === "shape" && closedPolygonOf(scene, r.id) !== null)
