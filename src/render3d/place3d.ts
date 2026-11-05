@@ -14,15 +14,9 @@ import type { Editor } from "../ui/editor.ts";
 import { buildFixtureFaces } from "./fixture3d.ts";
 import type { Face3 } from "./mesh.ts";
 import type { Vec3 } from "./mat4.ts";
-import { rayPlane } from "./ray.ts";
 import type { Pointer3D, Tool3D } from "./interact.ts";
-import {
-  floorPlane,
-  planeFromNormal,
-  planeGridFaces,
-  roundOnPlane,
-  type WorkPlane,
-} from "./workplane.ts";
+import { planeGridFaces, type WorkPlane } from "./workplane.ts";
+import { aimOnPlane, sameAim, type Aim3D } from "./aim3d.ts";
 
 /**
  * 3D の中にソリッドを置く。**3D で「新しく描く」最初の 1 つ。**
@@ -51,7 +45,7 @@ export class Place3D implements Tool3D {
   angle = 0;
 
   /** いま指している作図面と、その上の点 */
-  private aim: { plane: WorkPlane; at: Vec3 } | null = null;
+  private aim: Aim3D | null = null;
 
   isActive(): boolean {
     // **ドラッグ状態を持たない。** 1 クリックで置くので、Esc で取り消すものが無い
@@ -88,25 +82,11 @@ export class Place3D implements Tool3D {
 
   /** いま指している面と、その上の（格子に丸めた）点 */
   private aimAt(editor: Editor, p: Pointer3D): void {
-    const scene = editor.store.scene;
-    const level = levelOf(scene, scene.activeLevelId);
-    const plane = p.hit
-      ? planeFromNormal(
-          p.hit.face.normal,
-          p.hit.point,
-          labelOf(p.hit.face.normal),
-        )
-      : floorPlane(level.floorZ);
-    const at = p.hit
-      ? p.hit.point
-      : rayPlane(p.ray, { origin: plane.origin, normal: plane.normal });
-    if (!at) {
+    const next = aimOnPlane(editor, p);
+    if (next === null) {
       this.aim = null;
       return;
     }
-    const settings = editor.store.settings;
-    const grid = settings.snapGrid ? settings.gridSize : 0;
-    const next = { plane, at: roundOnPlane(plane, at, grid) };
     // **変わったときだけ知らせる。** 毎回だと動かすたびに全パネルが描き直される
     // （`Select3D` がホバーの変化だけを知らせるのと同じ考え方）
     if (!sameAim(this.aim, next)) {
@@ -221,26 +201,3 @@ const GHOST_COLOR = "rgba(37, 99, 235, 0.45)";
 
 /** 仮の立体の id。図面には入らない */
 const GHOST_ID = "__ghost__";
-
-/** 狙いが動いたか。格子 1 刻みより細かい差は無視する */
-const sameAim = (
-  a: { plane: WorkPlane; at: Vec3 } | null,
-  b: { plane: WorkPlane; at: Vec3 },
-): boolean =>
-  a !== null &&
-  a.plane.label === b.plane.label &&
-  // **法線まで見る。** 名前が同じ斜面はいくらでもあるので、名前だけだと
-  // 別の斜面へ移ったときに仮の姿が古いままになる
-  a.plane.normal.x === b.plane.normal.x &&
-  a.plane.normal.y === b.plane.normal.y &&
-  a.plane.normal.z === b.plane.normal.z &&
-  a.at.x === b.at.x &&
-  a.at.y === b.at.y &&
-  a.at.z === b.at.z;
-
-/** 作図面の名前。法線の向きだけで決まる */
-const labelOf = (normal: Vec3): string => {
-  if (normal.z > 0.9) return "上を向いた面";
-  if (normal.z < -0.9) return "下を向いた面";
-  return Math.abs(normal.z) < 0.1 ? "立った面" : "傾いた面";
-};

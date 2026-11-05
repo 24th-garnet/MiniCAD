@@ -1,6 +1,6 @@
-import { refsBounds, sceneBounds } from '../core/entity.ts';
-import { activeLevel, levelOf, wallHeightOf } from '../core/level.ts';
-import type { Editor } from '../ui/editor.ts';
+import { refsBounds, sceneBounds } from "../core/entity.ts";
+import { activeLevel, levelOf, wallHeightOf } from "../core/level.ts";
+import type { Editor } from "../ui/editor.ts";
 import {
   applyCameraParams,
   cameraBasis,
@@ -18,19 +18,29 @@ import {
   type Camera3D,
   type CameraParams,
   type View,
-} from './camera.ts';
-import { highlightOf, isWallTop, pickEntity, Select3D, type Pointer3D, type Tool3D } from './interact.ts';
-import { Place3D } from './place3d.ts';
-import { type Face3 } from './mesh.ts';
-import { buildBsp, bspOrder, type BspNode } from './bsp.ts';
-import { MeshCache } from './meshCache.ts';
-import { paint } from './paint.ts';
-import { COMMENT_BADGE_R } from '../render/renderer.ts';
-import { theme } from '../render/theme.ts';
-import type { CommentAnchor } from '../core/annotation.ts';
-import { vec3, type Vec3 } from './mat4.ts';
-import type { Vec } from '../core/geometry.ts';
-import { screenRay } from './ray.ts';
+} from "./camera.ts";
+import {
+  highlightOf,
+  isWallTop,
+  pickEntity,
+  Select3D,
+  type Pointer3D,
+  type Tool3D,
+} from "./interact.ts";
+import { Place3D } from "./place3d.ts";
+import { Measure3D, measurementFaces } from "./measure3d.ts";
+import { getLayer, LAYER_IDS } from "../core/layer.ts";
+import { distanceOf } from "../core/annotation.ts";
+import { type Face3 } from "./mesh.ts";
+import { buildBsp, bspOrder, type BspNode } from "./bsp.ts";
+import { MeshCache } from "./meshCache.ts";
+import { paint } from "./paint.ts";
+import { COMMENT_BADGE_R } from "../render/renderer.ts";
+import { theme } from "../render/theme.ts";
+import type { CommentAnchor } from "../core/annotation.ts";
+import { vec3, type Vec3 } from "./mat4.ts";
+import type { Vec } from "../core/geometry.ts";
+import { screenRay } from "./ray.ts";
 
 /**
  * 3D ビュー。2D とは**別のキャンバス**に描く。
@@ -76,7 +86,7 @@ export class Viewer3D {
    * 回す中心の取り方（ワイヤー 5 枚目の「各種中心モード」）。
    * **カメラだけの話で、メッシュにもピックにも触らない。**
    */
-  orbitCenter: OrbitCenter = 'all';
+  orbitCenter: OrbitCenter = "all";
   showEdges = false;
 
   private readonly ctx: CanvasRenderingContext2D;
@@ -87,11 +97,13 @@ export class Viewer3D {
   private height = 0;
   private dpr = 1;
   private shownOnce = false;
-  private dragging: 'orbit' | 'pan' | null = null;
+  private dragging: "orbit" | "pan" | null = null;
   private last = { x: 0, y: 0 };
   private readonly select = new Select3D();
   /** ソリッドを 3D の中に置く道具。選択と入れ替えて使う */
   readonly place = new Place3D();
+  /** 3D の中で 2 点間を測る道具。測った結果は 2D の計測と同じ実体になる */
+  readonly measure = new Measure3D();
   /**
    * いま効いている 3D の道具。**ツールバーには出ない。**
    * 2D の `ToolId` とは別の、3D のビュータブから選ぶ小さな union
@@ -112,8 +124,8 @@ export class Viewer3D {
     private readonly canvas: HTMLCanvasElement,
     private readonly editor: Editor,
   ) {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('2D コンテキストを取得できませんでした');
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("2D コンテキストを取得できませんでした");
     this.ctx = ctx;
     this.attachEvents();
     this.observeResize();
@@ -125,7 +137,7 @@ export class Viewer3D {
     this.visible = visible;
     this.canvas.hidden = !visible;
     if (!visible) return;
-    this.measure();
+    this.measureCanvas();
     // 初めて開いたときだけ全体に合わせる。以後はユーザーのカメラを保つ
     if (!this.shownOnce) {
       this.shownOnce = true;
@@ -147,7 +159,9 @@ export class Viewer3D {
    */
   async capture(): Promise<Blob | null> {
     this.draw();
-    return new Promise((resolve) => this.canvas.toBlob((b) => resolve(b), 'image/png'));
+    return new Promise((resolve) =>
+      this.canvas.toBlob((b) => resolve(b), "image/png"),
+    );
   }
 
   /** カメラの引数。ウォークスルーと AI パースへはこの形で渡す */
@@ -177,20 +191,28 @@ export class Viewer3D {
     const scene = this.editor.store.scene;
     const z = activeLevel(scene).wallHeight / 2;
     switch (this.orbitCenter) {
-      case 'all': {
+      case "all": {
         const b = sceneBounds(scene);
-        if (b) lookAt(this.camera, vec3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, z));
+        if (b)
+          lookAt(
+            this.camera,
+            vec3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, z),
+          );
         return;
       }
-      case 'selection': {
+      case "selection": {
         const b = refsBounds(scene, this.editor.store.selection);
-        if (b) lookAt(this.camera, vec3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, z));
+        if (b)
+          lookAt(
+            this.camera,
+            vec3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, z),
+          );
         return;
       }
-      case 'pick':
+      case "pick":
         if (p.hit) lookAt(this.camera, p.hit.point);
         return;
-      case 'origin':
+      case "origin":
         lookAt(this.camera, vec3(0, 0, 0));
     }
   }
@@ -230,7 +252,12 @@ export class Viewer3D {
   }
 
   /** 直近の組み立てで何を作り直したか。開発時の計測が読む */
-  get meshStats(): { walls: number; fixtures: number; instances: number; floors: number } {
+  get meshStats(): {
+    walls: number;
+    fixtures: number;
+    instances: number;
+    floors: number;
+  } {
     return this.meshCache.stats;
   }
 
@@ -245,7 +272,12 @@ export class Viewer3D {
    * 「速くなったはず」を数字にしておかないと、あとから入った無駄に気づけない。
    * 家具を 1mm ずつ動かしながら回すので、ドラッグ中と同じ負荷になる。
    */
-  profile(frames = 120): { rooms: number; mesh: number; paint: number; stats: string } {
+  profile(frames = 120): {
+    rooms: number;
+    mesh: number;
+    paint: number;
+    stats: string;
+  } {
     const scene = this.editor.store.scene;
     const ids = Object.keys(scene.instances);
     const nudge = () => {
@@ -255,7 +287,10 @@ export class Viewer3D {
 
     const time = (fn: () => void): number => {
       const t0 = performance.now();
-      for (let i = 0; i < frames; i += 1) { nudge(); fn(); }
+      for (let i = 0; i < frames; i += 1) {
+        nudge();
+        fn();
+      }
       return (performance.now() - t0) / frames;
     };
 
@@ -279,7 +314,7 @@ export class Viewer3D {
   setTool3D(tool: Tool3D | null): void {
     if (this.tool !== this.select) this.tool.cancel(this.editor);
     this.tool = tool ?? this.select;
-    this.canvas.style.cursor = this.tool === this.select ? '' : 'crosshair';
+    this.canvas.style.cursor = this.tool === this.select ? "" : "crosshair";
     this.requestRender();
   }
 
@@ -301,19 +336,78 @@ export class Viewer3D {
   }
 
   private draw(): void {
-    paint(this.ctx, this.camera, this.ordered(this.mesh), this.width, this.height, {
-      showEdges: this.showEdges,
-      dpr: this.dpr,
-      presorted: true,
-      tint: highlightOf(this.editor, this.materials),
-    });
+    paint(
+      this.ctx,
+      this.camera,
+      this.ordered(this.mesh),
+      this.width,
+      this.height,
+      {
+        showEdges: this.showEdges,
+        dpr: this.dpr,
+        presorted: true,
+        tint: highlightOf(this.editor, this.materials),
+      },
+    );
     // **作図の補助は 2 回目の塗りで重ねる**（`PaintOptions.clear` の経緯）。
     // 図面の面と同じ列に混ぜると、壁に敷いた格子が壁に隠れる
-    const overlay = this.tool.overlay(this.editor);
+    // **測った結果も補助。** 道具を離れても見えるように、道具の重ねものと
+    // 一緒に出す（図面のメッシュには混ぜない——計測は図面の一部ではない）
+    const overlay = [
+      ...measurementFaces(this.editor.store.scene),
+      ...this.tool.overlay(this.editor),
+    ];
     if (overlay.length > 0) {
-      paint(this.ctx, this.camera, overlay, this.width, this.height, { dpr: this.dpr, clear: false });
+      paint(this.ctx, this.camera, overlay, this.width, this.height, {
+        dpr: this.dpr,
+        clear: false,
+      });
     }
+    this.drawMeasurementLabels();
     this.drawComments();
+  }
+
+  /**
+   * 測った距離の数字。**面ではないので `paint` の後に重ねる**（バッジと同じ）。
+   *
+   * 2D は線の脇に出している。3D でも同じものが読めないと、測った意味が薄い。
+   */
+  private drawMeasurementLabels(): void {
+    const scene = this.editor.store.scene;
+    const list = Object.values(scene.measurements);
+    if (list.length === 0) return;
+    const view = viewProjection(this.camera, this.width, this.height);
+    const c2 = this.ctx;
+    c2.save();
+    c2.scale(this.dpr, this.dpr);
+    c2.font = "11px system-ui, sans-serif";
+    c2.textAlign = "center";
+    c2.textBaseline = "middle";
+    for (const m of list) {
+      if (!getLayer(scene.layers, m.layerId, LAYER_IDS.draft).visible) continue;
+      const floor = levelOf(scene, m.levelId).floorZ;
+      const at = projectPoint(
+        view,
+        vec3(
+          (m.a.x + m.b.x) / 2,
+          (m.a.y + m.b.y) / 2,
+          floor + (m.a.z + m.b.z) / 2,
+        ),
+        this.width,
+        this.height,
+      );
+      if (!at) continue;
+      const text = `${Math.round(distanceOf(m))} mm`;
+      const w = c2.measureText(text).width;
+      c2.fillStyle = "rgba(255,255,255,0.92)";
+      c2.fillRect(at.x - w / 2 - 5, at.y - 9, w + 10, 18);
+      c2.strokeStyle = theme.snap;
+      c2.lineWidth = 1;
+      c2.strokeRect(at.x - w / 2 - 5, at.y - 9, w + 10, 18);
+      c2.fillStyle = theme.dimensionText;
+      c2.fillText(text, at.x, at.y + 0.5);
+    }
+    c2.restore();
   }
 
   /**
@@ -332,9 +426,9 @@ export class Viewer3D {
     // 描きたい（ズームに依らず同じ大きさ）ので、ここで尺度を入れ直す
     c2.save();
     c2.scale(this.dpr, this.dpr);
-    c2.font = '11px system-ui, sans-serif';
-    c2.textAlign = 'center';
-    c2.textBaseline = 'middle';
+    c2.font = "11px system-ui, sans-serif";
+    c2.textAlign = "center";
+    c2.textBaseline = "middle";
     comments.forEach((c, i) => {
       const p = this.commentScreen(c, view);
       if (!p) return;
@@ -342,10 +436,10 @@ export class Viewer3D {
       c2.arc(p.x, p.y, COMMENT_BADGE_R, 0, Math.PI * 2);
       c2.fillStyle = theme.commentBadge;
       c2.fill();
-      c2.strokeStyle = '#fff';
+      c2.strokeStyle = "#fff";
       c2.lineWidth = 1.5;
       c2.stroke();
-      c2.fillStyle = '#fff';
+      c2.fillStyle = "#fff";
       c2.fillText(String(i + 1), p.x, p.y + 0.5);
     });
     c2.restore();
@@ -353,7 +447,12 @@ export class Viewer3D {
 
   private commentScreen(c: CommentAnchor, view: View): Vec | null {
     const level = levelOf(this.editor.store.scene, c.levelId);
-    return projectPoint(view, vec3(c.at.x, c.at.y, level.floorZ + c.at.z), this.width, this.height);
+    return projectPoint(
+      view,
+      vec3(c.at.x, c.at.y, level.floorZ + c.at.z),
+      this.width,
+      this.height,
+    );
   }
 
   /** 画面の点に当たるバッジ。3D でもクリックで開ける */
@@ -392,15 +491,23 @@ export class Viewer3D {
    * 画面の点に何が当たるか。**開発時の確認と e2e のため**で、描画には使わない。
    * `window.minicad.viewer.hitAt(x, y)`
    */
-  hitAt(x: number, y: number): { kind: string; id: string; height: number | null } | null {
+  hitAt(
+    x: number,
+    y: number,
+  ): { kind: string; id: string; height: number | null } | null {
     const ray = screenRay(this.camera, x, y, this.width, this.height);
     const hit = pickEntity(this.editor, ray, this.mesh, NEAR_PICK);
     if (!hit?.ref) return null;
-    const wall = hit.ref.type === 'wall' ? this.editor.store.scene.walls[hit.ref.id] : null;
+    const wall =
+      hit.ref.type === "wall"
+        ? this.editor.store.scene.walls[hit.ref.id]
+        : null;
     return {
-      kind: wall && isWallTop(hit) ? 'wallTop' : hit.ref.type,
+      kind: wall && isWallTop(hit) ? "wallTop" : hit.ref.type,
       id: hit.ref.id,
-      height: wall ? wallHeightOf(wall, levelOf(this.editor.store.scene, wall.levelId)) : null,
+      height: wall
+        ? wallHeightOf(wall, levelOf(this.editor.store.scene, wall.levelId))
+        : null,
     };
   }
 
@@ -413,7 +520,13 @@ export class Viewer3D {
   private pointer(e: PointerEvent): Pointer3D {
     const rect = this.canvas.getBoundingClientRect();
     const screen = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    const ray = screenRay(this.camera, screen.x, screen.y, this.width, this.height);
+    const ray = screenRay(
+      this.camera,
+      screen.x,
+      screen.y,
+      this.width,
+      this.height,
+    );
     return {
       screen,
       ray,
@@ -425,7 +538,8 @@ export class Viewer3D {
     };
   }
 
-  private measure(): void {
+  /** canvas の寸法と DPR を取り直す。**距離の計測とは無関係** */
+  private measureCanvas(): void {
     const rect = this.canvas.getBoundingClientRect();
     this.dpr = window.devicePixelRatio || 1;
     this.width = rect.width;
@@ -438,7 +552,7 @@ export class Viewer3D {
   private observeResize(): void {
     const apply = () => {
       if (!this.visible) return;
-      this.measure();
+      this.measureCanvas();
       this.requestRender();
     };
     this.resizeObserver = new ResizeObserver(apply);
@@ -447,12 +561,12 @@ export class Viewer3D {
 
   private attachEvents(): void {
     const canvas = this.canvas;
-    canvas.style.touchAction = 'none';
+    canvas.style.touchAction = "none";
 
     // **カメラか選択かは、動かしたかどうかで決める。**
     // 素の左ドラッグは今まで通り回転。動かさずに離したときだけ選択に回る。
     // 「ドラッグで回す」は 3D の基本操作なので、修飾キー送りにはしない。
-    canvas.addEventListener('pointerdown', (e) => {
+    canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 && e.button !== 1) return;
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
@@ -462,13 +576,15 @@ export class Viewer3D {
 
       // 中ボタンと Shift+左はいつでもカメラ
       if (e.button === 1 || e.shiftKey) {
-        this.dragging = 'pan';
+        this.dragging = "pan";
         return;
       }
 
       // **バッジがいちばん手前。** 図面の上に重ねた印なので、下の面より先に拾う
-      const badge = this.commentAt(e.clientX - canvas.getBoundingClientRect().left,
-        e.clientY - canvas.getBoundingClientRect().top);
+      const badge = this.commentAt(
+        e.clientX - canvas.getBoundingClientRect().left,
+        e.clientY - canvas.getBoundingClientRect().top,
+      );
       if (badge) {
         this.dragging = null;
         this.onCommentOpen?.(badge.id);
@@ -482,7 +598,7 @@ export class Viewer3D {
       // 「置きたい場所を正面に持ってくる」ができなくなる
       if (this.tool !== this.select) {
         this.applyOrbitCenter(p);
-        this.dragging = 'orbit';
+        this.dragging = "orbit";
         return;
       }
 
@@ -496,46 +612,53 @@ export class Viewer3D {
       // **回す前に中心を決める。** 距離と角度はそのままなので、
       // 見ている向きは変わらず、回る軸だけが移る
       this.applyOrbitCenter(p);
-      this.dragging = 'orbit';
+      this.dragging = "orbit";
       this.select.onPointerDown(this.editor, p);
     });
 
-    canvas.addEventListener('pointermove', (e) => {
+    canvas.addEventListener("pointermove", (e) => {
       if (!this.dragging) {
         // 選択中のものを掴んでいるか、ただのホバーか。Select3D が決める
         this.tool.onPointerMove(this.editor, this.pointer(e));
         this.requestRender();
         return;
       }
-      if (!this.moved && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > CLICK_SLOP) {
+      if (
+        !this.moved &&
+        Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) >
+          CLICK_SLOP
+      ) {
         this.moved = true;
       }
       const dx = e.clientX - this.last.x;
       const dy = e.clientY - this.last.y;
       this.last = { x: e.clientX, y: e.clientY };
-      if (this.dragging === 'pan') pan(this.camera, dx, dy, this.height);
+      if (this.dragging === "pan") pan(this.camera, dx, dy, this.height);
       else orbit(this.camera, dx, dy);
       this.requestRender();
     });
 
-    canvas.addEventListener('pointerleave', () => {
+    canvas.addEventListener("pointerleave", () => {
       this.tool.onPointerLeave(this.editor);
       this.requestRender();
     });
 
-    canvas.addEventListener('pointerup', (e) => {
-      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    canvas.addEventListener("pointerup", (e) => {
+      if (canvas.hasPointerCapture(e.pointerId))
+        canvas.releasePointerCapture(e.pointerId);
       const clicked = !this.moved;
       this.dragging = null;
       this.moved = false;
       // 置く道具は「動かさずに離した」ときだけ効く（回しただけでは置かない）
-      if (this.tool !== this.select && clicked) this.tool.onPointerDown(this.editor, this.pointer(e));
+      if (this.tool !== this.select && clicked)
+        this.tool.onPointerDown(this.editor, this.pointer(e));
       this.tool.onPointerUp(this.editor);
       this.requestRender();
     });
 
-    canvas.addEventListener('pointercancel', (e) => {
-      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    canvas.addEventListener("pointercancel", (e) => {
+      if (canvas.hasPointerCapture(e.pointerId))
+        canvas.releasePointerCapture(e.pointerId);
       this.dragging = null;
       this.moved = false;
       this.tool.cancel(this.editor);
@@ -544,10 +667,10 @@ export class Viewer3D {
     // **Esc は捕捉段で取る。** `installKeymap` は window の keydown を見ていて、
     // 3D のドラッグ中でも選択解除が先に走ってしまう。ここで止める
     window.addEventListener(
-      'keydown',
+      "keydown",
       (e) => {
         if (!this.visible || !this.tool.isActive()) return;
-        if (e.key !== 'Escape') return;
+        if (e.key !== "Escape") return;
         if (this.tool.cancel(this.editor)) {
           e.stopPropagation();
           e.preventDefault();
@@ -556,10 +679,10 @@ export class Viewer3D {
       },
       { capture: true, signal: this.teardown.signal },
     );
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
     canvas.addEventListener(
-      'wheel',
+      "wheel",
       (e) => {
         e.preventDefault();
         // 2D と同じ係数。トラックパッドの手触りを揃える

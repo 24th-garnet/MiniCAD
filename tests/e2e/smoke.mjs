@@ -1741,6 +1741,64 @@ async function run() {
   await sleep(300);
   await page.evaluate(() => window.minicad.setMode('normal'));
   await sleep(300);
+  // --- 3D の中で距離を測る（第 6 版の 1 段目） ---
+  // 仕様は 3D の節に「距離計測ボタン押下／始点 / 終点をタップ」と書いている
+  // **F3 は切り替えなので、いまどちらにいるかを見てから押す**
+  if (!(await page.evaluate(() => window.minicad.view.shows3d))) {
+    await page.keyboard.press('F3');
+  }
+  await sleep(600);
+  assert.ok(await page.evaluate(() => window.minicad.view.shows3d), '3D に入れていない');
+  const beforeMs = await page.evaluate(
+    () => Object.keys(window.minicad.editorInstance.store.scene.measurements).length);
+  await page.click('button[title="3D の中で 2 点間の距離を測る（面の上の 2 点をクリック）"]');
+  await sleep(300);
+  // 壁の面の上で、高さの違う 2 点を叩く
+  const wallPts = await page.evaluate(() => {
+    const v = window.minicad.viewer;
+    const r = v.canvas.getBoundingClientRect();
+    const hits = [];
+    for (let y = 60; y < r.height - 60; y += 8)
+      for (let x = 60; x < r.width - 60; x += 8)
+        if (v.hitAt(x, y)?.kind === 'wall') hits.push({ x: r.left + x, y: r.top + y, sy: y });
+    hits.sort((a, b) => a.sy - b.sy);
+    return hits.length > 10
+      ? { high: hits[Math.floor(hits.length * 0.1)], low: hits[Math.floor(hits.length * 0.9)] }
+      : null;
+  });
+  assert.ok(wallPts, '3D で壁の面が拾えない');
+  for (const pt of [wallPts.high, wallPts.low]) {
+    await page.mouse.move(pt.x, pt.y);
+    await sleep(250);
+    await page.mouse.down();
+    await page.mouse.up();
+    await sleep(250);
+  }
+  const measured3d = await page.evaluate(() => {
+    const list = Object.values(window.minicad.editorInstance.store.scene.measurements);
+    const m = list[list.length - 1];
+    return m ? { n: list.length, az: m.a.z, bz: m.b.z } : null;
+  });
+  assert.ok(measured3d, '3D で測れない');
+  assert.equal(measured3d.n, beforeMs + 1, '計測が残っていない');
+  assert.ok(
+    Math.abs(measured3d.az - measured3d.bz) > 100,
+    `高さが落ちている (${JSON.stringify(measured3d)})`,
+  );
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal(
+    await page.evaluate(
+      () => Object.keys(window.minicad.editorInstance.store.scene.measurements).length),
+    beforeMs,
+    '3D で測ったものが undo で戻らない',
+  );
+  await page.click('button[title="3D の中で 2 点間の距離を測る（面の上の 2 点をクリック）"]');
+  await sleep(200);
+  await page.keyboard.press('F3');
+  await sleep(300);
+  console.log('✔ 3D の中で距離を測れる（高さが落ちず、undo で戻る）');
+
   console.log('✔ 3D の中にソリッドを置ける（undo で戻る）');
 
   // --- プロパティ欄の回転 X / Y（第 5 版の 8 段目） ---
