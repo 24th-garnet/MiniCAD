@@ -1,11 +1,18 @@
-import { closestOnSegment, dist, pointInPolygon, vec, type Vec } from './geometry.ts';
-import { isSelectable } from './entity.ts';
-import { wallEnds } from './ops.ts';
-import { instanceOutline, instanceVertices } from './block.ts';
-import { openingFrame } from './shape.ts';
-import { outline, outlineSegments, specOf } from './fixture.ts';
-import { shapeHitTest, shapePickPriority, shapeVertices } from './shapes.ts';
-import type { EntityRef, Scene } from './types.ts';
+import {
+  closestOnSegment,
+  dist,
+  pointInPolygon,
+  vec,
+  type Vec,
+} from "./geometry.ts";
+import { isSelectable } from "./entity.ts";
+import { wallEnds } from "./ops.ts";
+import { instanceOutline, instanceVertices } from "./block.ts";
+import { openingFrame } from "./shape.ts";
+import { outline, outlineSegments, specOf } from "./fixture.ts";
+import { shapeHitTest, shapePickPriority, shapeVertices } from "./shapes.ts";
+import type { EntityRef, Scene } from "./types.ts";
+import { levelOf } from "./level.ts";
 
 /** これ未満の優先度は「小物」。壁や家具より先に拾う */
 const SMALL_SHAPE_PRIORITY = 3;
@@ -19,25 +26,36 @@ export interface PickOptions {
  * 画面上のクリック位置に対応するエンティティを1つ返す。
  * 小さく掴みにくいものほど先に判定する: 端点 > 開口 > 家具 > 壁 > 部屋名。
  */
-export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOptions = {}): EntityRef | null {
+export function pickAt(
+  scene: Scene,
+  p: Vec,
+  tolerance: number,
+  opts: PickOptions = {},
+): EntityRef | null {
   const ok = pickFilter(scene, opts);
 
   let bestNode: { ref: EntityRef; d: number } | null = null;
   for (const n of Object.values(scene.nodes)) {
     const d = dist(p, vec(n.x, n.y));
     if (d > tolerance) continue;
-    const ref: EntityRef = { type: 'node', id: n.id };
+    const ref: EntityRef = { type: "node", id: n.id };
     if (!ok(ref)) continue;
     if (!bestNode || d < bestNode.d) bestNode = { ref, d };
   }
   if (bestNode) return bestNode.ref;
 
   // 点や文字は小さく掴みにくいので、壁や家具より先に拾う
-  const small = pickShape(scene, p, tolerance, ok, (s) => shapePickPriority(s) < SMALL_SHAPE_PRIORITY);
+  const small = pickShape(
+    scene,
+    p,
+    tolerance,
+    ok,
+    (s) => shapePickPriority(s) < SMALL_SHAPE_PRIORITY,
+  );
   if (small) return small;
 
   for (const op of Object.values(scene.openings)) {
-    const ref: EntityRef = { type: 'opening', id: op.id };
+    const ref: EntityRef = { type: "opening", id: op.id };
     if (!ok(ref)) continue;
     const frame = openingFrame(scene, op);
     if (!frame) continue;
@@ -47,14 +65,25 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
 
   // 後から置いたものが上に来るので逆順に判定する
   for (const inst of Object.values(scene.instances).reverse()) {
-    const ref: EntityRef = { type: 'blockInstance', id: inst.id };
+    const ref: EntityRef = { type: "blockInstance", id: inst.id };
     if (!ok(ref)) continue;
     if (pointInPolygon(p, instanceVertices(scene, inst))) return ref;
     // 輪郭のすぐ近くでも掴めるようにする（中が空いている記号もあるため）
-    if (instanceOutline(scene, inst).some((s) => closestOnSegment(p, s.a, s.b).dist <= tolerance)) return ref;
+    if (
+      instanceOutline(scene, inst).some(
+        (s) => closestOnSegment(p, s.a, s.b).dist <= tolerance,
+      )
+    )
+      return ref;
   }
 
-  const curve = pickShape(scene, p, tolerance, ok, (s) => shapePickPriority(s) >= SMALL_SHAPE_PRIORITY);
+  const curve = pickShape(
+    scene,
+    p,
+    tolerance,
+    ok,
+    (s) => shapePickPriority(s) >= SMALL_SHAPE_PRIORITY,
+  );
   if (curve) return curve;
 
   // 構造は壁より先に拾う。柱は壁の中に立つことが多く、後に回すと掴めない。
@@ -63,15 +92,21 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
     .slice()
     .sort((a, b) => specOf(a).pickPriority - specOf(b).pickPriority);
   for (const f of fixtures) {
-    const ref: EntityRef = { type: 'fixture', id: f.id };
+    const ref: EntityRef = { type: "fixture", id: f.id };
     if (!ok(ref)) continue;
-    if (pointInPolygon(p, outline(f))) return ref;
-    if (outlineSegments(f).some((sg) => closestOnSegment(p, sg.a, sg.b).dist <= tolerance)) return ref;
+    const level = levelOf(scene, f.levelId);
+    if (pointInPolygon(p, outline(f, level))) return ref;
+    if (
+      outlineSegments(f, level).some(
+        (sg) => closestOnSegment(p, sg.a, sg.b).dist <= tolerance,
+      )
+    )
+      return ref;
   }
 
   let bestWall: { ref: EntityRef; d: number } | null = null;
   for (const w of Object.values(scene.walls)) {
-    const ref: EntityRef = { type: 'wall', id: w.id };
+    const ref: EntityRef = { type: "wall", id: w.id };
     if (!ok(ref)) continue;
     const [a, b] = wallEnds(scene, w);
     const c = closestOnSegment(p, a, b);
@@ -81,16 +116,20 @@ export function pickAt(scene: Scene, p: Vec, tolerance: number, opts: PickOption
   if (bestWall) return bestWall.ref;
 
   for (const label of Object.values(scene.roomLabels)) {
-    const ref: EntityRef = { type: 'roomLabel', id: label.id };
+    const ref: EntityRef = { type: "roomLabel", id: label.id };
     if (!ok(ref)) continue;
     if (dist(p, vec(label.x, label.y)) <= tolerance * 3) return ref;
   }
 
   // 計測はいちばん最後。図面の上に重ねた道具なので、図面の邪魔をしない
   for (const m of Object.values(scene.measurements)) {
-    const ref: EntityRef = { type: 'measurement', id: m.id };
+    const ref: EntityRef = { type: "measurement", id: m.id };
     if (!ok(ref)) continue;
-    if (closestOnSegment(p, vec(m.a.x, m.a.y), vec(m.b.x, m.b.y)).dist <= tolerance) return ref;
+    if (
+      closestOnSegment(p, vec(m.a.x, m.a.y), vec(m.b.x, m.b.y)).dist <=
+      tolerance
+    )
+      return ref;
   }
 
   return null;
@@ -105,50 +144,55 @@ export function pickInRect(
   opts: PickOptions = {},
 ): EntityRef[] {
   const ok = pickFilter(scene, opts);
-  const inside = (q: Vec): boolean => q.x >= min.x && q.x <= max.x && q.y >= min.y && q.y <= max.y;
+  const inside = (q: Vec): boolean =>
+    q.x >= min.x && q.x <= max.x && q.y >= min.y && q.y <= max.y;
   const refs: EntityRef[] = [];
 
   for (const w of Object.values(scene.walls)) {
-    const ref: EntityRef = { type: 'wall', id: w.id };
+    const ref: EntityRef = { type: "wall", id: w.id };
     if (!ok(ref)) continue;
     const [a, b] = wallEnds(scene, w);
-    const hit = crossing ? inside(a) || inside(b) || segmentCrossesRect(a, b, min, max) : inside(a) && inside(b);
+    const hit = crossing
+      ? inside(a) || inside(b) || segmentCrossesRect(a, b, min, max)
+      : inside(a) && inside(b);
     if (hit) refs.push(ref);
   }
   for (const inst of Object.values(scene.instances)) {
-    const ref: EntityRef = { type: 'blockInstance', id: inst.id };
+    const ref: EntityRef = { type: "blockInstance", id: inst.id };
     if (!ok(ref)) continue;
     const corners = instanceVertices(scene, inst);
     if (crossing ? corners.some(inside) : corners.every(inside)) refs.push(ref);
   }
   for (const op of Object.values(scene.openings)) {
-    const ref: EntityRef = { type: 'opening', id: op.id };
+    const ref: EntityRef = { type: "opening", id: op.id };
     if (!ok(ref)) continue;
     const frame = openingFrame(scene, op);
     if (!frame) continue;
-    const hit = crossing ? inside(frame.start) || inside(frame.end) : inside(frame.start) && inside(frame.end);
+    const hit = crossing
+      ? inside(frame.start) || inside(frame.end)
+      : inside(frame.start) && inside(frame.end);
     if (hit) refs.push(ref);
   }
   for (const label of Object.values(scene.roomLabels)) {
-    const ref: EntityRef = { type: 'roomLabel', id: label.id };
+    const ref: EntityRef = { type: "roomLabel", id: label.id };
     if (!ok(ref)) continue;
     if (inside(vec(label.x, label.y))) refs.push(ref);
   }
   for (const shape of Object.values(scene.shapes)) {
-    const ref: EntityRef = { type: 'shape', id: shape.id };
+    const ref: EntityRef = { type: "shape", id: shape.id };
     if (!ok(ref)) continue;
     const pts = shapeVertices(scene, shape);
     if (pts.length === 0) continue;
     if (crossing ? pts.some(inside) : pts.every(inside)) refs.push(ref);
   }
   for (const f of Object.values(scene.fixtures)) {
-    const ref: EntityRef = { type: 'fixture', id: f.id };
+    const ref: EntityRef = { type: "fixture", id: f.id };
     if (!ok(ref)) continue;
-    const corners = outline(f);
+    const corners = outline(f, levelOf(scene, f.levelId));
     if (crossing ? corners.some(inside) : corners.every(inside)) refs.push(ref);
   }
   for (const m of Object.values(scene.measurements)) {
-    const ref: EntityRef = { type: 'measurement', id: m.id };
+    const ref: EntityRef = { type: "measurement", id: m.id };
     if (!ok(ref)) continue;
     const ends = [vec(m.a.x, m.a.y), vec(m.b.x, m.b.y)];
     if (crossing ? ends.some(inside) : ends.every(inside)) refs.push(ref);
@@ -167,7 +211,7 @@ function pickShape(
   let best: { ref: EntityRef; score: number } | null = null;
   for (const shape of Object.values(scene.shapes)) {
     if (!accept(shape)) continue;
-    const ref: EntityRef = { type: 'shape', id: shape.id };
+    const ref: EntityRef = { type: "shape", id: shape.id };
     if (!ok(ref)) continue;
     const d = shapeHitTest(scene, shape, p, tolerance, scene.standard);
     if (d === null) continue;
@@ -178,13 +222,21 @@ function pickShape(
   return best?.ref ?? null;
 }
 
-function pickFilter(scene: Scene, opts: PickOptions): (ref: EntityRef) => boolean {
+function pickFilter(
+  scene: Scene,
+  opts: PickOptions,
+): (ref: EntityRef) => boolean {
   if (opts.respectLayers === false) return () => true;
   return (ref) => isSelectable(scene, ref);
 }
 
 function segmentCrossesRect(a: Vec, b: Vec, min: Vec, max: Vec): boolean {
-  const corners = [vec(min.x, min.y), vec(max.x, min.y), vec(max.x, max.y), vec(min.x, max.y)];
+  const corners = [
+    vec(min.x, min.y),
+    vec(max.x, min.y),
+    vec(max.x, max.y),
+    vec(min.x, max.y),
+  ];
   for (let i = 0; i < 4; i++) {
     if (segmentsIntersect(a, b, corners[i], corners[(i + 1) % 4])) return true;
   }

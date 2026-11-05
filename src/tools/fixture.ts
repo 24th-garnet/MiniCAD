@@ -1,4 +1,4 @@
-import { defaultAttrs } from '../core/attrs.ts';
+import { defaultAttrs } from "../core/attrs.ts";
 import {
   FIXTURE_SPECS,
   fixtureKindsOf,
@@ -8,16 +8,16 @@ import {
   type Fixture,
   type FixtureFamily,
   type FixtureKind,
-} from '../core/fixture.ts';
-import type { Vec } from '../core/geometry.ts';
-import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
-import { levelOf } from '../core/level.ts';
-import { newId } from '../core/types.ts';
-import { drawPrimitives } from '../render/primitive.ts';
-import { tracePolygon } from '../render/frame.ts';
-import { type Frame } from '../render/renderer.ts';
-import type { Editor } from '../ui/editor.ts';
-import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
+} from "../core/fixture.ts";
+import type { Vec } from "../core/geometry.ts";
+import { LAYER_IDS, resolveNewLayer } from "../core/layer.ts";
+import { levelOf } from "../core/level.ts";
+import { newId } from "../core/types.ts";
+import { drawPrimitives } from "../render/primitive.ts";
+import { tracePolygon } from "../render/frame.ts";
+import { type Frame } from "../render/renderer.ts";
+import type { Editor } from "../ui/editor.ts";
+import type { OptionField, PointerInfo, Tool, ToolId } from "./tool.ts";
 
 /**
  * `Fixture` を置くツール。**置き方がどれも同じ**（向きを決めて 1 点を打つ）なので、
@@ -40,8 +40,8 @@ export class FixtureTool implements Tool {
   readonly id: ToolId;
   readonly label: string;
   readonly shortcut: string;
-  readonly cursor = 'crosshair';
-  readonly group = 'draw' as const;
+  readonly cursor = "crosshair";
+  readonly group = "draw" as const;
 
   /** この道具が出す種別。系統で絞ってある */
   private readonly kinds: FixtureKind[];
@@ -52,7 +52,12 @@ export class FixtureTool implements Tool {
   angle = 0;
   private ghost: Fixture | null = null;
 
-  constructor(family: FixtureFamily, id: ToolId, label: string, shortcut: string) {
+  constructor(
+    family: FixtureFamily,
+    id: ToolId,
+    label: string,
+    shortcut: string,
+  ) {
     this.id = id;
     this.label = label;
     this.shortcut = shortcut;
@@ -104,7 +109,7 @@ export class FixtureTool implements Tool {
   }
 
   onKeyDown(editor: Editor, e: KeyboardEvent): boolean {
-    if (e.key === 'r' || e.key === 'R') {
+    if (e.key === "r" || e.key === "R") {
       this.angle += (Math.PI / 2) * (e.shiftKey ? -1 : 1);
       this.ghost = this.makeGhost(editor, editor.pointerWorld());
       editor.requestRender();
@@ -117,7 +122,7 @@ export class FixtureTool implements Tool {
     const scene = editor.store.scene;
     const spec = FIXTURE_SPECS[this.kind];
     return {
-      id: newId('f'),
+      id: newId("f"),
       kind: this.kind,
       x: p.x,
       y: p.y,
@@ -132,7 +137,11 @@ export class FixtureTool implements Tool {
       base: null,
       height: null,
       label: spec.defaultLabel,
-      layerId: resolveNewLayer(scene.layers, editor.store.settings.currentLayerId, spec.defaultLayer),
+      layerId: resolveNewLayer(
+        scene.layers,
+        editor.store.settings.currentLayerId,
+        spec.defaultLayer,
+      ),
       levelId: scene.activeLevelId,
       attrs: defaultAttrs(),
     };
@@ -144,38 +153,41 @@ export class FixtureTool implements Tool {
     const level = levelOf(editor.store.scene, editor.store.scene.activeLevelId);
     const fields: OptionField[] = [
       {
-        kind: 'select',
-        label: '種類',
+        kind: "select",
+        label: "種類",
         value: this.kind,
-        options: this.kinds.map((k) => ({ value: k, label: FIXTURE_SPECS[k].label })),
+        options: this.kinds.map((k) => ({
+          value: k,
+          label: FIXTURE_SPECS[k].label,
+        })),
         onChange: (v) => {
           this.kind = v as FixtureKind;
           this.ghost = this.makeGhost(editor, editor.pointerWorld());
         },
       },
       {
-        kind: 'number',
-        label: isRoundFixture(this.kind) ? '直径' : '幅',
+        kind: "number",
+        label: isRoundFixture(this.kind) ? "直径" : "幅",
         value: size.w,
         step: 50,
         min: 10,
-        suffix: 'mm',
+        suffix: "mm",
         onChange: (v) => this.setSize(this.kind, Math.max(10, v), null),
       },
     ];
     if (!isRoundFixture(this.kind)) {
       fields.push({
-        kind: 'number',
-        label: '奥行',
+        kind: "number",
+        label: "奥行",
         value: size.h,
         step: 50,
         min: 10,
-        suffix: 'mm',
+        suffix: "mm",
         onChange: (v) => this.setSize(this.kind, null, Math.max(10, v)),
       });
     }
     fields.push({
-      kind: 'note',
+      kind: "note",
       text: `高さ ${Math.round(spec.defaultHeight(level))}mm（下端 ${Math.round(spec.defaultBase(level))}mm）/ R で90°回転`,
     });
     return fields;
@@ -187,24 +199,35 @@ export class FixtureTool implements Tool {
     const { ctx } = frame;
 
     ctx.save();
-    tracePolygon(frame, outline(ghost));
-    ctx.fillStyle = 'rgba(37, 99, 235, 0.16)';
+    tracePolygon(
+      frame,
+      outline(ghost, levelOf(editor.store.scene, ghost.levelId)),
+    );
+    ctx.fillStyle = "rgba(37, 99, 235, 0.16)";
     ctx.fill();
     ctx.restore();
 
-    const layer = editor.store.scene.layers[ghost.layerId] ?? editor.store.scene.layers[LAYER_IDS.wall];
+    const layer =
+      editor.store.scene.layers[ghost.layerId] ??
+      editor.store.scene.layers[LAYER_IDS.wall];
     drawPrimitives(
       frame,
-      fixturePrimitives(ghost, editor.store.scene.standard.textHeight.furniture),
+      fixturePrimitives(
+        ghost,
+        editor.store.scene.standard.textHeight.furniture,
+        levelOf(editor.store.scene, ghost.levelId),
+      ),
       layer,
-      'rgba(37, 99, 235, 0.9)',
+      "rgba(37, 99, 235, 0.9)",
     );
   }
 
   status(): string {
     const spec = FIXTURE_SPECS[this.kind];
     const size = this.sizeOf(this.kind);
-    const text = isRoundFixture(this.kind) ? `φ${size.w}` : `${size.w}×${size.h}`;
+    const text = isRoundFixture(this.kind)
+      ? `φ${size.w}`
+      : `${size.w}×${size.h}`;
     return `${spec.label} (${text}) — クリックで配置、R で90°回転`;
   }
 }

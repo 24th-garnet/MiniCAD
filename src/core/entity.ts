@@ -1,12 +1,25 @@
-import { vec, type Bounds, type Vec } from './geometry.ts';
-import { getLayer, isBuiltinLayer, type Layer, type LayerId } from './layer.ts';
-import { nodePos, openingsOnWall, pruneOrphanNodes, wallEnds, wallsAtNode } from './ops.ts';
-import { instanceVertices } from './block.ts';
-import { openingFrame } from './shape.ts';
-import { outline } from './fixture.ts';
-import { shapeVertices } from './shapes.ts';
-import { DEFAULT_LAYER_FOR, type EntityRef, type EntityType, type Id, type Scene } from './types.ts';
-import { pruneConstraints } from './constraintOps.ts';
+import { vec, type Bounds, type Vec } from "./geometry.ts";
+import { getLayer, isBuiltinLayer, type Layer, type LayerId } from "./layer.ts";
+import {
+  nodePos,
+  openingsOnWall,
+  pruneOrphanNodes,
+  wallEnds,
+  wallsAtNode,
+} from "./ops.ts";
+import { instanceVertices } from "./block.ts";
+import { openingFrame } from "./shape.ts";
+import { outline } from "./fixture.ts";
+import { levelOf } from "./level.ts";
+import { shapeVertices } from "./shapes.ts";
+import {
+  DEFAULT_LAYER_FOR,
+  type EntityRef,
+  type EntityType,
+  type Id,
+  type Scene,
+} from "./types.ts";
+import { pruneConstraints } from "./constraintOps.ts";
 
 /**
  * エンティティ種別ごとの操作をまとめた表。
@@ -29,14 +42,15 @@ export interface EntityKind {
 
 export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   node: {
-    label: '壁の端点',
+    label: "壁の端点",
     table: (scene) => scene.nodes,
     layerIdOf: () => null,
     setLayerId: () => false,
     remove: (scene, id) => {
       if (!scene.nodes[id]) return false;
       // ノードを消すと、そこに取り付く壁は行き場がなくなる
-      for (const w of wallsAtNode(scene, id)) ENTITY_KINDS.wall.remove(scene, w.id);
+      for (const w of wallsAtNode(scene, id))
+        ENTITY_KINDS.wall.remove(scene, w.id);
       delete scene.nodes[id];
       return true;
     },
@@ -44,7 +58,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   },
 
   wall: {
-    label: '壁',
+    label: "壁",
     table: (scene) => scene.walls,
     layerIdOf: (scene, id) => scene.walls[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -66,7 +80,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   },
 
   opening: {
-    label: '建具',
+    label: "建具",
     table: (scene) => scene.openings,
     layerIdOf: (scene, id) => scene.openings[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -88,7 +102,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   },
 
   blockInstance: {
-    label: 'ブロック',
+    label: "ブロック",
     table: (scene) => scene.instances,
     layerIdOf: (scene, id) => scene.instances[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -109,7 +123,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   },
 
   shape: {
-    label: '図形',
+    label: "図形",
     table: (scene) => scene.shapes,
     layerIdOf: (scene, id) => scene.shapes[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -130,7 +144,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   },
 
   fixture: {
-    label: '構造',
+    label: "構造",
     table: (scene) => scene.fixtures,
     layerIdOf: (scene, id) => scene.fixtures[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -146,12 +160,12 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     },
     points: (scene, id) => {
       const f = scene.fixtures[id];
-      return f ? outline(f) : [];
+      return f ? outline(f, levelOf(scene, f.levelId)) : [];
     },
   },
 
   measurement: {
-    label: '計測',
+    label: "計測",
     table: (scene) => scene.measurements,
     layerIdOf: (scene, id) => scene.measurements[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -171,7 +185,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
   },
 
   roomLabel: {
-    label: '室名',
+    label: "室名",
     table: (scene) => scene.roomLabels,
     layerIdOf: (scene, id) => scene.roomLabels[id]?.layerId ?? null,
     setLayerId: (scene, id, layerId) => {
@@ -202,7 +216,7 @@ export function entityExists(scene: Scene, ref: EntityRef): boolean {
 export function layerOfRef(scene: Scene, ref: EntityRef): Layer | null {
   const layerId = ENTITY_KINDS[ref.type].layerIdOf(scene, ref.id);
   if (layerId === null) return null;
-  const fallback = DEFAULT_LAYER_FOR[ref.type as Exclude<EntityType, 'node'>];
+  const fallback = DEFAULT_LAYER_FOR[ref.type as Exclude<EntityType, "node">];
   return getLayer(scene.layers, layerId, fallback);
 }
 
@@ -211,10 +225,10 @@ export function layerOfRef(scene: Scene, ref: EntityRef): Layer | null {
  * ノードは「接続する壁のどれかが選択可能なら可」とする（ノード自身は画層を持たない）。
  */
 export function isSelectable(scene: Scene, ref: EntityRef): boolean {
-  if (ref.type === 'node') {
+  if (ref.type === "node") {
     const walls = wallsAtNode(scene, ref.id);
     if (walls.length === 0) return true;
-    return walls.some((w) => isSelectable(scene, { type: 'wall', id: w.id }));
+    return walls.some((w) => isSelectable(scene, { type: "wall", id: w.id }));
   }
   const layer = layerOfRef(scene, ref);
   return layer ? layer.visible && !layer.locked : true;
@@ -225,10 +239,10 @@ export function isSelectable(scene: Scene, ref: EntityRef): boolean {
  * 「ロックした図面にスナップして新しい線を引く」のは CAD の普通の使い方。
  */
 export function isSnappable(scene: Scene, ref: EntityRef): boolean {
-  if (ref.type === 'node') {
+  if (ref.type === "node") {
     const walls = wallsAtNode(scene, ref.id);
     if (walls.length === 0) return true;
-    return walls.some((w) => isSnappable(scene, { type: 'wall', id: w.id }));
+    return walls.some((w) => isSnappable(scene, { type: "wall", id: w.id }));
   }
   const layer = layerOfRef(scene, ref);
   return layer ? layer.visible : true;
@@ -263,7 +277,10 @@ export function sceneBounds(scene: Scene): Bounds | null {
  * `sceneBounds` と同じく `ENTITY_KINDS.points` を通るので、
  * **種別を足してもここは触らない**。
  */
-export function refsBounds(scene: Scene, refs: readonly EntityRef[]): Bounds | null {
+export function refsBounds(
+  scene: Scene,
+  refs: readonly EntityRef[],
+): Bounds | null {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -289,11 +306,12 @@ export function removeLayer(scene: Scene, id: LayerId): boolean {
   if (isBuiltinLayer(id) || !scene.layers[id]) return false;
 
   for (const type of ENTITY_TYPES) {
-    if (type === 'node') continue;
+    if (type === "node") continue;
     const kind = ENTITY_KINDS[type];
-    const fallback = DEFAULT_LAYER_FOR[type as Exclude<EntityType, 'node'>];
+    const fallback = DEFAULT_LAYER_FOR[type as Exclude<EntityType, "node">];
     for (const entityId of Object.keys(kind.table(scene))) {
-      if (kind.layerIdOf(scene, entityId) === id) kind.setLayerId(scene, entityId, fallback);
+      if (kind.layerIdOf(scene, entityId) === id)
+        kind.setLayerId(scene, entityId, fallback);
     }
   }
   delete scene.layers[id];
@@ -301,11 +319,16 @@ export function removeLayer(scene: Scene, id: LayerId): boolean {
 }
 
 /** 選択したものの画層をまとめて変える */
-export function setLayerOf(scene: Scene, refs: EntityRef[], layerId: LayerId): boolean {
+export function setLayerOf(
+  scene: Scene,
+  refs: EntityRef[],
+  layerId: LayerId,
+): boolean {
   if (!scene.layers[layerId]) return false;
   let changed = false;
   for (const ref of refs) {
-    if (ENTITY_KINDS[ref.type].setLayerId(scene, ref.id, layerId)) changed = true;
+    if (ENTITY_KINDS[ref.type].setLayerId(scene, ref.id, layerId))
+      changed = true;
   }
   return changed;
 }

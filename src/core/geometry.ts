@@ -16,9 +16,13 @@ export const dot = (a: Vec, b: Vec): number => a.x * b.x + a.y * b.y;
 export const cross = (a: Vec, b: Vec): number => a.x * b.y - a.y * b.x;
 export const lenSq = (a: Vec): number => a.x * a.x + a.y * a.y;
 export const len = (a: Vec): number => Math.hypot(a.x, a.y);
-export const dist = (a: Vec, b: Vec): number => Math.hypot(b.x - a.x, b.y - a.y);
+export const dist = (a: Vec, b: Vec): number =>
+  Math.hypot(b.x - a.x, b.y - a.y);
 export const distSq = (a: Vec, b: Vec): number => lenSq(sub(b, a));
-export const lerp = (a: Vec, b: Vec, t: number): Vec => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+export const lerp = (a: Vec, b: Vec, t: number): Vec => ({
+  x: a.x + (b.x - a.x) * t,
+  y: a.y + (b.y - a.y) * t,
+});
 export const mid = (a: Vec, b: Vec): Vec => lerp(a, b, 0.5);
 
 export function norm(a: Vec): Vec {
@@ -43,7 +47,11 @@ export interface Vec3Like {
   z: number;
 }
 
-export const vec3Like = (x: number, y: number, z: number): Vec3Like => ({ x, y, z });
+export const vec3Like = (x: number, y: number, z: number): Vec3Like => ({
+  x,
+  y,
+  z,
+});
 
 export function rotate(a: Vec, angle: number): Vec {
   const c = Math.cos(angle);
@@ -82,7 +90,12 @@ export function closestOnSegment(p: Vec, a: Vec, b: Vec): ClosestResult {
 }
 
 /** 線分 ab と線分 cd の交点。平行・非交差なら null */
-export function segmentIntersection(a: Vec, b: Vec, c: Vec, d: Vec): Vec | null {
+export function segmentIntersection(
+  a: Vec,
+  b: Vec,
+  c: Vec,
+  d: Vec,
+): Vec | null {
   const r = sub(b, a);
   const s = sub(d, c);
   const denom = cross(r, s);
@@ -94,6 +107,44 @@ export function segmentIntersection(a: Vec, b: Vec, c: Vec, d: Vec): Vec | null 
 }
 
 /** 符号付き面積。y軸上向きの世界で反時計回りなら正 */
+/**
+ * 凸包（単調連鎖）。**反時計回りで返す。**
+ *
+ * 傾いた立体を上から見た形に使う。本当の輪郭は凹むことも自己交差することも
+ * あるが、拾う処理（`pointInPolygon`）・面積（`signedArea`）・図面の範囲は
+ * **単純多角形であること**に寄りかかっている。凸包なら倒しても単純なまま。
+ *
+ * **実物より少し広く出る**（凹んだ部分も包む）。そう割り切ったうえで使う。
+ */
+export function convexHull(points: readonly Vec[]): Vec[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const uniq: Vec[] = [];
+  for (const p of sorted) {
+    const last = uniq[uniq.length - 1];
+    if (!last || dist(last, p) > 1e-9) uniq.push(p);
+  }
+  if (uniq.length < 3) return uniq;
+
+  // 左へ曲がらない点を捨てながら積む。これを往復させると凸包になる
+  const half = (src: Vec[]): Vec[] => {
+    const out: Vec[] = [];
+    for (const p of src) {
+      while (out.length >= 2) {
+        const a = out[out.length - 2];
+        const b = out[out.length - 1];
+        if (cross(sub(b, a), sub(p, a)) > 1e-12) break;
+        out.pop();
+      }
+      out.push(p);
+    }
+    return out;
+  };
+  const lower = half(uniq);
+  const upper = half([...uniq].reverse());
+  // 両端は次の半分の先頭と重なるので落とす
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
 export function signedArea(pts: Vec[]): number {
   let s = 0;
   for (let i = 0; i < pts.length; i++) {
@@ -128,7 +179,10 @@ export function pointInPolygon(p: Vec, pts: Vec[]): boolean {
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
     const a = pts[i];
     const b = pts[j];
-    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+    if (
+      a.y > p.y !== b.y > p.y &&
+      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x
+    ) {
       inside = !inside;
     }
   }
@@ -156,10 +210,17 @@ export function boundsOf(pts: Vec[]): Bounds | null {
 }
 
 /** 回転した矩形の4隅（中心・サイズ・角度から） */
-export function rectCorners(center: Vec, w: number, h: number, angle: number): Vec[] {
+export function rectCorners(
+  center: Vec,
+  w: number,
+  h: number,
+  angle: number,
+): Vec[] {
   const hw = w / 2;
   const hh = h / 2;
-  return [vec(-hw, -hh), vec(hw, -hh), vec(hw, hh), vec(-hw, hh)].map((p) => add(center, rotate(p, angle)));
+  return [vec(-hw, -hh), vec(hw, -hh), vec(hw, hh), vec(-hw, hh)].map((p) =>
+    add(center, rotate(p, angle)),
+  );
 }
 
 export const EPS = 1e-9;
@@ -175,7 +236,12 @@ export interface LineHit {
  * 直線 ab と直線 cd の交点。
  * `segmentIntersection` は線分に限るので、延長やトリムには使えない。
  */
-export function lineLineIntersection(a: Vec, b: Vec, c: Vec, d: Vec): LineHit | null {
+export function lineLineIntersection(
+  a: Vec,
+  b: Vec,
+  c: Vec,
+  d: Vec,
+): LineHit | null {
   const r = sub(b, a);
   const s = sub(d, c);
   const denom = cross(r, s);
@@ -211,11 +277,19 @@ export function arcContainsAngle(arc: Arc, angle: number): boolean {
 }
 
 export function arcPoint(arc: Arc, angle: number): Vec {
-  return add(arc.center, vec(Math.cos(angle) * arc.radius, Math.sin(angle) * arc.radius));
+  return add(
+    arc.center,
+    vec(Math.cos(angle) * arc.radius, Math.sin(angle) * arc.radius),
+  );
 }
 
 /** 直線 ab と円の交点。接する場合は1点だけ返す */
-export function lineCircleIntersection(a: Vec, b: Vec, center: Vec, radius: number): { point: Vec; t: number }[] {
+export function lineCircleIntersection(
+  a: Vec,
+  b: Vec,
+  center: Vec,
+  radius: number,
+): { point: Vec; t: number }[] {
   const d = sub(b, a);
   const f = sub(a, center);
   const A = lenSq(d);
@@ -229,10 +303,18 @@ export function lineCircleIntersection(a: Vec, b: Vec, center: Vec, radius: numb
     return [{ point: add(a, mul(d, t)), t }];
   }
   const root = Math.sqrt(disc);
-  return [(-B - root) / (2 * A), (-B + root) / (2 * A)].map((t) => ({ point: add(a, mul(d, t)), t }));
+  return [(-B - root) / (2 * A), (-B + root) / (2 * A)].map((t) => ({
+    point: add(a, mul(d, t)),
+    t,
+  }));
 }
 
-export function circleCircleIntersection(c1: Vec, r1: number, c2: Vec, r2: number): Vec[] {
+export function circleCircleIntersection(
+  c1: Vec,
+  r1: number,
+  c2: Vec,
+  r2: number,
+): Vec[] {
   const d = dist(c1, c2);
   if (d < 1e-9 || d > r1 + r2 + 1e-9 || d < Math.abs(r1 - r2) - 1e-9) return [];
   const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
@@ -256,7 +338,11 @@ export function offsetSegment(a: Vec, b: Vec, d: number): [Vec, Vec] {
  * 自己交差の除去はしない。退化したら null を返して潔く諦める。
  * 本格的な CAD のオフセット（ループ除去つき）とは別物だと割り切っている。
  */
-export function offsetPolyline(points: Vec[], d: number, closed: boolean): Vec[] | null {
+export function offsetPolyline(
+  points: Vec[],
+  d: number,
+  closed: boolean,
+): Vec[] | null {
   if (points.length < 2) return null;
   const edges: { a: Vec; b: Vec }[] = [];
   for (let i = 0; i + 1 < points.length; i++) {
@@ -272,7 +358,9 @@ export function offsetPolyline(points: Vec[], d: number, closed: boolean): Vec[]
 
   const out: Vec[] = [];
   for (let i = 0; i < points.length; i++) {
-    const incoming = closed ? edges[(i - 1 + edges.length) % edges.length] : edges[i - 1];
+    const incoming = closed
+      ? edges[(i - 1 + edges.length) % edges.length]
+      : edges[i - 1];
     const outgoing = closed ? edges[i % edges.length] : edges[i];
     if (!incoming) {
       out.push(outgoing.a);
@@ -282,7 +370,12 @@ export function offsetPolyline(points: Vec[], d: number, closed: boolean): Vec[]
       out.push(incoming.b);
       continue;
     }
-    const hit = lineLineIntersection(incoming.a, incoming.b, outgoing.a, outgoing.b);
+    const hit = lineLineIntersection(
+      incoming.a,
+      incoming.b,
+      outgoing.a,
+      outgoing.b,
+    );
     // 平行な2辺（直線が続いているだけ）は交点が出ないので、そのまま繋ぐ
     out.push(hit ? hit.point : outgoing.a);
   }
@@ -304,7 +397,12 @@ export function arcPointAt(center: Vec, radius: number, angle: number): Vec {
 }
 
 /** 円弧を折れ線に。`sweep` は符号つきで、負なら時計回り */
-export function arcPolyline(center: Vec, radius: number, start: number, sweep: number): Vec[] {
+export function arcPolyline(
+  center: Vec,
+  radius: number,
+  start: number,
+  sweep: number,
+): Vec[] {
   const steps = Math.max(2, Math.ceil(Math.abs(sweep) / ARC_STEP));
   const points: Vec[] = [];
   for (let i = 0; i <= steps; i++) {
@@ -337,7 +435,9 @@ export function ellipsePoints(
     const a = startParam + (sweep * i) / steps;
     const x = major * Math.cos(a);
     const y = major * ratio * Math.sin(a);
-    points.push(vec(center.x + x * cos - y * sin, center.y + x * sin + y * cos));
+    points.push(
+      vec(center.x + x * cos - y * sin, center.y + x * sin + y * cos),
+    );
   }
   if (full) points.pop();
   return points;
@@ -349,7 +449,11 @@ export function ellipsePoints(
  * 2 本の弦の垂直二等分線の交点。`lineLineIntersection` が無限直線どうしの
  * 交点を返すので、そこへ投げるだけで済む。
  */
-export function circleThrough(a: Vec, b: Vec, c: Vec): { center: Vec; radius: number } | null {
+export function circleThrough(
+  a: Vec,
+  b: Vec,
+  c: Vec,
+): { center: Vec; radius: number } | null {
   const m1 = mid(a, b);
   const m2 = mid(b, c);
   const n1 = perp(sub(b, a));
@@ -363,7 +467,12 @@ export function circleThrough(a: Vec, b: Vec, c: Vec): { center: Vec; radius: nu
  * 2 点を通り、半径が決まった円の中心。2 つあるうち `left` が真なら
  * 進行方向の左側を返す。半径が足りなければ null。
  */
-export function centerFromChord(a: Vec, b: Vec, radius: number, left: boolean): Vec | null {
+export function centerFromChord(
+  a: Vec,
+  b: Vec,
+  radius: number,
+  left: boolean,
+): Vec | null {
   const half = dist(a, b) / 2;
   if (half < 1e-9 || radius < half) return null;
   const out = Math.sqrt(Math.max(0, radius * radius - half * half));
@@ -372,10 +481,16 @@ export function centerFromChord(a: Vec, b: Vec, radius: number, left: boolean): 
 }
 
 /** 正多角形の頂点。`angle` は最初の頂点の向き */
-export function regularPolygonPoints(center: Vec, radius: number, sides: number, angle: number): Vec[] {
+export function regularPolygonPoints(
+  center: Vec,
+  radius: number,
+  sides: number,
+  angle: number,
+): Vec[] {
   const n = Math.max(3, Math.round(sides));
   const out: Vec[] = [];
-  for (let i = 0; i < n; i++) out.push(arcPointAt(center, radius, angle + (Math.PI * 2 * i) / n));
+  for (let i = 0; i < n; i++)
+    out.push(arcPointAt(center, radius, angle + (Math.PI * 2 * i) / n));
   return out;
 }
 
@@ -402,7 +517,8 @@ export const SPLINE_STEPS = 12;
  */
 export function splinePoints(control: Vec[]): Vec[] {
   if (control.length < 3) return control;
-  const at = (i: number): Vec => control[Math.max(0, Math.min(control.length - 1, i))];
+  const at = (i: number): Vec =>
+    control[Math.max(0, Math.min(control.length - 1, i))];
   const out: Vec[] = [control[0]];
   for (let i = 0; i < control.length - 1; i++) {
     const p0 = at(i - 1);
@@ -414,7 +530,11 @@ export function splinePoints(control: Vec[]): Vec[] {
       const t2 = t * t;
       const t3 = t2 * t;
       const f = (w: number, x: number, y: number, z: number): number =>
-        0.5 * ((2 * x) + (y - w) * t + (2 * w - 5 * x + 4 * y - z) * t2 + (-w + 3 * x - 3 * y + z) * t3);
+        0.5 *
+        (2 * x +
+          (y - w) * t +
+          (2 * w - 5 * x + 4 * y - z) * t2 +
+          (-w + 3 * x - 3 * y + z) * t3);
       out.push(vec(f(p0.x, p1.x, p2.x, p3.x), f(p0.y, p1.y, p2.y, p3.y)));
     }
   }

@@ -10,16 +10,22 @@ import {
   sub,
   vec,
   type Vec,
-} from '../core/geometry.ts';
-import { isSnappable } from '../core/entity.ts';
-import { colorOf } from '../core/material.ts';
-import { wallEnds } from '../core/ops.ts';
-import { CONSTRAINT_SPECS } from '../core/constraints.ts';
-import { LAYER_IDS } from '../core/layer.ts';
-import { toTatami } from '../core/rooms.ts';
+} from "../core/geometry.ts";
+import { isSnappable } from "../core/entity.ts";
+import { colorOf } from "../core/material.ts";
+import { wallEnds } from "../core/ops.ts";
+import { CONSTRAINT_SPECS } from "../core/constraints.ts";
+import { LAYER_IDS } from "../core/layer.ts";
+import { toTatami } from "../core/rooms.ts";
 
-import { openingFrame, openingJambs, openingQuad, wallOutline, wallQuad } from '../core/shape.ts';
-import { openingPrimitives } from '../core/opening.ts';
+import {
+  openingFrame,
+  openingJambs,
+  openingQuad,
+  wallOutline,
+  wallQuad,
+} from "../core/shape.ts";
+import { openingPrimitives } from "../core/opening.ts";
 import {
   blockOf,
   instanceLabel,
@@ -27,14 +33,15 @@ import {
   instanceSize,
   instanceVertices,
   labelFits,
-} from '../core/block.ts';
-import { bayPrimitives, hasBay } from '../core/bay.ts';
-import { distanceOf, planMid } from '../core/annotation.ts';
-import { fixturePrimitives } from '../core/fixture.ts';
-import { shapePrimitives } from '../core/shapes.ts';
-import { sheetPrimitives } from '../core/sheet.ts';
-import { fontOf, theme } from './theme.ts';
-import { drawPrimitives } from './primitive.ts';
+} from "../core/block.ts";
+import { bayPrimitives, hasBay } from "../core/bay.ts";
+import { distanceOf, planMid } from "../core/annotation.ts";
+import { fixturePrimitives } from "../core/fixture.ts";
+import { levelOf } from "../core/level.ts";
+import { shapePrimitives } from "../core/shapes.ts";
+import { sheetPrimitives } from "../core/sheet.ts";
+import { fontOf, theme } from "./theme.ts";
+import { drawPrimitives } from "./primitive.ts";
 import {
   applyLayer,
   layerFor,
@@ -44,11 +51,9 @@ import {
   textPx,
   tracePolygon,
   type Frame,
-} from './frame.ts';
+} from "./frame.ts";
 
 export { refKey, type Frame };
-
-
 
 export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   const { ctx, vp } = frame;
@@ -109,11 +114,21 @@ function drawGrid(frame: Frame): void {
 
   for (let x = x0; x <= bounds.max.x; x += step) {
     const isMajor = Math.abs(x % major) < step / 2;
-    line(vec(x, bounds.min.y), vec(x, bounds.max.y), isMajor ? theme.gridMajor : theme.gridMinor, 1);
+    line(
+      vec(x, bounds.min.y),
+      vec(x, bounds.max.y),
+      isMajor ? theme.gridMajor : theme.gridMinor,
+      1,
+    );
   }
   for (let y = y0; y <= bounds.max.y; y += step) {
     const isMajor = Math.abs(y % major) < step / 2;
-    line(vec(bounds.min.x, y), vec(bounds.max.x, y), isMajor ? theme.gridMajor : theme.gridMinor, 1);
+    line(
+      vec(bounds.min.x, y),
+      vec(bounds.max.x, y),
+      isMajor ? theme.gridMajor : theme.gridMinor,
+      1,
+    );
   }
 
   line(vec(bounds.min.x, 0), vec(bounds.max.x, 0), theme.axis, 1.5);
@@ -132,12 +147,12 @@ function drawSheet(frame: Frame): void {
 
 // --- 部屋 ---
 
-
 function drawRooms(frame: Frame): void {
   const { ctx, rooms } = frame;
   ctx.setLineDash([]);
   for (const room of rooms) {
-    const poly = room.innerPolygon.length >= 3 ? room.innerPolygon : room.polygon;
+    const poly =
+      room.innerPolygon.length >= 3 ? room.innerPolygon : room.polygon;
     tracePolygon(frame, poly);
     ctx.fillStyle = theme.roomFill;
     ctx.fill();
@@ -158,8 +173,8 @@ function drawRoomLabels(frame: Frame): void {
     const c = vp.toScreen(room.center);
     const area = settings.innerArea ? room.innerArea : room.area;
     if (vp.toScreenLength(Math.sqrt(area * 1e6)) < 44) continue;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     const nameSize = textPx(std.textHeight.room);
     const areaSize = textPx(std.textHeight.area);
     if (room.name) {
@@ -197,9 +212,9 @@ function drawWalls(frame: Frame): void {
     if (!layer.visible) continue;
     const accent = selected.has(`wall:${wall.id}`)
       ? theme.wallSelected
-      : hover?.type === 'wall' && hover.id === wall.id
+      : hover?.type === "wall" && hover.id === wall.id
         ? theme.wallHover
-        : colorOf(scene, { type: 'wall', id: wall.id });
+        : colorOf(scene, { type: "wall", id: wall.id });
     // **床に着かない壁は塗らない。** 切断面より上にあるものなので、
     // 塗りつぶすと床に着く壁と見分けが付かない
     if (wall.base > 0) {
@@ -209,7 +224,10 @@ function drawWalls(frame: Frame): void {
     // 紙の色で埋めるぶんは不透明のまま。透かすのは画層の中身であって、
     // 下の部屋塗りを隠す下地ではない
     ctx.globalAlpha = fill ? layer.opacity : 1;
-    fillQuad(wallQuad(scene, wall), fill ? (accent ?? layer.color) : theme.paper);
+    fillQuad(
+      wallQuad(scene, wall),
+      fill ? (accent ?? layer.color) : theme.paper,
+    );
     ctx.globalAlpha = 1;
   }
 
@@ -229,15 +247,14 @@ function drawWalls(frame: Frame): void {
     if (!layer.visible) continue;
     const accent = selected.has(`wall:${wall.id}`)
       ? theme.wallSelected
-      : hover?.type === 'wall' && hover.id === wall.id
+      : hover?.type === "wall" && hover.id === wall.id
         ? theme.wallHover
-        : colorOf(scene, { type: 'wall', id: wall.id });
-    applyLayer(frame, layer, accent, wall.base > 0 ? 'hidden' : undefined);
+        : colorOf(scene, { type: "wall", id: wall.id });
+    applyLayer(frame, layer, accent, wall.base > 0 ? "hidden" : undefined);
     strokeSegments(frame, wallOutline(scene, wall));
   }
   ctx.setLineDash([]);
 }
-
 
 // --- 開口部（ドア・窓）---
 
@@ -250,22 +267,21 @@ function drawOpenings(frame: Frame): void {
     if (!f) continue;
     const accent = selected.has(`opening:${op.id}`)
       ? theme.wallSelected
-      : hover?.type === 'opening' && hover.id === op.id
+      : hover?.type === "opening" && hover.id === op.id
         ? theme.wallHover
-        : colorOf(scene, { type: 'opening', id: op.id });
+        : colorOf(scene, { type: "opening", id: op.id });
 
     // 小口（ジャム）は壁の幾何なので記号の表には入れない
     applyLayer(frame, layer, accent);
     strokeSegments(frame, openingJambs(f));
 
     // 出窓・ニッチの張り出しは壁の幾何なので、記号とは別に出す
-    if (hasBay(op)) drawPrimitives(frame, bayPrimitives(f, op.bay!), layer, accent);
+    if (hasBay(op))
+      drawPrimitives(frame, bayPrimitives(f, op.bay!), layer, accent);
 
     drawPrimitives(frame, openingPrimitives(scene, op), layer, accent);
   }
 }
-
-
 
 // --- ブロックの挿入 ---
 
@@ -286,7 +302,7 @@ function drawInstances(frame: Frame): void {
     const isSelected = selected.has(`blockInstance:${inst.id}`);
     const accent = isSelected
       ? theme.furnitureSelected
-      : hover?.type === 'blockInstance' && hover.id === inst.id
+      : hover?.type === "blockInstance" && hover.id === inst.id
         ? theme.wallHover
         : null;
 
@@ -301,7 +317,10 @@ function drawInstances(frame: Frame): void {
     const size = instanceSize(def, inst);
     const label = instanceLabel(scene, inst);
     const textSize = textPx(std.textHeight.furniture);
-    if (labelFits(label, size, vp.toWorldLength(textSize)) && vp.toScreenLength(Math.min(size.w, size.h)) > textSize) {
+    if (
+      labelFits(label, size, vp.toWorldLength(textSize)) &&
+      vp.toScreenLength(Math.min(size.w, size.h)) > textSize
+    ) {
       const c = vp.toScreen(vec(inst.x, inst.y));
       ctx.save();
       ctx.setLineDash([]);
@@ -309,8 +328,8 @@ function drawInstances(frame: Frame): void {
       ctx.rotate(-normalizeTextAngle(inst.angle));
       ctx.font = fontOf(textSize);
       ctx.fillStyle = theme.furnitureText;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       ctx.fillText(label, 0, 0);
       ctx.restore();
     }
@@ -330,10 +349,19 @@ function drawFixtures(frame: Frame): void {
     if (!layer.visible) continue;
     const accent = selected.has(`fixture:${f.id}`)
       ? theme.wallSelected
-      : hover?.type === 'fixture' && hover.id === f.id
+      : hover?.type === "fixture" && hover.id === f.id
         ? theme.wallHover
-        : colorOf(scene, { type: 'fixture', id: f.id });
-    drawPrimitives(frame, fixturePrimitives(f, scene.standard.textHeight.furniture), layer, accent);
+        : colorOf(scene, { type: "fixture", id: f.id });
+    drawPrimitives(
+      frame,
+      fixturePrimitives(
+        f,
+        scene.standard.textHeight.furniture,
+        levelOf(scene, f.levelId),
+      ),
+      layer,
+      accent,
+    );
   }
 }
 
@@ -344,13 +372,17 @@ function drawShapes(frame: Frame): void {
     if (!layer.visible) continue;
     const accent = selected.has(`shape:${s.id}`)
       ? theme.wallSelected
-      : hover?.type === 'shape' && hover.id === s.id
+      : hover?.type === "shape" && hover.id === s.id
         ? theme.wallHover
-        : colorOf(scene, { type: 'shape', id: s.id });
-    drawPrimitives(frame, shapePrimitives(scene, s, scene.standard), layer, accent);
+        : colorOf(scene, { type: "shape", id: s.id });
+    drawPrimitives(
+      frame,
+      shapePrimitives(scene, s, scene.standard),
+      layer,
+      accent,
+    );
   }
 }
-
 
 // --- 計測 ---
 
@@ -369,9 +401,9 @@ function drawMeasurements(frame: Frame): void {
     if (!layer.visible) continue;
     const accent = selected.has(`measurement:${m.id}`)
       ? theme.wallSelected
-      : hover?.type === 'measurement' && hover.id === m.id
+      : hover?.type === "measurement" && hover.id === m.id
         ? theme.wallHover
-        : colorOf(scene, { type: 'measurement', id: m.id });
+        : colorOf(scene, { type: "measurement", id: m.id });
     const color = accent ?? theme.snap;
     const sa = vp.toScreen(vec(m.a.x, m.a.y));
     const sb = vp.toScreen(vec(m.b.x, m.b.y));
@@ -393,19 +425,20 @@ function drawMeasurements(frame: Frame): void {
 
     // **手入力なら、そうと分かるように出す。** 測った値と聞いた値を
     // 同じ見た目にすると、どちらか分からなくなる
-    const text = `${Math.round(distanceOf(m))} mm${m.manual !== null ? '（手入力）' : ''}`
-      + (m.note ? `  ${m.note}` : '');
+    const text =
+      `${Math.round(distanceOf(m))} mm${m.manual !== null ? "（手入力）" : ""}` +
+      (m.note ? `  ${m.note}` : "");
     const c = vp.toScreen(planMid(m));
     ctx.font = fontOf(12);
     const w = ctx.measureText(text).width;
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
     ctx.fillRect(c.x - w / 2 - 6, c.y - 24, w + 12, 19);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     ctx.strokeRect(c.x - w / 2 - 6, c.y - 24, w + 12, 19);
     ctx.fillStyle = theme.dimensionText;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(text, c.x, c.y - 14.5);
   }
   ctx.restore();
@@ -428,18 +461,18 @@ function drawComments(frame: Frame): void {
 
   ctx.save();
   ctx.font = fontOf(11);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   comments.forEach((c, i) => {
     const p = vp.toScreen(vec(c.at.x, c.at.y));
     ctx.beginPath();
     ctx.arc(p.x, p.y, COMMENT_BADGE_R, 0, Math.PI * 2);
     ctx.fillStyle = theme.commentBadge;
     ctx.fill();
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = "#fff";
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = "#fff";
     ctx.fillText(String(i + 1), p.x, p.y + 0.5);
   });
   ctx.restore();
@@ -452,16 +485,20 @@ function drawNodes(frame: Frame): void {
   const r = 3.5;
   ctx.setLineDash([]);
   for (const n of Object.values(scene.nodes)) {
-    if (!isSnappable(scene, { type: 'node', id: n.id })) continue;
+    if (!isSnappable(scene, { type: "node", id: n.id })) continue;
     const isSelected = selected.has(`node:${n.id}`);
-    const isHover = hover?.type === 'node' && hover.id === n.id;
+    const isHover = hover?.type === "node" && hover.id === n.id;
     if (!isSelected && !isHover && vp.scale < 0.02) continue;
     const s = vp.toScreen(vec(n.x, n.y));
     ctx.beginPath();
     ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
     ctx.fillStyle = isSelected ? theme.nodeSelected : theme.node;
     ctx.fill();
-    ctx.strokeStyle = isSelected ? theme.nodeSelected : isHover ? theme.wallSelected : theme.nodeStroke;
+    ctx.strokeStyle = isSelected
+      ? theme.nodeSelected
+      : isHover
+        ? theme.wallSelected
+        : theme.nodeStroke;
     ctx.lineWidth = isHover || isSelected ? 2 : 1;
     ctx.stroke();
   }
@@ -489,11 +526,13 @@ function drawConstraints(frame: Frame): void {
   ctx.save();
   ctx.setLineDash([]);
   ctx.font = fontOf(11, 600);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
 
   for (const c of all) {
-    ctx.fillStyle = violated.has(c.id) ? theme.constraintConflict : theme.constraint;
+    ctx.fillStyle = violated.has(c.id)
+      ? theme.constraintConflict
+      : theme.constraint;
     // 平行・直角は2本の壁の関係なので、両方に同じ記号を出す。でないと相手が分からない
     for (const wallId of c.walls) {
       const wall = scene.walls[wallId];
@@ -507,7 +546,11 @@ function drawConstraints(frame: Frame): void {
 
       const s = vp.toScreen(vec((a.x + b.x) / 2, (a.y + b.y) / 2));
       // 法線方向に 14px ずつ重ねる。画面は y 下向きなので符号を反転する
-      ctx.fillText(CONSTRAINT_SPECS[c.kind].glyph, s.x + n.x * 14 * (slot + 1), s.y - n.y * 14 * (slot + 1));
+      ctx.fillText(
+        CONSTRAINT_SPECS[c.kind].glyph,
+        s.x + n.x * 14 * (slot + 1),
+        s.y - n.y * 14 * (slot + 1),
+      );
     }
   }
   ctx.restore();
@@ -528,14 +571,19 @@ export function drawSnapMarker(frame: Frame, p: Vec, label: string): void {
   if (label) {
     ctx.font = fontOf(11);
     ctx.fillStyle = theme.snap;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
     ctx.fillText(label, s.x + 9, s.y - 7);
   }
   ctx.restore();
 }
 
-export function drawPreviewWall(frame: Frame, a: Vec, b: Vec, thickness: number): void {
+export function drawPreviewWall(
+  frame: Frame,
+  a: Vec,
+  b: Vec,
+  thickness: number,
+): void {
   const { ctx, vp } = frame;
   const d = norm(sub(b, a));
   if (d.x === 0 && d.y === 0) return;
@@ -543,7 +591,7 @@ export function drawPreviewWall(frame: Frame, a: Vec, b: Vec, thickness: number)
   ctx.save();
   ctx.setLineDash([]);
   tracePolygon(frame, [add(a, n), add(b, n), sub(b, n), sub(a, n)]);
-  ctx.fillStyle = 'rgba(37, 99, 235, 0.25)';
+  ctx.fillStyle = "rgba(37, 99, 235, 0.25)";
   ctx.fill();
   ctx.strokeStyle = theme.preview;
   ctx.lineWidth = 1.5;
@@ -555,27 +603,39 @@ export function drawPreviewWall(frame: Frame, a: Vec, b: Vec, thickness: number)
   const s = vp.toScreen(mid(a, b));
   const text = `${Math.round(lengthMm)} mm  ${angle.toFixed(1)}°`;
   ctx.font = fontOf(12);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
   const w = ctx.measureText(text).width;
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.fillRect(s.x - w / 2 - 5, s.y - 22, w + 10, 18);
   ctx.fillStyle = theme.preview;
   ctx.fillText(text, s.x, s.y - 6);
   ctx.restore();
 }
 
-export function drawPreviewRect(frame: Frame, a: Vec, b: Vec, crossing: boolean): void {
+export function drawPreviewRect(
+  frame: Frame,
+  a: Vec,
+  b: Vec,
+  crossing: boolean,
+): void {
   const { ctx, vp } = frame;
   const sa = vp.toScreen(a);
   const sb = vp.toScreen(b);
   ctx.save();
   ctx.fillStyle = crossing ? theme.crossingRect : theme.selectionRect;
-  ctx.strokeStyle = crossing ? theme.crossingRectStroke : theme.selectionRectStroke;
+  ctx.strokeStyle = crossing
+    ? theme.crossingRectStroke
+    : theme.selectionRectStroke;
   ctx.lineWidth = 1;
   ctx.setLineDash(crossing ? [5, 3] : []);
   ctx.beginPath();
-  ctx.rect(Math.min(sa.x, sb.x), Math.min(sa.y, sb.y), Math.abs(sb.x - sa.x), Math.abs(sb.y - sa.y));
+  ctx.rect(
+    Math.min(sa.x, sb.x),
+    Math.min(sa.y, sb.y),
+    Math.abs(sb.x - sa.x),
+    Math.abs(sb.y - sa.y),
+  );
   ctx.fill();
   ctx.stroke();
   ctx.restore();

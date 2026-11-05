@@ -12,10 +12,11 @@ import {
   sub,
   vec,
   type Vec,
-} from './geometry.ts';
-import { nodePos } from './ops.ts';
-import { FIXTURE_SPECS, outline } from './fixture.ts';
-import type { Id, Room, Scene } from './types.ts';
+} from "./geometry.ts";
+import { nodePos } from "./ops.ts";
+import { FIXTURE_SPECS, outline } from "./fixture.ts";
+import { levelOf } from "./level.ts";
+import type { Id, Room, Scene } from "./types.ts";
 
 interface HalfEdge {
   key: string;
@@ -116,7 +117,9 @@ export function detectRooms(scene: Scene): Room[] {
     if (area <= 1e-3) continue;
 
     const wallIds = cycle.map((he) => he.wallId);
-    const thicknesses = cycle.map((he) => scene.walls[he.wallId]?.thickness ?? 0);
+    const thicknesses = cycle.map(
+      (he) => scene.walls[he.wallId]?.thickness ?? 0,
+    );
     const innerPolygon = offsetInward(polygon, thicknesses);
     const innerArea = Math.abs(signedArea(innerPolygon));
     const voidArea = voidAreaIn(scene, innerPolygon);
@@ -155,7 +158,7 @@ function voidAreaIn(scene: Scene, innerPolygon: Vec[]): number {
   for (const f of Object.values(scene.fixtures)) {
     if (!FIXTURE_SPECS[f.kind].floorHole) continue; // 天窓は立体にならないが、抜くのは屋根
     if (!pointInPolygon(vec(f.x, f.y), innerPolygon)) continue;
-    total += Math.abs(signedArea(outline(f)));
+    total += Math.abs(signedArea(outline(f, levelOf(scene, f.levelId))));
   }
   return total;
 }
@@ -210,7 +213,12 @@ function attachLabels(scene: Scene, rooms: Room[]): void {
  * 法線側に部屋があれば反対側（＝室外）へ、なければ法線側へ出す。
  * これで外壁の寸法は建物の外、間仕切りの寸法は片側に揃う。
  */
-export function dimensionSide(rooms: Room[], at: Vec, normal: Vec, probe: number): number {
+export function dimensionSide(
+  rooms: Room[],
+  at: Vec,
+  normal: Vec,
+  probe: number,
+): number {
   const front = add(at, mul(normal, probe));
   const back = sub(at, mul(normal, probe));
   const frontInside = rooms.some((r) => pointInPolygon(front, r.polygon));
@@ -221,7 +229,9 @@ export function dimensionSide(rooms: Room[], at: Vec, normal: Vec, probe: number
 
 /** 点を含む部屋のうち最も小さいもの */
 export function roomAt(rooms: Room[], p: Vec): Room | null {
-  const hits = rooms.filter((r) => pointInPolygon(p, r.polygon)).sort((a, b) => a.area - b.area);
+  const hits = rooms
+    .filter((r) => pointInPolygon(p, r.polygon))
+    .sort((a, b) => a.area - b.area);
   return hits[0] ?? null;
 }
 

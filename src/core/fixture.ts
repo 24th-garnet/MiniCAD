@@ -1,14 +1,23 @@
-import type { Attrs } from './attrs.ts';
-import { add, rotate, signedArea, vec, vec3Like, type Vec, type Vec3Like } from './geometry.ts';
-import type { Id } from './id.ts';
-import { LAYER_IDS, type LayerId } from './layer.ts';
-import type { Level } from './level.ts';
-import type { Primitive } from './primitive.ts';
-import type { Segment } from './shape.ts';
-import type { SnapKind } from './snap.ts';
-import { ALL_USES, type Use } from './use.ts';
-import type { FixtureCombine } from './combine.ts';
-import type { FixtureEdge } from './edge3d.ts';
+import type { Attrs } from "./attrs.ts";
+import {
+  add,
+  convexHull,
+  rotate,
+  signedArea,
+  vec,
+  vec3Like,
+  type Vec,
+  type Vec3Like,
+} from "./geometry.ts";
+import type { Id } from "./id.ts";
+import { LAYER_IDS, type LayerId } from "./layer.ts";
+import { defaultLevel, type Level } from "./level.ts";
+import type { Primitive } from "./primitive.ts";
+import type { Segment } from "./shape.ts";
+import type { SnapKind } from "./snap.ts";
+import { ALL_USES, type Use } from "./use.ts";
+import type { FixtureCombine } from "./combine.ts";
+import type { FixtureEdge } from "./edge3d.ts";
 
 /**
  * 構造物。柱・梁・階段・スロープ・吹抜のように、**平面の footprint と
@@ -30,15 +39,28 @@ import type { FixtureEdge } from './edge3d.ts';
  * `Record<FixtureKind, …>` なので、種別を足して書き忘れれば型検査が止まる。
  */
 export const FIXTURE_KINDS = [
-  'column', 'roundColumn', 'beam',
-  'stair', 'stairU', 'stairL', 'stairWinder',
-  'slope', 'void', 'skylight',
+  "column",
+  "roundColumn",
+  "beam",
+  "stair",
+  "stairU",
+  "stairL",
+  "stairWinder",
+  "slope",
+  "void",
+  "skylight",
   // 汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）。
   // **柱と円柱の一般化**で、新しい描画の仕組みは要らない
-  'box', 'prism', 'cylinder', 'cylinderH', 'cone', 'sphere', 'dome',
+  "box",
+  "prism",
+  "cylinder",
+  "cylinderH",
+  "cone",
+  "sphere",
+  "dome",
   // 押し出し。**パレットには出ない**——閉じた図形から起こすものなので、
   // 置き方が他と違う（`FixtureFamily` の `derived`）
-  'extrusion',
+  "extrusion",
 ] as const;
 
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
@@ -56,12 +78,12 @@ export type FixtureKind = (typeof FIXTURE_KINDS)[number];
  * どちらの系統も同じ道を通る。モードの判断を `core/` に持ち込まないために、
  * 「プロ専用か」ではなく「何の仲間か」で書いてある。
  */
-export type FixtureFamily = 'structure' | 'solid' | 'derived';
+export type FixtureFamily = "structure" | "solid" | "derived";
 
 const FIXTURE_KIND_SET: ReadonlySet<string> = new Set<string>(FIXTURE_KINDS);
 
 export const isFixtureKind = (v: unknown): v is FixtureKind =>
-  typeof v === 'string' && FIXTURE_KIND_SET.has(v);
+  typeof v === "string" && FIXTURE_KIND_SET.has(v);
 
 export interface Fixture {
   id: Id;
@@ -218,8 +240,12 @@ const lOutline = (size: { w: number; h: number }): Vec[] => {
   const hh = size.h / 2;
   const leg = Math.min(size.w, size.h) / 2;
   return [
-    vec(-hw, -hh), vec(-hw + leg, -hh), vec(-hw + leg, hh - leg),
-    vec(hw, hh - leg), vec(hw, hh), vec(-hw, hh),
+    vec(-hw, -hh),
+    vec(-hw + leg, -hh),
+    vec(-hw + leg, hh - leg),
+    vec(hw, hh - leg),
+    vec(hw, hh),
+    vec(-hw, hh),
   ];
 };
 
@@ -231,7 +257,7 @@ function crossGlyph(f: Fixture): Primitive[] {
     { a: p[0], b: p[2] },
     { a: p[1], b: p[3] },
   ];
-  return [{ kind: 'segments', segments }];
+  return [{ kind: "segments", segments }];
 }
 
 /**
@@ -249,15 +275,19 @@ function stepGlyph(f: Fixture): Primitive[] {
   const { treads, guides } = stairTreads(f.kind, f.size);
   const at = (p: Vec): Vec => toWorld(f, p);
   const segments: Segment[] = [];
-  for (const t of treads) if (t.riser) segments.push({ a: at(t.riser[0]), b: at(t.riser[1]) });
+  for (const t of treads)
+    if (t.riser) segments.push({ a: at(t.riser[0]), b: at(t.riser[1]) });
   for (const g of guides) segments.push({ a: at(g[0]), b: at(g[1]) });
 
   const path = [
     at(centroid(treads[0].poly)),
-    ...treads.flatMap((t) => (t.riser ? [at(mid(t.riser[0], t.riser[1]))] : [])),
+    ...treads.flatMap((t) =>
+      t.riser ? [at(mid(t.riser[0], t.riser[1]))] : [],
+    ),
     at(centroid(treads[treads.length - 1].poly)),
   ];
-  for (let i = 1; i < path.length; i++) segments.push({ a: path[i - 1], b: path[i] });
+  for (let i = 1; i < path.length; i++)
+    segments.push({ a: path[i - 1], b: path[i] });
 
   // 矢印の頭。最後の 1 歩の向きに開く
   const tip = path[path.length - 1];
@@ -267,10 +297,13 @@ function stepGlyph(f: Fixture): Primitive[] {
   for (const spread of [Math.PI * 0.8, -Math.PI * 0.8]) {
     segments.push({
       a: tip,
-      b: vec(tip.x + Math.cos(dir + spread) * wing, tip.y + Math.sin(dir + spread) * wing),
+      b: vec(
+        tip.x + Math.cos(dir + spread) * wing,
+        tip.y + Math.sin(dir + spread) * wing,
+      ),
     });
   }
-  return [{ kind: 'segments', segments }];
+  return [{ kind: "segments", segments }];
 }
 
 /** 線分の中点 */
@@ -300,16 +333,23 @@ export interface StairPlan {
   guides: [Vec, Vec][];
 }
 
-export const STAIR_KINDS = ['stair', 'stairU', 'stairL', 'stairWinder'] as const;
+export const STAIR_KINDS = [
+  "stair",
+  "stairU",
+  "stairL",
+  "stairWinder",
+] as const;
 
 export type StairKind = (typeof STAIR_KINDS)[number];
 
 const STAIR_KIND_SET: ReadonlySet<string> = new Set<string>(STAIR_KINDS);
 
-export const isStairKind = (kind: FixtureKind): kind is StairKind => STAIR_KIND_SET.has(kind);
+export const isStairKind = (kind: FixtureKind): kind is StairKind =>
+  STAIR_KIND_SET.has(kind);
 
 /** 走り 1 本の段数。段が 1 つしかない階段は階段に見えないので 2 を下限にする */
-const treadCount = (run: number): number => Math.max(2, Math.round(run / STEP_DEPTH));
+const treadCount = (run: number): number =>
+  Math.max(2, Math.round(run / STEP_DEPTH));
 
 /** 反時計回りの矩形。向きを呼ぶ側に気にさせない */
 const ccwRect = (xa: number, xb: number, ya: number, yb: number): Vec[] => {
@@ -322,7 +362,13 @@ const ccwRect = (xa: number, xb: number, ya: number, yb: number): Vec[] => {
  * まっすぐな走り。`y0` から `y1` へ進む（降りる向きもある）。
  * 1 段目の段鼻は、呼ぶ側が「走りの始まりかどうか」で決める。
  */
-function runY(x0: number, x1: number, y0: number, y1: number, first: boolean): Tread[] {
+function runY(
+  x0: number,
+  x1: number,
+  y0: number,
+  y1: number,
+  first: boolean,
+): Tread[] {
   const n = treadCount(Math.abs(y1 - y0));
   const out: Tread[] = [];
   for (let i = 0; i < n; i++) {
@@ -337,7 +383,13 @@ function runY(x0: number, x1: number, y0: number, y1: number, first: boolean): T
 }
 
 /** まっすぐな走り。`x0` から `x1` へ進む */
-function runX(y0: number, y1: number, x0: number, x1: number, first: boolean): Tread[] {
+function runX(
+  y0: number,
+  y1: number,
+  x0: number,
+  x1: number,
+  first: boolean,
+): Tread[] {
   const n = treadCount(Math.abs(x1 - x0));
   const out: Tread[] = [];
   for (let i = 0; i < n; i++) {
@@ -382,7 +434,8 @@ function winderTreads(pivot: Vec, corner: Vec, leg: number): Tread[] {
 }
 
 /** 反時計回りに揃える。踏面は 3D の押し出しが向きを前提にしている */
-const ccw = (poly: Vec[]): Vec[] => (signedArea(poly) < 0 ? [...poly].reverse() : poly);
+const ccw = (poly: Vec[]): Vec[] =>
+  signedArea(poly) < 0 ? [...poly].reverse() : poly;
 
 /**
  * 階段の段。**平面の段板と 3D の段がここ 1 箇所から出る。**
@@ -390,21 +443,27 @@ const ccw = (poly: Vec[]): Vec[] => (signedArea(poly) < 0 ? [...poly].reverse() 
  * 以前は段数の式が平面と 3D に 1 つずつあり、片方を直すと図と立体がずれた。
  * 種別を 3 つ足すにあたって、形そのものを 1 箇所に寄せた。
  */
-export function stairTreads(kind: StairKind, size: { w: number; h: number }): StairPlan {
+export function stairTreads(
+  kind: StairKind,
+  size: { w: number; h: number },
+): StairPlan {
   const hw = size.w / 2;
   const hh = size.h / 2;
 
-  if (kind === 'stair') {
+  if (kind === "stair") {
     return { treads: runY(-hw, hw, -hh, hh, true), guides: [] };
   }
 
-  if (kind === 'stairU') {
+  if (kind === "stairU") {
     // **左右の流れの間に空間を作らない**（奥谷さんの指摘）。
     // 踊り場の奥行は流れ 1 本の幅と同じで、180 度まわるのにちょうど足りる
     const landing = hw;
     const turn = hh - landing;
     const up = runY(-hw, 0, -hh, turn, true);
-    const flat: Tread = { poly: ccwRect(-hw, hw, turn, hh), riser: [vec(-hw, turn), vec(0, turn)] };
+    const flat: Tread = {
+      poly: ccwRect(-hw, hw, turn, hh),
+      riser: [vec(-hw, turn), vec(0, turn)],
+    };
     const down = runY(0, hw, turn, -hh, false);
     return {
       treads: [...up, flat, ...down],
@@ -417,9 +476,15 @@ export function stairTreads(kind: StairKind, size: { w: number; h: number }): St
   const corner = vec(-hw, hh);
   const pivot = vec(-hw + leg, hh - leg);
   const up = runY(-hw, -hw + leg, -hh, hh - leg, true);
-  const turn: Tread[] = kind === 'stairWinder'
-    ? winderTreads(pivot, corner, leg)
-    : [{ poly: ccwRect(-hw, pivot.x, pivot.y, hh), riser: [vec(-hw, pivot.y), vec(pivot.x, pivot.y)] }];
+  const turn: Tread[] =
+    kind === "stairWinder"
+      ? winderTreads(pivot, corner, leg)
+      : [
+          {
+            poly: ccwRect(-hw, pivot.x, pivot.y, hh),
+            riser: [vec(-hw, pivot.y), vec(pivot.x, pivot.y)],
+          },
+        ];
   const across = runX(hh - leg, hh, -hw + leg, hw, false);
   return { treads: [...up, ...turn, ...across], guides: [] };
 }
@@ -429,10 +494,10 @@ const BEAM_DEPTH = 400;
 
 export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
   column: {
-    label: '角柱',
+    label: "角柱",
     defaultLayer: LAYER_IDS.wall,
     defaultSize: { w: 300, h: 300 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: rect,
@@ -441,15 +506,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: true,
     pickPriority: 2,
-    family: 'structure',
+    family: "structure",
     extruded: true,
     uses: ALL_USES,
   },
   roundColumn: {
-    label: '円柱',
+    label: "円柱",
     defaultLayer: LAYER_IDS.wall,
     defaultSize: { w: 300, h: 300 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: circle,
@@ -458,15 +523,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: true,
     pickPriority: 2,
-    family: 'structure',
+    family: "structure",
     extruded: true,
     uses: ALL_USES,
   },
   beam: {
-    label: '梁',
+    label: "梁",
     defaultLayer: LAYER_IDS.wall,
     defaultSize: { w: 300, h: 3000 },
-    defaultLabel: '',
+    defaultLabel: "",
     // **天井から下がる。** 階高が変われば既定も追従する
     defaultBase: (level) => Math.max(0, level.wallHeight - BEAM_DEPTH),
     defaultHeight: () => BEAM_DEPTH,
@@ -476,15 +541,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 3,
-    family: 'structure',
+    family: "structure",
     extruded: true,
     uses: ALL_USES,
   },
   stair: {
-    label: '階段',
+    label: "階段",
     defaultLayer: LAYER_IDS.furniture,
     defaultSize: { w: 900, h: 2700 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: rect,
@@ -493,16 +558,16 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'structure',
+    family: "structure",
     extruded: false,
-    uses: ['住'],
+    uses: ["住"],
   },
   /** コの字階段（COOHOM の U 字型階段）。**左右の流れの間に空間を作らない** */
   stairU: {
-    label: '階段(コの字)',
+    label: "階段(コの字)",
     defaultLayer: LAYER_IDS.furniture,
     defaultSize: { w: 1800, h: 2700 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: rect,
@@ -511,16 +576,16 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'structure',
+    family: "structure",
     extruded: false,
-    uses: ['住'],
+    uses: ["住"],
   },
   /** L 字階段。角は踊り場 1 枚 */
   stairL: {
-    label: '階段(L字)',
+    label: "階段(L字)",
     defaultLayer: LAYER_IDS.furniture,
     defaultSize: { w: 2400, h: 2400 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: lOutline,
@@ -529,16 +594,16 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'structure',
+    family: "structure",
     extruded: false,
-    uses: ['住'],
+    uses: ["住"],
   },
   /** 回り段。L 字の角を 3 枚の扇形に割る */
   stairWinder: {
-    label: '階段(回り段)',
+    label: "階段(回り段)",
     defaultLayer: LAYER_IDS.furniture,
     defaultSize: { w: 2400, h: 2400 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: lOutline,
@@ -547,15 +612,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'structure',
+    family: "structure",
     extruded: false,
-    uses: ['住'],
+    uses: ["住"],
   },
   slope: {
-    label: 'スロープ',
+    label: "スロープ",
     defaultLayer: LAYER_IDS.furniture,
     defaultSize: { w: 1200, h: 3000 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 150,
     localOutline: rect,
@@ -564,15 +629,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'structure',
+    family: "structure",
     extruded: false,
     uses: ALL_USES,
   },
   void: {
-    label: '吹抜',
+    label: "吹抜",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 2000, h: 2000 },
-    defaultLabel: '吹抜',
+    defaultLabel: "吹抜",
     defaultBase: () => 0,
     defaultHeight: (level) => level.wallHeight,
     localOutline: rect,
@@ -583,7 +648,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     filled: false,
     pickPriority: 5,
     // 吹抜＜住＞・PS＜住オ店＞・煙道＜オ店＞を 1 つの種別で兼ねるので、絞らない
-    family: 'structure',
+    family: "structure",
     extruded: false,
     uses: ALL_USES,
   },
@@ -599,10 +664,10 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
    * 壁の数量を控除するのは `Opening` だけで、天窓は壁に穴を開けない。
    */
   skylight: {
-    label: '天窓',
+    label: "天窓",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 900, h: 900 },
-    defaultLabel: '天窓',
+    defaultLabel: "天窓",
     // 天井の高さに置く。記号は平面に出るので、高さは 3D と積算のための札
     defaultBase: (level) => level.wallHeight,
     defaultHeight: () => 100,
@@ -613,9 +678,9 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 5,
-    family: 'structure',
+    family: "structure",
     extruded: false,
-    uses: ['住'],
+    uses: ["住"],
   },
   // ---- ここから汎用ソリッド（ワイヤー 5 枚目の「基本形状の挿入」）----
   //
@@ -633,10 +698,10 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
   // 塗ると平面で柱と見分けが付かなくなる。
 
   box: {
-    label: '直方体',
+    label: "直方体",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 600 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 600,
     localOutline: rect,
@@ -645,15 +710,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: true,
     uses: ALL_USES,
   },
   prism: {
-    label: '三角柱',
+    label: "三角柱",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 600 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 600,
     localOutline: triangle,
@@ -662,16 +727,16 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: true,
     uses: ALL_USES,
   },
   /** 垂直の円筒。`w` が直径で `h` は見ない（円柱と同じ） */
   cylinder: {
-    label: '円筒(垂直)',
+    label: "円筒(垂直)",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 600 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 600,
     localOutline: circle,
@@ -680,7 +745,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: true,
     uses: ALL_USES,
   },
@@ -689,10 +754,10 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
    * `w` が直径、`h` が長さ、高さ（`height`）が断面の縦の径。
    */
   cylinderH: {
-    label: '円筒(水平)',
+    label: "円筒(水平)",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 1200 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 600,
     localOutline: rect,
@@ -701,15 +766,15 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: false,
     uses: ALL_USES,
   },
   cone: {
-    label: '円錐',
+    label: "円錐",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 600 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 600,
     localOutline: circle,
@@ -718,16 +783,16 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: false,
     uses: ALL_USES,
   },
   /** 球。既定では高さ＝直径だが、高さを変えれば縦に伸びた回転楕円体になる */
   sphere: {
-    label: '球',
+    label: "球",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 600 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 600,
     localOutline: circle,
@@ -736,7 +801,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: false,
     uses: ALL_USES,
   },
@@ -747,10 +812,10 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
    * ための保険で、普段は使われない。
    */
   extrusion: {
-    label: '押し出し',
+    label: "押し出し",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 1000, h: 1000 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 1000,
     localOutline: rect,
@@ -759,17 +824,17 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'derived',
+    family: "derived",
     extruded: true,
     uses: ALL_USES,
   },
 
   /** 半球（ドーム）。底が平らで、既定の高さは半径 */
   dome: {
-    label: '半球',
+    label: "半球",
     defaultLayer: LAYER_IDS.shape,
     defaultSize: { w: 600, h: 600 },
-    defaultLabel: '',
+    defaultLabel: "",
     defaultBase: () => 0,
     defaultHeight: () => 300,
     localOutline: circle,
@@ -778,7 +843,7 @@ export const FIXTURE_SPECS: Record<FixtureKind, FixtureSpec> = {
     floorHole: false,
     filled: false,
     pickPriority: 4,
-    family: 'solid',
+    family: "solid",
     extruded: false,
     uses: ALL_USES,
   },
@@ -871,19 +936,56 @@ export function toWorld3(f: Fixture, p: Vec, z: number): Vec3Like {
 export const localOutline = (f: Fixture): Vec[] =>
   f.outline ?? specOf(f).localOutline(f.size);
 
-/** ワールドの輪郭。反時計回り */
-export function outline(f: Fixture): Vec[] {
-  return localOutline(f).map((p) => toWorld(f, p));
+/**
+ * ワールドの輪郭 ＝ **上から見た形。** 反時計回りの単純多角形。
+ *
+ * | `tilt` | 返すもの |
+ * | --- | --- |
+ * | null | 輪郭を `angle` で回して中心へ移したもの（**厳密に footprint**） |
+ * | 傾きあり | 上下の輪郭を投影した点の**凸包** |
+ *
+ * **なぜ凸包か。** 当たり判定（`pick.ts`）・床面積（`rooms.ts`）・図面の範囲
+ * （`entity.ts`）が、ここが**単純多角形であること**に寄りかかっている。本物の
+ * 投影は凹むことも自己交差することもあるが、凸包なら倒しても単純なまま。
+ * **拾える範囲が実物より少し広く出る**のは承知のうえ。見た目のほうは
+ * `fixturePrimitives` が本物の稜線を描く。
+ *
+ * **押し出した角柱として投影する。** 輪郭を鉛直に押した形の影を取るので、
+ * 角柱の仲間（箱・柱・押し出し）では厳密、球や円錐では少し大きく出る。
+ *
+ * **階を渡すのは高さが要るから。** `f.height` を持たない種別（柱・吹抜など
+ * 階高に追従するもの）は、階を知らないと押し出す長さが決まらない。階を
+ * 持たない呼び手には `defaultLevel()` を当てる。知らない id を既定の階に
+ * 落とす `levelOf`（`level.ts`）と同じ作法。**傾いていなければ高さは
+ * 使わない**ので、既定の階が当たっても結果は変わらない。
+ */
+export function outline(f: Fixture, level: Level = defaultLevel()): Vec[] {
+  if (!isTilted(f)) return localOutline(f).map((p) => toWorld(f, p));
+  const { z0, z1 } = localRange(f, level);
+  const shadow: Vec[] = [];
+  for (const p of localOutline(f)) {
+    for (const z of [z0, z1]) {
+      const q = toWorld3(f, p, z);
+      shadow.push(vec(q.x, q.y));
+    }
+  }
+  return convexHull(shadow);
 }
 
 /** 当たり判定用の折れ線 */
-export function outlineSegments(f: Fixture): Segment[] {
-  const p = outline(f);
+export function outlineSegments(
+  f: Fixture,
+  level: Level = defaultLevel(),
+): Segment[] {
+  const p = outline(f, level);
   return p.map((a, i) => ({ a, b: p[(i + 1) % p.length] }));
 }
 
 /** 下端と上端 (mm)。階の床を基準にした絶対の z */
-export function verticalRange(f: Fixture, level: Level): { z0: number; z1: number } {
+export function verticalRange(
+  f: Fixture,
+  level: Level,
+): { z0: number; z1: number } {
   const spec = specOf(f);
   const base = f.base ?? spec.defaultBase(level);
   const height = f.height ?? spec.defaultHeight(level);
@@ -899,7 +1001,10 @@ export function verticalRange(f: Fixture, level: Level): { z0: number; z1: numbe
  * **傾きはこの原点（底面の中心）まわりに回る。** 置いた足元を軸に倒れるので、
  * 梁のように高いところにあるものを傾けても、遠くへ飛んでいかない。
  */
-export function localRange(f: Fixture, level: Level): { z0: number; z1: number } {
+export function localRange(
+  f: Fixture,
+  level: Level,
+): { z0: number; z1: number } {
   const spec = specOf(f);
   return { z0: 0, z1: f.height ?? spec.defaultHeight(level) };
 }
@@ -921,34 +1026,44 @@ export function rotateToWorld(f: Fixture, n: Vec3Like): Vec3Like {
 /** これより頂点が多い輪郭はスナップ点を出さない。中心だけになる */
 const MAX_SNAP_VERTICES = 32;
 
-export function fixtureSnapPoints(f: Fixture): { point: Vec; kind: SnapKind }[] {
+export function fixtureSnapPoints(
+  f: Fixture,
+): { point: Vec; kind: SnapKind }[] {
   const out: { point: Vec; kind: SnapKind }[] = [
-    { point: vec(f.x, f.y), kind: 'center' },
+    { point: vec(f.x, f.y), kind: "center" },
   ];
   // 円の近似多角形の頂点を 32 個ぜんぶ出すと、スナップが重くなるだけで役に立たない。
   // **押し出した形も同じ**——自由曲線から起こすと頂点が 100 個を超える
   const poly = localOutline(f);
   if (!isRoundFixture(f.kind) && poly.length <= MAX_SNAP_VERTICES) {
-    for (const p of outline(f)) out.push({ point: p, kind: 'node' });
+    for (const p of outline(f)) out.push({ point: p, kind: "node" });
   }
   return out;
 }
 
 /** 平面に出すもの。輪郭 + 種別ごとの記号 + 文字 */
-export function fixturePrimitives(f: Fixture, textPaperMm: number): Primitive[] {
+export function fixturePrimitives(
+  f: Fixture,
+  textPaperMm: number,
+  level: Level = defaultLevel(),
+): Primitive[] {
   const spec = specOf(f);
   const out: Primitive[] = [
-    { kind: 'polygon', points: outline(f), fill: spec.filled ? 'layer' : 'none' },
+    {
+      kind: "polygon",
+      points: outline(f, level),
+      fill: spec.filled ? "layer" : "none",
+    },
     ...spec.glyph(f),
   ];
   if (f.label.length > 0) {
     out.push({
-      kind: 'text',
+      kind: "text",
       text: f.label,
       at: vec(f.x, f.y),
       paperMm: textPaperMm,
       angle: f.angle,
-      align: 'center',
+      align: "center",
     });
   }
   return out;
