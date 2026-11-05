@@ -1,18 +1,28 @@
-import { dist, type Vec } from './geometry.ts';
-import { NODE_MERGE_TOLERANCE, openingsOnWall, wallEnds, wallsAtNode } from './ops.ts';
-import { dropConstraintsForWall } from './constraintOps.ts';
-import type { Shape } from './shapes.ts';
-import type { EntityRef, Id, Scene } from './types.ts';
+import { dist, type Vec } from "./geometry.ts";
+import { closedPolygonOf } from "./extrude.ts";
+import { polyBoolean, type PolyOp } from "./polybool.ts";
+import {
+  NODE_MERGE_TOLERANCE,
+  openingsOnWall,
+  wallEnds,
+  wallsAtNode,
+} from "./ops.ts";
+import { dropConstraintsForWall } from "./constraintOps.ts";
+import type { Shape } from "./shapes.ts";
+import type { EntityRef, Id, Scene } from "./types.ts";
 
 /**
- * 結合。**端点で繋ぐところまでに限る。**
+ * 結合と合成。ワイヤー 7 枚目の「結合/合成」。
  *
- * ワイヤーは「複数の線分や図形を交点・端点で伸ばしたり縮めたりしながら繋いだり、
- * **1 つの図形にまとめたり**する」と書いているが、後半（閉じた図形どうしの
- * ブール演算）は別物で、`core/geometry.ts` に多角形の論理演算が無い。
- * 自前で書くと 250〜400 行＋退化ケースのテストで、しかも 3D 側で BSP を
- * 書くので**同じものが 2 つになる**。`docs/status.md` も前から
- * 「端点で繋ぐところまでは小さく、閉じた図形どうしの合成は別物」と分けている。
+ * > 複数の線分や図形を交点・端点で伸ばしたり縮めたりしながら繋いだり、
+ * > **1 つの図形にまとめたり**する
+ *
+ * **前半（結合）と後半（合成）は別物。** 結合は端点で繋ぐだけで、開いた
+ * 折れ線が相手。合成は**閉じた図形どうしのブール演算**で、`core/polybool.ts`
+ * が受け持つ。ここはその 2 つの入口を並べている。
+ *
+ * **3D のブーリアンとは別の道具。** 3D は平面で空間を割る木（`render3d/csg.ts`）
+ * で、2D には使い回せない——割る相手が面ではなく線なので、木の作り方が違う。
  */
 
 /** 端点が一致しているとみなす距離 (mm)。ノードの統合と同じ値にそろえる */
@@ -20,8 +30,8 @@ const JOIN_TOLERANCE = NODE_MERGE_TOLERANCE;
 
 /** 図形を「端点を持つ点の列」として見る。持たないものは null */
 function endpointsOf(shape: Shape): Vec[] | null {
-  if (shape.shape === 'line') return [shape.a, shape.b];
-  if (shape.shape === 'polyline' && !shape.closed) return shape.points;
+  if (shape.shape === "line") return [shape.a, shape.b];
+  if (shape.shape === "polyline" && !shape.closed) return shape.points;
   return null;
 }
 
@@ -47,17 +57,19 @@ export function joinShapes(scene: Scene, x: Id, y: Id): boolean {
   delete scene.shapes[y];
   scene.shapes[x] = {
     id: x,
-    shape: 'polyline',
+    shape: "polyline",
     layerId: sx.layerId,
     levelId: sx.levelId,
     attrs: { ...sx.attrs },
     points: merged,
     // 両端が重なったら閉じる。四角形を 4 本の線から作ったときに効く
-    closed: merged.length > 3 && dist(merged[0], merged[merged.length - 1]) <= JOIN_TOLERANCE,
+    closed:
+      merged.length > 3 &&
+      dist(merged[0], merged[merged.length - 1]) <= JOIN_TOLERANCE,
   };
-  if (scene.shapes[x].shape === 'polyline' && scene.shapes[x].closed) {
+  if (scene.shapes[x].shape === "polyline" && scene.shapes[x].closed) {
     const p = scene.shapes[x];
-    if (p.shape === 'polyline') p.points = p.points.slice(0, -1);
+    if (p.shape === "polyline") p.points = p.points.slice(0, -1);
   }
   return true;
 }
@@ -100,7 +112,8 @@ export function joinWalls(scene: Scene, x: Id, y: Id): boolean {
   // 既存の開口まで動く**ので、2 つの場合を分けて書く
   const sharedAtA = wx.a === shared;
   const ySharedAtA = wy.a === shared;
-  const fromShared = (offset: number): number => (ySharedAtA ? offset : lenY - offset);
+  const fromShared = (offset: number): number =>
+    ySharedAtA ? offset : lenY - offset;
   const moved = openingsOnWall(scene, y);
 
   if (sharedAtA) {
@@ -146,8 +159,60 @@ function collinear(scene: Scene, x: Id, y: Id): boolean {
 }
 
 /** 2 つの実体を繋ぐ。種別が違えば何もしない */
-export function joinEntities(scene: Scene, x: EntityRef, y: EntityRef): boolean {
-  if (x.type === 'shape' && y.type === 'shape') return joinShapes(scene, x.id, y.id);
-  if (x.type === 'wall' && y.type === 'wall') return joinWalls(scene, x.id, y.id);
+export function joinEntities(
+  scene: Scene,
+  x: EntityRef,
+  y: EntityRef,
+): boolean {
+  if (x.type === "shape" && y.type === "shape")
+    return joinShapes(scene, x.id, y.id);
+  if (x.type === "wall" && y.type === "wall")
+    return joinWalls(scene, x.id, y.id);
   return false;
+}
+
+/**
+ * 閉じた図形どうしの合成・切り欠き・交差。
+ *
+ * **1 つめを母体にして、残りを順に掛ける。** できた母体の id を返す。
+ * 掛け合わせた相手は**図面から消える**（3D のブーリアンが相手を母体へ
+ * しまい込むのと違い、2D は結果の形がそのまま輪郭になるので、戻す道が要らない）。
+ *
+ * **1 本の輪郭にならない組み合わせは、何も変えずに null を返す。**
+ * 穴ができる形も、2 つに割れる形も、`Shape` では表せない。
+ * 呼んだ側が理由を画面に出す。
+ */
+export function combineShapes(
+  scene: Scene,
+  ids: readonly Id[],
+  op: PolyOp,
+): Id | null {
+  if (ids.length < 2) return null;
+  const polys: Vec[][] = [];
+  for (const id of ids) {
+    const poly = closedPolygonOf(scene, id);
+    if (!poly) return null;
+    polys.push(poly);
+  }
+
+  let merged = polys[0];
+  for (let i = 1; i < polys.length; i++) {
+    const next = polyBoolean(merged, polys[i], op);
+    if (!next) return null;
+    merged = next;
+  }
+
+  const host = scene.shapes[ids[0]];
+  if (!host) return null;
+  for (const id of ids.slice(1)) delete scene.shapes[id];
+  scene.shapes[ids[0]] = {
+    id: ids[0],
+    shape: "polyline",
+    layerId: host.layerId,
+    levelId: host.levelId,
+    attrs: { ...host.attrs },
+    points: merged,
+    closed: true,
+  };
+  return ids[0];
 }

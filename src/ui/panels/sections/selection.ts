@@ -41,6 +41,8 @@ import {
   type Fixture,
 } from "../../../core/fixture.ts";
 import { closedPolygonOf, extrudeShapes } from "../../../core/extrude.ts";
+import { combineShapes } from "../../../core/join.ts";
+import { POLY_OPS, type PolyOp } from "../../../core/polybool.ts";
 import {
   BOOLEAN_LABELS,
   BOOLEAN_OPS,
@@ -86,6 +88,7 @@ export class SelectionSection implements Section {
         layerField(ctx),
         extrudeButton(ctx),
         ...combineButtons(ctx),
+        ...shapeBooleanButtons(ctx),
         blockifyButton(ctx),
         groupButton(ctx),
         symbolifyButton(ctx),
@@ -1050,6 +1053,58 @@ function combineButtons(ctx: PanelContext): (HTMLElement | null)[] {
     ),
   ];
 }
+
+/**
+ * 閉じた図形どうしの合成・切り欠き・交差（ワイヤー 7 枚目「結合/合成」）。
+ *
+ * 立体のブーリアンと**同じ並び**にしてある。違うのは、2D は結果の形が
+ * そのまま輪郭になるので**戻す道（分解）が無い**こと——undo で戻す。
+ */
+function shapeBooleanButtons(ctx: PanelContext): (HTMLElement | null)[] {
+  const scene = ctx.editor.store.scene;
+  const ids = ctx.editor.store.selection
+    .filter((r) => r.type === "shape" && closedPolygonOf(scene, r.id) !== null)
+    .map((r) => r.id);
+  if (ids.length < 2) return [];
+
+  const note = el("p", { class: "empty-note" }, [
+    `先頭の図形に、残り ${ids.length - 1} 個を掛け合わせます`,
+  ]);
+  return [
+    note,
+    ...POLY_OPS.map((op) =>
+      el(
+        "button",
+        {
+          class: "wide",
+          type: "button",
+          title: "掛け合わせた図形は消えます（undo で戻せます）",
+          onclick: () => {
+            let made: string | null = null;
+            ctx.edit(() => {
+              made = combineShapes(scene, ids, op);
+              return made !== null;
+            });
+            if (made) {
+              ctx.editor.store.setSelection([{ type: "shape", id: made }]);
+            } else {
+              // **黙って嘘の形を作らない。** 穴も、2 つに割れる形も表せない
+              note.textContent =
+                "この組み合わせは 1 本の輪郭になりません（穴ができる / 2 つに割れる）。";
+            }
+          },
+        },
+        [POLY_LABELS[op]],
+      ),
+    ),
+  ];
+}
+
+const POLY_LABELS: Record<PolyOp, string> = {
+  unite: "合成",
+  subtract: "切り欠き",
+  intersect: "交差",
+};
 
 /** しまい込んだ相手を図面へ戻す */
 function explodeButton(ctx: PanelContext): HTMLElement | null {

@@ -1957,6 +1957,74 @@ async function run() {
   await sleep(300);
   console.log('✔ 縦の稜線を落とすと、平面の記号にも 3D にも出る');
 
+  // --- 閉じた図形どうしのブール演算（第 6 版の 6 段目） ---
+  // ワイヤー 7 枚目「複数の線分や図形を…1 つの図形にまとめたりする」
+  await page.evaluate(() => window.minicad.setMode('pro'));
+  await sleep(300);
+  const seedRects = (bx, by) => page.evaluate(([bx, by]) => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    const attrs = () => ({ groupId: null, stampId: null, color: null,
+      materialRef: null, takeoff: null, symbolId: null, symbolVersion: null });
+    const R = (id, x0, y0, x1, y1) => ({ id, shape: 'polyline', closed: true,
+      layerId: 'shape', levelId: s.activeLevelId, attrs: attrs(),
+      points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] });
+    s.shapes.__ba__ = R('__ba__', 30000, 0, 32000, 2000);
+    s.shapes.__bb__ = R('__bb__', 30000 + bx, by, 30000 + bx + 2000, by + 2000);
+    ed.store.emit();
+    ed.store.setSelection([{ type: 'shape', id: '__ba__' }, { type: 'shape', id: '__bb__' }]);
+    ed.notifyUi();
+  }, [bx, by]);
+
+  await seedRects(1000, 1000);
+  await sleep(400);
+  await page.locator('button.wide', { hasText: '合成' }).first().click();
+  await sleep(400);
+  const united = await page.evaluate(() => {
+    const s = window.minicad.editorInstance.store.scene.shapes;
+    return { host: s.__ba__ ? s.__ba__.points.length : 0, other: '__bb__' in s };
+  });
+  assert.equal(united.other, false, '掛け合わせた図形が残っている');
+  assert.equal(united.host, 8, `合成した輪郭が 8 点でない (${united.host})`);
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.ok(
+    await page.evaluate(() => '__bb__' in window.minicad.editorInstance.store.scene.shapes),
+    '合成が undo で戻らない',
+  );
+
+  // **穴ができる組み合わせは断る。** 図面は 1 つも変わらない
+  await seedRects(500, 500);
+  await sleep(300);
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    ed.store.scene.shapes.__bb__.points =
+      [{ x: 30500, y: 500 }, { x: 31500, y: 500 }, { x: 31500, y: 1500 }, { x: 30500, y: 1500 }];
+    ed.store.emit();
+    ed.store.setSelection([{ type: 'shape', id: '__ba__' }, { type: 'shape', id: '__bb__' }]);
+    ed.notifyUi();
+  });
+  await sleep(300);
+  await page.locator('button.wide', { hasText: '切り欠き' }).first().click();
+  await sleep(400);
+  const refused = await page.evaluate(() => ({
+    both: '__ba__' in window.minicad.editorInstance.store.scene.shapes
+      && '__bb__' in window.minicad.editorInstance.store.scene.shapes,
+    note: [...document.querySelectorAll('.empty-note')]
+      .some((n) => n.textContent.includes('1 本の輪郭になりません')),
+  }));
+  assert.ok(refused.both, '断ったのに図面が変わった');
+  assert.ok(refused.note, '断る理由が出ていない');
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    delete ed.store.scene.shapes.__ba__;
+    delete ed.store.scene.shapes.__bb__;
+    ed.store.setSelection([]);
+    ed.store.emit();
+  });
+  await sleep(200);
+  console.log('✔ 閉じた図形どうしを合成でき、1 本にならない組み合わせは断る');
+
   // --- 押し出しとプッシュ/プル（20 段） ---
   await page.evaluate(() => window.minicad.setMode('pro'));
   await sleep(300);
