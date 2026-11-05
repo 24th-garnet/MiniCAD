@@ -331,7 +331,8 @@ madoriba の画面仕様（ワイヤー）の項目と突き合わせた一覧�
 [docs/status.md](docs/status.md) にあります。**何が無いか**と、
 **仕様と違う判断をしたところ**も同じ表に入れてあります。
 
-**仕様に答えが書かれていないこと**は [docs/questions.md](docs/questions.md) に
+**何がワイヤーの要求で、何が我々の判断か**は [docs/coverage.md](docs/coverage.md) に
+分けてあります。**仕様に答えが書かれていないこと**は [docs/questions.md](docs/questions.md) に
 分けてあります（29 件、うち 10 件は先に答えが要るもの）。現在地と確認事項を
 同じファイルに置くと、答えが決まったときに両方を直すことになり、片方が腐ります。
 
