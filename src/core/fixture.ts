@@ -18,8 +18,13 @@ import { defaultLevel, type Level } from "./level.ts";
 import type { Primitive } from "./primitive.ts";
 import type { Segment } from "./shape.ts";
 import { ALL_USES, type Use } from "./use.ts";
-import type { FixtureCombine } from "./combine.ts";
+import {
+  combineFingerprint,
+  type BooleanOp,
+  type FixtureCombine,
+} from "./combine.ts";
 import { hasCornerEdge, type FixtureEdge } from "./edge3d.ts";
+import { polyBoolean } from "./polybool.ts";
 
 /**
  * 構造物。柱・梁・階段・スロープ・吹抜のように、**平面の footprint と
@@ -989,6 +994,58 @@ export const localOutline = (f: Fixture): Vec[] => {
  * 使わない**ので、既定の階が当たっても結果は変わらない。
  */
 export function outline(f: Fixture, level: Level = defaultLevel()): Vec[] {
+  const own = ownOutline(f, level);
+  const recipe = f.combine;
+  if (!recipe) return own;
+
+  // **覚えておく。** 当たり判定が毎フレーム全構造物ぶん呼ぶので、
+  // 掛け合わせた立体が増えると効いてくる（実測：円柱どうしの切り欠きが
+  // 60 個で 1 回 11ms＝1 フレーム落ちる。指紋を取るのは 0.13µs）
+  const stamp = planStamp(f, level);
+  const seen = PLAN_CACHE.get(f);
+  if (seen && seen.stamp === stamp) return seen.outline;
+
+  let acc = own;
+  for (const part of recipe.parts) {
+    if (!showsInPlan(f, part, recipe.op, level)) continue;
+    const next = polyBoolean(acc, outline(part, level), recipe.op);
+    // **1 本にならなければ母体のまま。** 穴の開いた形も、2 つに割れた形も
+    // 輪郭では表せない。黙って嘘の形を出すより、切り欠く前の形を出す
+    if (!next) {
+      acc = own;
+      break;
+    }
+    acc = next;
+  }
+  PLAN_CACHE.set(f, { stamp, outline: acc });
+  return acc;
+}
+
+/**
+ * 掛け合わせた立体の投影の控え。**実体ごと**に覚える。
+ *
+ * `WeakMap` なので、`commit` が作り直した古い立体は勝手に消える。
+ */
+const PLAN_CACHE = new WeakMap<Fixture, { stamp: string; outline: Vec[] }>();
+
+/**
+ * 控えが使えるかの合言葉。**投影が変わりうるもの全部**を混ぜる。
+ *
+ * 相手の形は `combineFingerprint` が（入れ子も含めて）見てくれる。
+ * 階は既定の高さと床の高さを決めるので、そちらも混ぜる。
+ */
+function planStamp(f: Fixture, level: Level): string {
+  return (
+    `${f.kind},${f.x},${f.y},${f.angle},${f.size.w},${f.size.h}` +
+    `,${f.base},${f.height},${f.tilt ? `${f.tilt.x}:${f.tilt.y}` : "-"}` +
+    `,${f.edge ? `${f.edge.kind}:${f.edge.size}:${f.edge.where}` : "-"}` +
+    `,${f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(" ") : "-"}` +
+    `,${level.floorZ},${level.wallHeight},${combineFingerprint(f)}`
+  );
+}
+
+/** ブーリアンを掛ける前の、この立体そのものの投影 */
+function ownOutline(f: Fixture, level: Level): Vec[] {
   if (!isTilted(f)) return localOutline(f).map((p) => toWorld(f, p));
   const { z0, z1 } = localRange(f, level);
   const shadow: Vec[] = [];
@@ -999,6 +1056,60 @@ export function outline(f: Fixture, level: Level = defaultLevel()): Vec[] {
     }
   }
   return convexHull(shadow);
+}
+
+/**
+ * その相手を平面にも出すか。**上から見て本当に変わるときだけ。**
+ *
+ * 平面は「上から見た影」で、3D を水平に切った断面ではない。だから
+ * ブーリアンの相手を無条件に掛けると、**上からは見えない切り欠きを
+ * 描いてしまう**（箱の真ん中だけをえぐっても、上から見れば箱のまま）。
+ *
+ * | 演算 | 掛ける条件 | なぜ |
+ * | --- | --- | --- |
+ * | 合成 | いつでも | 影どうしの和は、高さに関係なく正しい |
+ * | 切り欠き | 相手が母体の**高さを突き抜けている**とき | 途中で止まる穴は上から見えない |
+ * | 交差 | 高さが**重なっている**とき | 重なっていなければ立体は空になる（輪郭では表せないので母体のまま） |
+ */
+function showsInPlan(
+  host: Fixture,
+  part: Fixture,
+  op: BooleanOp,
+  level: Level,
+): boolean {
+  if (op === "unite") return true;
+  const a = worldZRange(host, level);
+  const b = worldZRange(part, level);
+  if (op === "intersect") return b.z1 > a.z0 + Z_EPS && b.z0 < a.z1 - Z_EPS;
+  return b.z0 <= a.z0 + Z_EPS && b.z1 >= a.z1 - Z_EPS;
+}
+
+/** 高さの比べ方の許し (mm)。ぴったり揃えた立体を取りこぼさないため */
+const Z_EPS = 1e-6;
+
+/**
+ * 階の床を基準にした、立体が占める z の範囲。
+ *
+ * **倒していれば輪郭の上下 2 周ぶんを見る。** 倒した立体の高さは
+ * `base + height` では収まらない。
+ */
+export function worldZRange(
+  f: Fixture,
+  level: Level,
+): { z0: number; z1: number } {
+  const lift = level.floorZ + baseOf(f, level);
+  const { z0, z1 } = localRange(f, level);
+  if (!isTilted(f)) return { z0: lift + z0, z1: lift + z1 };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of localOutline(f)) {
+    for (const z of [z0, z1]) {
+      const q = toWorld3(f, p, z);
+      lo = Math.min(lo, q.z);
+      hi = Math.max(hi, q.z);
+    }
+  }
+  return { z0: lift + lo, z1: lift + hi };
 }
 
 /** 当たり判定用の折れ線 */

@@ -1029,7 +1029,7 @@ function combineButtons(ctx: PanelContext): (HTMLElement | null)[] {
   if (ids.length < 2) return [];
   return [
     el("p", { class: "empty-note" }, [
-      `先頭の立体に、残り ${ids.length - 1} 個を掛け合わせます（平面の記号は母体のままです）`,
+      `先頭の立体に、残り ${ids.length - 1} 個を掛け合わせます（平面の記号にも出ます。ただし上から見て変わるときだけ）`,
     ]),
     ...BOOLEAN_OPS.map((op) =>
       el(

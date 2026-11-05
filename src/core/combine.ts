@@ -1,5 +1,5 @@
-import type { Fixture } from './fixture.ts';
-import type { Id, Scene } from './types.ts';
+import type { Fixture } from "./fixture.ts";
+import type { Id, Scene } from "./types.ts";
 
 /**
  * 立体どうしのブーリアン（ワイヤー 5 枚目の「合成・切り欠き・分割」）。
@@ -16,19 +16,20 @@ import type { Id, Scene } from './types.ts';
  *   二重に出ない。**どこかに除外の判定を足す必要が無い**
  * - id の付け替えが要らない（複写は丸ごと複製すればよい）
  *
- * **平面の記号は元の輪郭のまま。** 切り欠いた形を平面に出すには、
- * 3D の結果を水平に切って輪郭を起こすことになる。そこまではやらず、
- * **そうであることを画面と文書に書く**。
+ * **平面の記号にも出る。** 影どうしのブール演算（`core/polybool.ts`）で起こす。
+ * ただし**上から見て本当に変わるときだけ**——箱の真ん中だけをえぐっても
+ * 上から見れば箱のままなので、そういう切り欠きは平面に出さない
+ * （判断は `core/fixture.ts` の `showsInPlan`）。
  */
 
-export const BOOLEAN_OPS = ['unite', 'subtract', 'intersect'] as const;
+export const BOOLEAN_OPS = ["unite", "subtract", "intersect"] as const;
 
 export type BooleanOp = (typeof BOOLEAN_OPS)[number];
 
 export const BOOLEAN_LABELS: Record<BooleanOp, string> = {
-  unite: '合成',
-  subtract: '切り欠き',
-  intersect: '交差',
+  unite: "合成",
+  subtract: "切り欠き",
+  intersect: "交差",
 };
 
 export interface FixtureCombine {
@@ -38,7 +39,7 @@ export interface FixtureCombine {
 }
 
 export const isBooleanOp = (v: unknown): v is BooleanOp =>
-  typeof v === 'string' && (BOOLEAN_OPS as readonly string[]).includes(v);
+  typeof v === "string" && (BOOLEAN_OPS as readonly string[]).includes(v);
 
 /**
  * 1 つめを母体にして、残りをしまい込む。できた母体の id を返す。
@@ -46,7 +47,11 @@ export const isBooleanOp = (v: unknown): v is BooleanOp =>
  * **立体になる種別だけ**が相手。穴（吹抜・天窓）は立体を持たないので、
  * ブーリアンの相手にならない。
  */
-export function combineFixtures(scene: Scene, ids: readonly Id[], op: BooleanOp): Id | null {
+export function combineFixtures(
+  scene: Scene,
+  ids: readonly Id[],
+  op: BooleanOp,
+): Id | null {
   const solids = ids.filter((id) => scene.fixtures[id]);
   if (solids.length < 2) return null;
   const host = scene.fixtures[solids[0]];
@@ -56,9 +61,10 @@ export function combineFixtures(scene: Scene, ids: readonly Id[], op: BooleanOp)
     delete scene.fixtures[id];
   }
   // **既に作り方を持っているなら、後ろに足す。** 何度でも重ねられる
-  host.combine = host.combine && host.combine.op === op
-    ? { op, parts: [...host.combine.parts, ...parts] }
-    : { op, parts: [...(host.combine?.parts ?? []), ...parts] };
+  host.combine =
+    host.combine && host.combine.op === op
+      ? { op, parts: [...host.combine.parts, ...parts] }
+      : { op, parts: [...(host.combine?.parts ?? []), ...parts] };
   if (host.combine) host.combine.op = op;
   return host.id;
 }
@@ -75,11 +81,17 @@ export function explodeFixture(scene: Scene, id: Id): number {
 
 /** 指紋に混ぜる文字列。**入れ忘れると、相手を変えても 3D が作り直されない** */
 export function combineFingerprint(f: Fixture): string {
-  if (!f.combine) return '-';
-  return `${f.combine.op}:` + f.combine.parts
-    .map((p) => `${p.kind},${p.x},${p.y},${p.angle},${p.size.w},${p.size.h},${p.base},${p.height}`
-      + `,${p.tilt ? `${p.tilt.x}:${p.tilt.y}` : '-'}`
-      + `,${p.outline ? p.outline.map((v) => `${v.x}:${v.y}`).join(' ') : '-'}`
-      + `,${combineFingerprint(p)}`)
-    .join('|');
+  if (!f.combine) return "-";
+  return (
+    `${f.combine.op}:` +
+    f.combine.parts
+      .map(
+        (p) =>
+          `${p.kind},${p.x},${p.y},${p.angle},${p.size.w},${p.size.h},${p.base},${p.height}` +
+          `,${p.tilt ? `${p.tilt.x}:${p.tilt.y}` : "-"}` +
+          `,${p.outline ? p.outline.map((v) => `${v.x}:${v.y}`).join(" ") : "-"}` +
+          `,${combineFingerprint(p)}`,
+      )
+      .join("|")
+  );
 }

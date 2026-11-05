@@ -2025,6 +2025,51 @@ async function run() {
   await sleep(200);
   console.log('✔ 閉じた図形どうしを合成でき、1 本にならない組み合わせは断る');
 
+  // --- 切り欠いた形を平面に出す（第 6 版の 7 段目） ---
+  // **平面は上から見た影。** 上から見て変わるときだけ出す
+  const carvedPlan = await page.evaluate(async () => {
+    const fx = await import('/src/core/fixture.ts');
+    const g = await import('/src/core/geometry.ts');
+    const lv = await import('/src/core/level.ts');
+    const cb = await import('/src/core/combine.ts');
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    const attrs = () => ({ groupId: null, stampId: null, color: null,
+      materialRef: null, takeoff: null, symbolId: null, symbolVersion: null });
+    const mk = (id, over) => ({ id, kind: 'box', x: 40000, y: 0, angle: 0, tilt: null,
+      size: { w: 1600, h: 1600 }, outline: null, combine: null, edge: null,
+      base: 0, height: 1600, label: '', layerId: 'shape',
+      levelId: s.activeLevelId, attrs: attrs(), ...over });
+    const areaOf = (id) => {
+      const f = s.fixtures[id];
+      return Math.round(g.signedArea(fx.outline(f, lv.levelOf(s, f.levelId))));
+    };
+    // 貫く切り欠き
+    s.fixtures.__t1__ = mk('__t1__', {});
+    s.fixtures.__t2__ = mk('__t2__', { x: 40800, y: 800, size: { w: 1200, h: 1200 } });
+    cb.combineFixtures(s, ['__t1__', '__t2__'], 'subtract');
+    const through = areaOf('__t1__');
+    // 途中で止まる切り欠き
+    s.fixtures.__t3__ = mk('__t3__', { x: 45000 });
+    s.fixtures.__t4__ = mk('__t4__', { x: 45800, y: 800, size: { w: 1200, h: 1200 },
+      base: 400, height: 600 });
+    cb.combineFixtures(s, ['__t3__', '__t4__'], 'subtract');
+    const partial = areaOf('__t3__');
+    for (const id of ['__t1__', '__t3__']) delete s.fixtures[id];
+    ed.store.emit();
+    return { plain: 1600 * 1600, through, partial };
+  });
+  assert.ok(
+    carvedPlan.through < carvedPlan.plain,
+    `貫く切り欠きが平面に出ていない (${carvedPlan.through})`,
+  );
+  assert.equal(
+    carvedPlan.partial,
+    carvedPlan.plain,
+    '上から見えない切り欠きを平面に描いた',
+  );
+  console.log('✔ 切り欠きは、上から見て変わるときだけ平面に出る');
+
   // --- 押し出しとプッシュ/プル（20 段） ---
   await page.evaluate(() => window.minicad.setMode('pro'));
   await sleep(300);
