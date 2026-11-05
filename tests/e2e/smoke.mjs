@@ -1264,7 +1264,7 @@ async function run() {
   // 立面図
   const [elevDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="開口のある壁の立面を SVG で書き出す"]'),
+    exportElevationView(page, 'elevation'),
   ]);
   const elev = await readFile(await elevDownload.path(), 'utf8');
   const elevError = await page.evaluate((source) => {
@@ -2125,7 +2125,7 @@ async function run() {
   await sleep(300);
   const [elevAfter] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="開口のある壁の立面を SVG で書き出す"]'),
+    exportElevationView(page, 'elevation'),
   ]);
   const elevSvg = await readFile(await elevAfter.path(), 'utf8');
   assert.ok(elevSvg.includes('<svg'), '立面図が書き出せない');
@@ -2157,7 +2157,7 @@ async function run() {
   // --- 展開図 ---
   const [tenkai] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="部屋ごとの展開図を SVG で書き出す"]'),
+    exportElevationView(page, 'development'),
   ]);
   const tenkaiSvg = await readFile(await tenkai.path(), 'utf8');
   assert.equal(tenkaiSvg.match(/<svg/g)?.length, 1, 'svg が 1 枚ではない');
@@ -2174,8 +2174,10 @@ async function run() {
 
   // --- 断面図 ---
   // **切断線は選んだ線を使う。** ツールを増やしていない
-  page.once('dialog', (d) => d.accept());
-  await page.click('button[title="選んだ線で切った断面を SVG で書き出す"]');
+  // **線を選ばずに選ぶと、閉じずに案内が出る**（`window.confirm` は使っていない）
+  const noLine = await elevationViewRefusal(page, 'section');
+  assert.equal(noLine.open, 1, '線を選ばずに断面を選んだらダイアログが閉じた');
+  assert.ok(noLine.notes.includes('切断線にする線が選ばれていません'), `案内が出ていない: ${noLine.notes}`);
   await sleep(250);
 
   // 壁を横切る線を引いて選ぶ
@@ -2203,7 +2205,7 @@ async function run() {
 
   const [danmen] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="選んだ線で切った断面を SVG で書き出す"]'),
+    exportElevationView(page, 'section'),
   ]);
   const danmenSvg = await readFile(await danmen.path(), 'utf8');
   const danmenError = await page.evaluate((source) => {
@@ -2757,6 +2759,29 @@ async function run() {
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */
+/**
+ * 立面ビューから 1 つ選んで書き出す。
+ *
+ * **3 つのボタンを 1 つに畳んだ**（ワイヤー「押下時、断面図、展開図どちらの
+ * 機能を利用するか、ポップアップ等で選択が可能」）ので、e2e もダイアログを通る。
+ */
+async function exportElevationView(page, kind) {
+  await page.click('button[title="立面・断面・展開のどれを書き出すか選ぶ"]');
+  await page.locator('.dialog select').selectOption(kind);
+  return page.locator('.dialog button.primary').click();
+}
+
+/** 書き出せないときの様子。**閉じずに理由が出る**ことを見る */
+async function elevationViewRefusal(page, kind) {
+  await page.click('button[title="立面・断面・展開のどれを書き出すか選ぶ"]');
+  await page.locator('.dialog select').selectOption(kind);
+  await page.locator('.dialog button.primary').click();
+  const open = await page.locator('.dialog').count();
+  const notes = (await page.locator('.dialog .empty-note').allTextContents()).join(' / ');
+  await page.locator('.dialog button', { hasText: '閉じる' }).click();
+  return { open, notes };
+}
+
 async function selectByLabel(labelText, optionLabel) {
   const field = page.locator('.field').filter({ hasText: labelText }).first();
   await field.locator('select').selectOption({ label: optionLabel });
