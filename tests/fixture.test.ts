@@ -6,12 +6,13 @@ import {
   fixturePrimitives,
   outline,
   specOf,
-  verticalRange,
+  baseOf,
+  localRange,
   type Fixture,
   type FixtureKind,
 } from '../src/core/fixture.ts';
 import { defaultAttrs } from '../src/core/attrs.ts';
-import { activeLevel, DEFAULT_LEVEL_ID } from '../src/core/level.ts';
+import { activeLevel, DEFAULT_LEVEL_ID, type Level } from '../src/core/level.ts';
 import { emptyScene } from '../src/core/types.ts';
 import { signedArea, vec } from '../src/core/geometry.ts';
 import { addWall, findOrCreateNode } from '../src/core/ops.ts';
@@ -40,6 +41,19 @@ function make(kind: FixtureKind, over: Partial<Fixture> = {}): Fixture {
   };
 }
 
+
+/**
+ * 階の床を基準にした絶対の z 範囲。**本番が立体を置くのと同じ道**で出す。
+ *
+ * 以前は `verticalRange` という専用の関数があったが、3D が
+ * `baseOf` + `localRange` + `level.floorZ` を使うようになって**本番からは
+ * 呼ばれなくなった**。テストだけが呼ぶ関数は、本番が壊れても通ってしまう。
+ */
+function absoluteRange(f: Fixture, level: Level): { z0: number; z1: number } {
+  const z0 = level.floorZ + baseOf(f, level);
+  return { z0, z1: z0 + localRange(f, level).z1 };
+}
+
 test('どの種別も輪郭が反時計回りの単純多角形になる', () => {
   // 押し出しは向きを頼りに外向きの法線を決める。逆だと内側が見える
   for (const kind of FIXTURE_KINDS) {
@@ -66,11 +80,11 @@ test('梁は天井から下がり、階高に追従する', () => {
   const level = activeLevel(scene);
   const beam = make('beam');
 
-  const at2400 = verticalRange(beam, level);
+  const at2400 = absoluteRange(beam, level);
   assert.equal(at2400.z1, level.floorZ + level.wallHeight, '梁の上端が天井に付いていない');
 
   level.wallHeight = 3000;
-  const at3000 = verticalRange(beam, level);
+  const at3000 = absoluteRange(beam, level);
   assert.equal(at3000.z1, level.floorZ + 3000, '階高を上げても梁が追従しない');
   assert.equal(at3000.z1 - at3000.z0, at2400.z1 - at2400.z0, 'せいまで変わっている');
 });
@@ -79,7 +93,7 @@ test('柱は階高いっぱいに立つ', () => {
   const scene = emptyScene();
   const level = activeLevel(scene);
   for (const kind of ['column', 'roundColumn'] as const) {
-    const { z0, z1 } = verticalRange(make(kind), level);
+    const { z0, z1 } = absoluteRange(make(kind), level);
     assert.equal(z0, level.floorZ);
     assert.equal(z1, level.floorZ + level.wallHeight);
   }
@@ -87,7 +101,7 @@ test('柱は階高いっぱいに立つ', () => {
 
 test('上書きした高さは既定より優先される', () => {
   const level = activeLevel(emptyScene());
-  const { z0, z1 } = verticalRange(make('column', { base: 100, height: 900 }), level);
+  const { z0, z1 } = absoluteRange(make('column', { base: 100, height: 900 }), level);
   assert.equal(z0, level.floorZ + 100);
   assert.equal(z1, level.floorZ + 1000);
 });

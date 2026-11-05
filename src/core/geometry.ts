@@ -18,7 +18,6 @@ export const lenSq = (a: Vec): number => a.x * a.x + a.y * a.y;
 export const len = (a: Vec): number => Math.hypot(a.x, a.y);
 export const dist = (a: Vec, b: Vec): number =>
   Math.hypot(b.x - a.x, b.y - a.y);
-export const distSq = (a: Vec, b: Vec): number => lenSq(sub(b, a));
 export const lerp = (a: Vec, b: Vec, t: number): Vec => ({
   x: a.x + (b.x - a.x) * t,
   y: a.y + (b.y - a.y) * t,
@@ -209,20 +208,6 @@ export function boundsOf(pts: Vec[]): Bounds | null {
   return { min: vec(minX, minY), max: vec(maxX, maxY) };
 }
 
-/** 回転した矩形の4隅（中心・サイズ・角度から） */
-export function rectCorners(
-  center: Vec,
-  w: number,
-  h: number,
-  angle: number,
-): Vec[] {
-  const hw = w / 2;
-  const hh = h / 2;
-  return [vec(-hw, -hh), vec(hw, -hh), vec(hw, hh), vec(-hw, hh)].map((p) =>
-    add(center, rotate(p, angle)),
-  );
-}
-
 export const EPS = 1e-9;
 
 /** 無限直線としての交点。t / u は各直線上のパラメータで、0..1 の外も返す */
@@ -274,13 +259,6 @@ export function arcSweepAngle(arc: Arc): number {
  */
 export function arcContainsAngle(arc: Arc, angle: number): boolean {
   return normalizeAngle(angle - arc.start) <= arcSweepAngle(arc) + EPS;
-}
-
-export function arcPoint(arc: Arc, angle: number): Vec {
-  return add(
-    arc.center,
-    vec(Math.cos(angle) * arc.radius, Math.sin(angle) * arc.radius),
-  );
 }
 
 /** 直線 ab と円の交点。接する場合は1点だけ返す */

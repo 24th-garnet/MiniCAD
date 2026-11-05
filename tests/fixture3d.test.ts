@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FIXTURE_KINDS, FIXTURE_SPECS, STEP_DEPTH, verticalRange, type Fixture, type FixtureKind } from '../src/core/fixture.ts';
+import { baseOf, FIXTURE_KINDS, FIXTURE_SPECS, localRange, STEP_DEPTH, type Fixture, type FixtureKind } from '../src/core/fixture.ts';
 import { buildFixtureFaces } from '../src/render3d/fixture3d.ts';
 import { defaultAttrs } from '../src/core/attrs.ts';
 import { activeLevel, DEFAULT_LEVEL_ID } from '../src/core/level.ts';
@@ -75,10 +75,10 @@ test('階段は 2D の段板と同じ数の段で立つ', () => {
 test('階段は下から上へ上がる', () => {
   const faces = facesOf('stair');
   const level = activeLevel(emptyScene());
-  const { z0, z1 } = verticalRange(
-    { ...sceneWith('stair').scene.fixtures.f1 },
-    level,
-  );
+  // **本番が立体を置くのと同じ道**で絶対の z を出す
+  const stair = { ...sceneWith('stair').scene.fixtures.f1 };
+  const z0 = level.floorZ + baseOf(stair, level);
+  const z1 = z0 + localRange(stair, level).z1;
   const tops = faces.map((f) => Math.max(...f.points.map((p) => p.z)));
   assert.ok(Math.min(...tops) < z1 - 1, '全部の段が同じ高さになっている');
   assert.ok(Math.abs(Math.max(...tops) - z1) < 1e-6, '最上段が階高に届いていない');

@@ -9,7 +9,7 @@ import { sceneToSvg } from '../src/io/svg.ts';
 import { defaultSettings } from '../src/core/store.ts';
 import { deserialize, serialize } from '../src/io/scene.ts';
 import { LAYER_IDS, defaultLayers, layerWeight } from '../src/core/layer.ts';
-import { LINE_GROUPS, jisStandard, lineGroupById, paperToWorld } from '../src/core/standard.ts';
+import { JIS_LINE_WIDTHS, LINE_GROUPS, jisStandard, lineGroupById, paperToWorld } from '../src/core/standard.ts';
 
 test('線群を替えると全画層の線の太さが連動する', () => {
   const layers = defaultLayers();
@@ -135,4 +135,21 @@ test('不正な線群・用紙の指定は既定値に丸められる', () => {
   assert.equal(scene.standard.lineGroupId, lineGroupById('bogus').id);
   assert.equal(scene.standard.paperId, 'A3');
   assert.ok(scene.standard.scale > 0);
+});
+
+test('線群の太さは JIS Z 8312 の 9 種から選ばれている', () => {
+  // **コメントが「この9種から選ぶ」と言っている。** 言うだけでは守られない——
+  // `JIS_LINE_WIDTHS` はどこからも呼ばれない飾りになっていた。
+  // ここで突き合わせておけば、外れた値を足した瞬間に落ちる
+  const allowed = new Set<number>(JIS_LINE_WIDTHS);
+  for (const g of LINE_GROUPS) {
+    for (const [role, w] of [['細線', g.thin], ['太線', g.thick], ['極太線', g.extraThick]] as const) {
+      assert.ok(allowed.has(w), `${g.label} の${role} ${w} が JIS の 9 種にない`);
+    }
+  }
+  // 細線:太線:極太線 = 1:2:4
+  for (const g of LINE_GROUPS) {
+    assert.ok(Math.abs(g.thick / g.thin - 2) < 0.15, `${g.label} が 1:2 になっていない`);
+    assert.ok(Math.abs(g.extraThick / g.thin - 4) < 0.3, `${g.label} が 1:4 になっていない`);
+  }
 });

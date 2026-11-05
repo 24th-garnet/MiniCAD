@@ -16,7 +16,6 @@ import { LAYER_IDS, type LayerId } from "./layer.ts";
 import { defaultLevel, type Level } from "./level.ts";
 import type { Primitive } from "./primitive.ts";
 import type { Segment } from "./shape.ts";
-import type { SnapKind } from "./snap.ts";
 import { ALL_USES, type Use } from "./use.ts";
 import type { FixtureCombine } from "./combine.ts";
 import type { FixtureEdge } from "./edge3d.ts";
@@ -990,17 +989,6 @@ export function outlineSegments(
   return p.map((a, i) => ({ a, b: p[(i + 1) % p.length] }));
 }
 
-/** 下端と上端 (mm)。階の床を基準にした絶対の z */
-export function verticalRange(
-  f: Fixture,
-  level: Level,
-): { z0: number; z1: number } {
-  const spec = specOf(f);
-  const base = f.base ?? spec.defaultBase(level);
-  const height = f.height ?? spec.defaultHeight(level);
-  return { z0: level.floorZ + base, z1: level.floorZ + base + height };
-}
-
 /**
  * ローカルの高さの範囲。**立体の底が 0。**
  *
@@ -1097,24 +1085,6 @@ export function tiltTo(
   const cx = Math.cos(x);
   const y = cx < 1e-9 ? 0 : Math.atan2(flat.x, nz);
   return x === 0 && y === 0 ? null : { x, y };
-}
-
-/** これより頂点が多い輪郭はスナップ点を出さない。中心だけになる */
-const MAX_SNAP_VERTICES = 32;
-
-export function fixtureSnapPoints(
-  f: Fixture,
-): { point: Vec; kind: SnapKind }[] {
-  const out: { point: Vec; kind: SnapKind }[] = [
-    { point: vec(f.x, f.y), kind: "center" },
-  ];
-  // 円の近似多角形の頂点を 32 個ぜんぶ出すと、スナップが重くなるだけで役に立たない。
-  // **押し出した形も同じ**——自由曲線から起こすと頂点が 100 個を超える
-  const poly = localOutline(f);
-  if (!isRoundFixture(f.kind) && poly.length <= MAX_SNAP_VERTICES) {
-    for (const p of outline(f)) out.push({ point: p, kind: "node" });
-  }
-  return out;
 }
 
 /** 平面に出すもの。輪郭 + 種別ごとの記号 + 文字 */

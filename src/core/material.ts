@@ -53,5 +53,3 @@ export function attrsOf(scene: Scene, ref: EntityRef): Attrs | null {
   }
 }
 
-/** 属性を持つ種別か。インスペクタが欄を出すかの判断に使う */
-export const hasAttrsFor = (scene: Scene, ref: EntityRef): boolean => attrsOf(scene, ref) !== null;

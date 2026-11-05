@@ -5,7 +5,6 @@ import {
   dist,
   len,
   mid,
-  mul,
   rotate,
   segmentIntersection,
   sub,
@@ -13,7 +12,7 @@ import {
   type Vec,
 } from './geometry.ts';
 import { isSnappable } from './entity.ts';
-import { nodePos, wallEnds } from './ops.ts';
+import { wallEnds } from './ops.ts';
 import { shapeSnapPoints } from './shapes.ts';
 import type { Id, Scene } from './types.ts';
 import type { Settings } from './store.ts';
@@ -157,12 +156,4 @@ export function snapPoint(scene: Scene, settings: Settings, p: Vec, opts: SnapOp
   return { point: { ...p }, kind: 'free', label: '' };
 }
 
-/** 作図中に長さ・角度を数値で打ち込むときの点を作る */
-export function pointFromPolar(from: Vec, lengthMm: number, angleDeg: number): Vec {
-  return add(from, mul(rotate(vec(1, 0), (angleDeg * Math.PI) / 180), lengthMm));
-}
 
-/** ノードの実座標（スナップ結果からノードIDが取れたとき用） */
-export function resolveSnapNode(scene: Scene, snap: SnapResult): Vec {
-  return snap.nodeId ? nodePos(scene, snap.nodeId) : snap.point;
-}

@@ -136,13 +136,33 @@ AI パース本体／ウォークスルーの録画・動画生成／コメン�
 
 ## D. 要らないのに実装してあるもの
 
-**整理の対象です。**
+### 消したもの（11 件）
 
-| 項目 | 状態 | どうするか |
+**宣言したきり、本番からもテストからも 1 度も呼ばれていなかったもの**を、
+`src` 全体を機械で走査して洗い出しました。残りは 0 件です。
+
+| 消したもの | 置き場 | なぜ死んでいたか |
 |---|---|---|
-| `fixtureSnapPoints`（`core/fixture.ts`） | **どこからも呼ばれていない。** `core/snap.ts` に "fixture" の文字が 1 つも無く、構造物はスナップ候補に入っていない | **消す。** 「直したつもりで効かない罠」になる |
-| `cylinderH`（水平の円筒） | 3 軸で回るようになったので**冗長**。種別として残してある | **残す。** 消すと既存のファイルが読めなくなる。理由はコメントに書いた |
-| 楕円 | ワイヤーにあるのは「**長円**」だけ。長円＝小判型なら楕円は余分 | **残す。** 長円の読みが決まるまで（15）。決まれば片方を落とす |
+| `fixtureSnapPoints` | `core/fixture.ts` | `core/snap.ts` に "fixture" の文字が 1 つも無く、構造物はスナップ候補に入っていなかった。**直したつもりで効かない罠** |
+| `verticalRange` | `core/fixture.ts` | 3D が `baseOf` + `localRange` に移ったあと、**テストだけが呼んでいた**（下記） |
+| `distSq` / `rectCorners` / `arcPoint` | `core/geometry.ts` | 作りかけの道具。輪郭は `localOutline`、ブロックは `instanceVertices` が受け持つようになった |
+| `leaderTextAngle` | `core/leader.ts` | 常に 0 を返すだけの関数 |
+| `hasAttrsFor` | `core/material.ts` | インスペクタは `attrsOf` を直に呼んでいる |
+| `pointFromPolar` / `resolveSnapNode` | `core/snap.ts` | 数値入力とノード解決が別の道へ移ったあとの残骸 |
+| `saveLocal` | `io/scene.ts` | `saveLocalFile` に寄せたときの取り残し |
+
+**`verticalRange` がいちばん性質が悪いものでした。** 本番は使っていないのに
+テスト 5 箇所が呼んでいたので、**本番が壊れてもテストは通ります。**
+テストのほうを「本番が立体を置くのと同じ道」（`baseOf` + `localRange` +
+`level.floorZ`）に書き換えてから消しました。
+
+### 消さなかったもの（3 件）
+
+| | なぜ残すか |
+|---|---|
+| `JIS_LINE_WIDTHS`（`core/standard.ts`） | 「この 9 種から選ぶ」と**コメントが言っているのに、何も守っていませんでした。** 消すより、**線群の太さがこの 9 種に入っていること**を見るテストを足して生かしました。外れた値を足した瞬間に落ちます（1:2:4 の比も一緒に見ます） |
+| `cylinderH`（水平の円筒） | 3 軸で回るようになって**冗長**ですが、消すと**既存のファイルが読めなくなります**。理由はコメントに書いてあります |
+| 楕円 | ワイヤーにあるのは「**長円**」だけ。長円＝小判型なら余分ですが、**読みが決まるまで**残します（15） |
 
 [qt]: https://github.com/24th-garnet/QuantityTakeoff
 [ie]: https://github.com/24th-garnet/InteriorEstimation

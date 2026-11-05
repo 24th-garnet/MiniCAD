@@ -1,4 +1,4 @@
-import { add, angleOf, dist, mul, norm, sub, vec, type Vec } from './geometry.ts';
+import { add, dist, mul, norm, sub, vec, type Vec } from './geometry.ts';
 import type { Primitive } from './primitive.ts';
 import type { Segment } from './shape.ts';
 import type { LeaderShape } from './shapes.ts';
@@ -90,5 +90,3 @@ export function leaderPrimitives(l: LeaderShape, std: DrawingStandard): Primitiv
   ];
 }
 
-/** 文字の角度は常に水平。読む向きを揃えるため */
-export const leaderTextAngle = (): number => angleOf(vec(1, 0));
