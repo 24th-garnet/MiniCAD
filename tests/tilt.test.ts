@@ -13,6 +13,13 @@ import {
   type FixtureKind,
 } from "../src/core/fixture.ts";
 import { deserialize, serialize } from "../src/io/scene.ts";
+import { transformEntities } from "../src/core/transformOps.ts";
+import {
+  applyPoint,
+  mirror,
+  rotation,
+  translation,
+} from "../src/core/transform.ts";
 import type { Primitive } from "../src/core/primitive.ts";
 import { defaultAttrs } from "../src/core/attrs.ts";
 import { DEFAULT_LEVEL_ID, defaultLevel } from "../src/core/level.ts";
@@ -630,4 +637,133 @@ test("倒した吹抜が食う床面積は、投影の面積になる", async ()
   scene.fixtures.v.tilt = { x: Math.PI / 2, y: 0 };
   const tilted = detectRooms(scene)[0].voidArea;
   assert.ok(near(tilted, 2, 1e-6), `倒したあとが ${tilted} m²`);
+});
+
+// ---------------------------------------------------------------------------
+// 変換・シンボル（第 5 版の 6 段目）
+// ---------------------------------------------------------------------------
+
+/** 面の全頂点を、丸めた文字列の並びにして突き合わせる */
+const pointKeys = (f: Fixture, map: (p: Vec3) => Vec3 = (p) => p): string[] =>
+  facesOf(f)
+    .flatMap((face) => face.points)
+    .map(map)
+    .map((p) => `${p.x.toFixed(6)},${p.y.toFixed(6)},${p.z.toFixed(6)}`)
+    .sort();
+
+const TILTED = (): Fixture =>
+  make("box", {
+    x: 700,
+    y: -300,
+    angle: 0.4,
+    base: 100,
+    height: 1200,
+    size: { w: 900, h: 500 },
+    tilt: { x: 0.6, y: -0.35 },
+  });
+
+test("鏡像にすると傾きも裏返る（軸を 4 通りで）", () => {
+  // **式だけでは取り違える。** 倒した立体の面を鏡映した点と突き合わせて見る
+  for (const [a, b] of [
+    [vec(0, 0), vec(1, 0)],
+    [vec(0, 0), vec(0, 1)],
+    [vec(0, 0), vec(1, 2)],
+    [vec(500, -200), vec(-3, 1)],
+  ] as const) {
+    const t = mirror(a, b);
+    const scene = emptyScene();
+    scene.fixtures.f = TILTED();
+    // 元の面を鏡映したもの（z はそのまま）
+    const want = pointKeys(scene.fixtures.f, (p) => {
+      const q = applyPoint(t, vec(p.x, p.y));
+      return { x: q.x, y: q.y, z: p.z };
+    });
+
+    transformEntities(scene, [{ type: "fixture", id: "f" }], t, {
+      copy: false,
+    });
+    assert.deepEqual(
+      pointKeys(scene.fixtures.f),
+      want,
+      `軸 ${b.x},${b.y}: 鏡像が合わない`,
+    );
+  }
+});
+
+test("鏡像で変わるのは tilt.x だけ", () => {
+  // 上の幾何のテストが本体。こちらは**どちらが反転するか**を名前で残す
+  const scene = emptyScene();
+  scene.fixtures.f = TILTED();
+  transformEntities(
+    scene,
+    [{ type: "fixture", id: "f" }],
+    mirror(vec(0, 0), vec(1, 0)),
+    {
+      copy: false,
+    },
+  );
+  assert.ok(near(scene.fixtures.f.tilt!.x, -0.6), "tilt.x が反転していない");
+  assert.ok(near(scene.fixtures.f.tilt!.y, -0.35), "tilt.y まで反転した");
+});
+
+test("移動と回転では傾きが変わらない", () => {
+  // 傾きはローカルの話。z 軸まわりの回転は `angle` が受け持つ
+  for (const t of [translation(vec(1000, 400)), rotation(vec(0, 0), 1.1)]) {
+    const scene = emptyScene();
+    scene.fixtures.f = TILTED();
+    transformEntities(scene, [{ type: "fixture", id: "f" }], t, {
+      copy: false,
+    });
+    assert.ok(
+      near(scene.fixtures.f.tilt!.x, 0.6) &&
+        near(scene.fixtures.f.tilt!.y, -0.35),
+    );
+  }
+});
+
+test("複写した傾きは元と共有されない", () => {
+  // `size` と `outline` が既に同じ理由で複製している
+  const scene = emptyScene();
+  scene.fixtures.f = TILTED();
+  const { refs } = transformEntities(
+    scene,
+    [{ type: "fixture", id: "f" }],
+    translation(vec(3000, 0)),
+    { copy: true },
+  );
+  const copy = scene.fixtures[refs[0].id];
+  assert.notEqual(copy.id, "f");
+  assert.notEqual(
+    copy.tilt,
+    scene.fixtures.f.tilt,
+    "同じオブジェクトを指している",
+  );
+  copy.tilt!.x = 1.4;
+  assert.ok(near(scene.fixtures.f.tilt!.x, 0.6), "複製を倒したら元まで倒れた");
+});
+
+test("シンボルの展開では、傾きは素通しで角度だけ足される", async () => {
+  const { defineAssembly, stampAssembly } =
+    await import("../src/core/assembly.ts");
+  const scene = emptyScene();
+  scene.fixtures.f = TILTED();
+  const asm = defineAssembly(scene, [{ type: "fixture", id: "f" }], "テスト");
+  assert.ok(asm, "シンボルが作れない");
+
+  const placed = stampAssembly(
+    scene,
+    asm,
+    vec(5000, 2000),
+    0.25,
+    DEFAULT_LEVEL_ID,
+  );
+  const ref = placed.find((r) => r.type === "fixture");
+  assert.ok(ref, "構造物が出てこない");
+  const out = scene.fixtures[ref.id];
+  assert.ok(
+    near(out.tilt!.x, 0.6) && near(out.tilt!.y, -0.35),
+    "傾きが素通しでない",
+  );
+  assert.ok(near(out.angle, 0.4 + 0.25), "角度が足されていない");
+  assert.notEqual(out.tilt, scene.fixtures.f.tilt, "傾きを元と共有している");
 });
