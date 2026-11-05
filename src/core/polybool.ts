@@ -248,11 +248,26 @@ function dropCollinear(poly: readonly Vec[]): Vec[] {
   return out;
 }
 
-/** 反時計回りに揃える。面積が無ければ null */
+/**
+ * 反時計回りに揃え、**座標をナノメートルの格子に丸める。** 面積が無ければ null。
+ *
+ * **丸めるのが効く。** 計算で作った輪郭には浮動小数の屑が乗る——
+ * 90 度回した箱との交差で `500` が `500.0000000000001` になる、といった具合。
+ * そのままだと「重なっているはずの辺」がごくわずかに傾き、境界として
+ * 扱えずに環がつながらない（**実際に切り分けた立体の平面で起きた**）。
+ *
+ * 1e-6 mm はナノメートルの単位で、建築の図面では意味を持たない桁。
+ * ここで落としても失うものが無く、**退化を本当の退化として扱える**ようになる。
+ */
 function ccw(poly: readonly Vec[]): Vec[] | null {
   if (poly.length < 3) return null;
-  const area = signedArea(poly as Vec[]);
+  const snapped = poly.map((p) => ({ x: snap(p.x), y: snap(p.y) }));
+  const area = signedArea(snapped);
   if (Math.abs(area) < 1) return null;
-  const copy = poly.map((p) => ({ x: p.x, y: p.y }));
-  return area < 0 ? copy.reverse() : copy;
+  return area < 0 ? snapped.reverse() : snapped;
 }
+
+const snap = (v: number): number => Math.round(v * SNAP_SCALE) / SNAP_SCALE;
+
+/** 丸めの細かさ。1e-6 mm ＝ ナノメートル */
+const SNAP_SCALE = 1e6;

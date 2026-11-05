@@ -2070,6 +2070,65 @@ async function run() {
   );
   console.log('✔ 切り欠きは、上から見て変わるときだけ平面に出る');
 
+  // --- 立体を 2 つに切り分ける（第 6 版の 8 段目） ---
+  // **断面図と同じ作法。** 専用ツールを増やさず、線を 1 本選ぶ
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    const s = ed.store.scene;
+    const attrs = () => ({ groupId: null, stampId: null, color: null,
+      materialRef: null, takeoff: null, symbolId: null, symbolVersion: null });
+    s.fixtures.__sp__ = { id: '__sp__', kind: 'box', x: 50000, y: 0, angle: 0,
+      tilt: null, size: { w: 2000, h: 2000 }, outline: null, combine: null,
+      edge: null, base: 0, height: 1600, label: '', layerId: 'shape',
+      levelId: s.activeLevelId, attrs: attrs() };
+    s.shapes.__cut__ = { id: '__cut__', shape: 'line', layerId: 'shape',
+      levelId: s.activeLevelId, attrs: attrs(),
+      a: { x: 50000, y: -3000 }, b: { x: 50000, y: 3000 } };
+    ed.store.emit();
+    ed.store.setSelection([
+      { type: 'fixture', id: '__sp__' }, { type: 'shape', id: '__cut__' }]);
+    ed.notifyUi();
+  });
+  await sleep(400);
+  const beforeSplit = (await state()).fixtures;
+  await page.locator('button.wide', { hasText: '切り分け' }).first().click();
+  await sleep(500);
+  const halved = await page.evaluate(async () => {
+    const fx = await import('/src/core/fixture.ts');
+    const g = await import('/src/core/geometry.ts');
+    const lv = await import('/src/core/level.ts');
+    const s = window.minicad.editorInstance.store.scene;
+    const halves = Object.values(s.fixtures).filter((f) => f.combine);
+    return {
+      n: halves.length,
+      kinds: halves.map((f) => f.kind),
+      areas: halves.map((f) =>
+        Math.round(g.signedArea(fx.outline(f, lv.levelOf(s, f.levelId))))),
+    };
+  });
+  assert.equal(halved.n, 2, `切り分けで 2 つにならない (${halved.n})`);
+  assert.ok(halved.kinds.every((k) => k === 'box'), '母体の種別が変わった');
+  assert.ok(
+    Math.abs(halved.areas[0] + halved.areas[1] - 2000 * 2000) < 10,
+    `平面の面積の和が合わない (${halved.areas.join(' + ')})`,
+  );
+  assert.ok(halved.areas.every((v) => v > 0), '片方が空');
+  assert.equal((await state()).fixtures, beforeSplit + 1, '立体が 1 つ増えていない');
+  await page.keyboard.press('Control+z');
+  await sleep(300);
+  assert.equal((await state()).fixtures, beforeSplit, '切り分けが undo で戻らない');
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    for (const id of Object.keys(ed.store.scene.fixtures)) {
+      if (id.startsWith('__sp__')) delete ed.store.scene.fixtures[id];
+    }
+    delete ed.store.scene.shapes.__cut__;
+    ed.store.setSelection([]);
+    ed.store.emit();
+  });
+  await sleep(200);
+  console.log('✔ 立体を線で 2 つに切り分けられる（切り口は平面にも出る）');
+
   // --- 押し出しとプッシュ/プル（20 段） ---
   await page.evaluate(() => window.minicad.setMode('pro'));
   await sleep(300);

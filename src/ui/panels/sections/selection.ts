@@ -1,4 +1,4 @@
-import { toDeg, toRad } from "../../../core/geometry.ts";
+import { toDeg, toRad, type Vec } from "../../../core/geometry.ts";
 import { wallLength } from "../../../core/ops.ts";
 import {
   isOpeningKind,
@@ -48,6 +48,7 @@ import {
   BOOLEAN_OPS,
   combineFixtures,
   explodeFixture,
+  splitFixture,
 } from "../../../core/combine.ts";
 import {
   EDGE_KINDS,
@@ -89,6 +90,7 @@ export class SelectionSection implements Section {
         extrudeButton(ctx),
         ...combineButtons(ctx),
         ...shapeBooleanButtons(ctx),
+        splitButton(ctx),
         blockifyButton(ctx),
         groupButton(ctx),
         symbolifyButton(ctx),
@@ -1052,6 +1054,68 @@ function combineButtons(ctx: PanelContext): (HTMLElement | null)[] {
       ),
     ),
   ];
+}
+
+/**
+ * 立体を線で 2 つに切り分ける（ワイヤー 5 枚目「分割 / 分解」の「分割」）。
+ *
+ * **断面図と同じ作法。** 専用のツールを増やさず、**図面の上の線を 1 本**
+ * 選んでもらう。立体 1 つと線 1 本を選んだときだけ出る。
+ */
+function splitButton(ctx: PanelContext): HTMLElement | null {
+  if (ctx.mode !== "pro") return null;
+  const scene = ctx.editor.store.scene;
+  const sel = ctx.editor.store.selection;
+  const solids = sel.filter(
+    (r) =>
+      r.type === "fixture" &&
+      FIXTURE_SPECS[scene.fixtures[r.id]?.kind ?? "void"].solid,
+  );
+  const lines = sel.filter(
+    (r) => r.type === "shape" && scene.shapes[r.id]?.shape === "line",
+  );
+  if (solids.length !== 1 || lines.length !== 1 || sel.length !== 2)
+    return null;
+
+  const line = scene.shapes[lines[0].id] as { a: Vec; b: Vec };
+  const note = el("p", { class: "empty-note" }, [
+    "選んだ線で、立体を 2 つに切り分けます（切り口は平面にも出ます）。",
+  ]);
+  return el("div", {}, [
+    note,
+    el(
+      "button",
+      {
+        class: "wide",
+        type: "button",
+        title: "切り分けた片割れは「分解」で元に戻せます",
+        onclick: () => {
+          let made: [string, string] | null = null;
+          ctx.edit(() => {
+            made = splitFixture(
+              scene,
+              solids[0].id,
+              line.a,
+              line.b,
+              levelOf(scene, scene.fixtures[solids[0].id].levelId),
+            );
+            return made !== null;
+          });
+          if (made) {
+            ctx.editor.store.setSelection(
+              (made as [string, string]).map((id) => ({
+                type: "fixture" as const,
+                id,
+              })),
+            );
+          } else {
+            note.textContent = "その線は立体を横切っていません。";
+          }
+        },
+      },
+      ["切り分け"],
+    ),
+  ]);
 }
 
 /**

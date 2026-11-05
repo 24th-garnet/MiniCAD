@@ -36,10 +36,18 @@ function areaOf(a: Vec[], b: Vec[], op: PolyOp): number | null {
   return signedArea(got);
 }
 
+/**
+ * 面積の突き合わせ。**許しは相対で見る。**
+ *
+ * 入力はナノメートルの格子に丸めてから計算する（浮動小数の屑で「重なった辺」が
+ * 傾くのを防ぐため）ので、斜めの辺を持つ形では面積が 1e-9 ほど動く。
+ * 1 m 角の図形で 0.0002 mm²——建築の図面では意味を持たない桁。
+ */
 const near = (got: number | null, want: number, what: string): void => {
   assert.ok(got !== null, `${what}: 断られた`);
+  const slack = Math.max(1e-6, Math.abs(want) * 1e-9);
   assert.ok(
-    Math.abs(got - want) < 1e-6,
+    Math.abs(got - want) < slack,
     `${what}: 面積が ${got}（${want} のはず）`,
   );
 };
@@ -308,4 +316,19 @@ test("画層と属性は母体のものを引き継ぐ", () => {
     (scene.shapes.a as { layerId: string }).layerId,
     LAYER_IDS.draft,
   );
+});
+
+test("浮動小数の屑が乗っていても、重なった辺として扱える", () => {
+  // **実際に切り分けた立体の平面で起きた。** 90 度回した箱との交差で
+  // 500 が 500.0000000000001 になり、重なるはずの辺がごくわずかに傾いた
+  const dusty = [
+    vec(0, 0),
+    vec(1000.0000000000001, 0),
+    vec(1000.0000000000001, 1000.0000000000002),
+    vec(0, 999.9999999999999),
+  ];
+  const got = polyBoolean(dusty, R(1000, 0, 2000, 1000), "unite");
+  assert.ok(got, "屑が乗っているだけで断られた");
+  assert.equal(got.length, 4, "重なった辺として扱えていない");
+  near(signedArea(got), 2_000_000, "合成");
 });

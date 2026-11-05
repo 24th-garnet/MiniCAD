@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   combineFixtures,
   explodeFixture,
+  splitFixture,
   combineFingerprint,
   type BooleanOp,
 } from "../src/core/combine.ts";
@@ -19,7 +20,7 @@ import {
 import { deserialize, serialize } from "../src/io/scene.ts";
 import { defaultAttrs } from "../src/core/attrs.ts";
 import { DEFAULT_LEVEL_ID, defaultLevel } from "../src/core/level.ts";
-import { signedArea } from "../src/core/geometry.ts";
+import { signedArea, vec } from "../src/core/geometry.ts";
 import { detectRooms } from "../src/core/rooms.ts";
 import { emptyScene, type Scene } from "../src/core/types.ts";
 import type { Face3 } from "../src/render3d/mesh.ts";
@@ -295,4 +296,170 @@ test("階が変わると、平面の投影も付いてくる", () => {
     Math.abs(signedArea(outline(host, high)) - 840_000) < 1e-6,
     "階を上げても削れない",
   );
+});
+
+// ---------------------------------------------------------------------------
+// 立体を 2 つに切り分ける（第 6 版の 8 段目）
+// ---------------------------------------------------------------------------
+
+/** 1000 角の箱 1 つだけのシーン */
+function soloBox(over: Partial<Fixture> = {}) {
+  const scene = emptyScene();
+  put(scene, "h", "box", { size: { w: 1000, h: 1000 }, height: 1000, ...over });
+  return scene;
+}
+
+test("切り分けた 2 つの体積の和が、元と合う", () => {
+  for (const [name, a, b] of [
+    ["真ん中で縦に", vec(0, -5000), vec(0, 5000)],
+    ["1/4 のところで", vec(-250, -5000), vec(-250, 5000)],
+    ["斜めに", vec(-5000, -5000), vec(5000, 5000)],
+  ] as const) {
+    const scene = soloBox();
+    const before = volume(facesOf(scene, "h"));
+    const ids = splitFixture(scene, "h", a, b, defaultLevel());
+    assert.ok(ids, `${name}: 切れない`);
+    const sum = ids.reduce((t, id) => t + volume(facesOf(scene, id)), 0);
+    assert.ok(
+      Math.abs(sum - before) / before < 1e-9,
+      `${name}: ${sum} ≠ ${before}`,
+    );
+    for (const id of ids) {
+      assert.ok(volume(facesOf(scene, id)) > 0, `${name}: 片方が空`);
+    }
+  }
+});
+
+test("切り口は平面にも出る", () => {
+  const scene = soloBox();
+  const ids = splitFixture(
+    scene,
+    "h",
+    vec(-250, -5000),
+    vec(-250, 5000),
+    defaultLevel(),
+  )!;
+  const areas = ids.map((id) =>
+    signedArea(outline(scene.fixtures[id], defaultLevel())),
+  );
+  assert.ok(
+    Math.abs(areas[0] + areas[1] - 1_000_000) < 1e-3,
+    `${areas[0]} + ${areas[1]}`,
+  );
+  assert.ok(
+    Math.abs(Math.min(...areas) - 250_000) < 1e-3,
+    "1/4 になっていない",
+  );
+});
+
+test("母体の形と輪郭は元のまま（平面も積算も壊れない）", () => {
+  const scene = soloBox({ kind: "cylinder" });
+  const ids = splitFixture(
+    scene,
+    "h",
+    vec(0, -5000),
+    vec(0, 5000),
+    defaultLevel(),
+  )!;
+  for (const id of ids) {
+    const f = scene.fixtures[id];
+    assert.equal(f.kind, "cylinder", "種別が箱に化けた");
+    assert.equal(f.size.w, 1000, "大きさが変わった");
+    assert.equal(f.outline, null, "自前の輪郭が付いた");
+  }
+});
+
+test("元の id が片方に残る（選択も undo も続きとして扱える）", () => {
+  const scene = soloBox();
+  const ids = splitFixture(
+    scene,
+    "h",
+    vec(0, -5000),
+    vec(0, 5000),
+    defaultLevel(),
+  )!;
+  assert.ok(ids.includes("h"), "元の id が消えた");
+  assert.equal(Object.keys(scene.fixtures).length, 2, "2 つになっていない");
+});
+
+test("線が立体を横切っていなければ断る", () => {
+  // 片方が空になるだけで「切り分けた」ことにならない
+  const scene = soloBox();
+  const before = JSON.stringify(scene.fixtures);
+  assert.equal(
+    splitFixture(scene, "h", vec(5000, -5000), vec(5000, 5000), defaultLevel()),
+    null,
+  );
+  assert.equal(
+    JSON.stringify(scene.fixtures),
+    before,
+    "断ったのに図面が変わった",
+  );
+  // 長さの無い線も断る
+  assert.equal(
+    splitFixture(scene, "h", vec(0, 0), vec(0, 0), defaultLevel()),
+    null,
+  );
+});
+
+test("既に作り方を持つ立体も切れる（作り方ごと中へしまう）", () => {
+  const scene = emptyScene();
+  put(scene, "h", "box", { size: { w: 1000, h: 1000 }, height: 1000 });
+  put(scene, "c", "box", {
+    x: 600,
+    y: 600,
+    size: { w: 600, h: 600 },
+    height: 1000,
+  });
+  combineFixtures(scene, ["h", "c"], "subtract");
+  const before = volume(facesOf(scene, "h"));
+
+  const ids = splitFixture(
+    scene,
+    "h",
+    vec(0, -5000),
+    vec(0, 5000),
+    defaultLevel(),
+  )!;
+  assert.ok(ids, "作り方を持つ立体が切れない");
+  const sum = ids.reduce((t, id) => t + volume(facesOf(scene, id)), 0);
+  assert.ok(Math.abs(sum - before) / before < 1e-9, `${sum} ≠ ${before}`);
+  // 切り欠きのほうも平面に残る（+x 側が 500000 − 40000）
+  const areas = ids.map((id) =>
+    signedArea(outline(scene.fixtures[id], defaultLevel())),
+  );
+  assert.ok(
+    areas.some((v) => Math.abs(v - 460_000) < 1e-3),
+    `切り欠きが平面から消えた (${areas.join(" / ")})`,
+  );
+});
+
+test("倒した立体も切れる", () => {
+  const scene = soloBox({ tilt: { x: 0.5, y: 0 } });
+  const before = volume(facesOf(scene, "h"));
+  const ids = splitFixture(
+    scene,
+    "h",
+    vec(0, -5000),
+    vec(0, 5000),
+    defaultLevel(),
+  )!;
+  assert.ok(ids, "倒した立体が切れない");
+  const sum = ids.reduce((t, id) => t + volume(facesOf(scene, id)), 0);
+  assert.ok(Math.abs(sum - before) / before < 1e-9, `${sum} ≠ ${before}`);
+});
+
+test("切り分けたものは「分解」で元に戻せる", () => {
+  const scene = soloBox();
+  const ids = splitFixture(
+    scene,
+    "h",
+    vec(0, -5000),
+    vec(0, 5000),
+    defaultLevel(),
+  )!;
+  assert.ok(explodeFixture(scene, ids[0]) > 0, "分解できない");
+  assert.equal(scene.fixtures[ids[0]].combine, null);
+  // 分解すると、覆っていた箱が図面に出てくる
+  assert.ok(Object.keys(scene.fixtures).length > 2, "覆いが戻っていない");
 });
