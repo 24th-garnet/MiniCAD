@@ -1032,6 +1032,42 @@ export function rotateToWorld(f: Fixture, n: Vec3Like): Vec3Like {
   return vec3Like(p.x - o.x, p.y - o.y, p.z - o.z);
 }
 
+/**
+ * ワールドの向きベクトルをローカルへ。{@link rotateToWorld} の逆。
+ *
+ * `Rz(angle) · Ry(tilt.y) · Rx(tilt.x)` の逆は
+ * `Rx(-tilt.x) · Ry(-tilt.y) · Rz(-angle)`——**掛ける順も逆になる。**
+ * 面の法線を「立体にとっての上下左右」に読み替えるのに使う。
+ */
+export function rotateToLocal(f: Fixture, n: Vec3Like): Vec3Like {
+  // z 軸まわりを先に戻す
+  const flat = rotate(vec(n.x, n.y), -f.angle);
+  let x = flat.x;
+  let y = flat.y;
+  let h = n.z;
+
+  const tilt = f.tilt;
+  if (tilt) {
+    // y 軸まわり
+    if (tilt.y !== 0) {
+      const c = Math.cos(-tilt.y);
+      const s = Math.sin(-tilt.y);
+      const nx = x * c + h * s;
+      h = -x * s + h * c;
+      x = nx;
+    }
+    // x 軸まわり
+    if (tilt.x !== 0) {
+      const c = Math.cos(-tilt.x);
+      const s = Math.sin(-tilt.x);
+      const ny = y * c - h * s;
+      h = y * s + h * c;
+      y = ny;
+    }
+  }
+  return vec3Like(x, y, h);
+}
+
 /** これより頂点が多い輪郭はスナップ点を出さない。中心だけになる */
 const MAX_SNAP_VERTICES = 32;
 
