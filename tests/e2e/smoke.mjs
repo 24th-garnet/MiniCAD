@@ -2717,6 +2717,58 @@ async function run() {
     'ホストから消せない');
   console.log('✔ コメントはアンカーだけを持ち、図面には入らない');
 
+  // --- 3D でコメントを置く（第 6 版の 2 段目） ---
+  // 仕様は 3D の節に「コメントしたいポイントをタップ」と書いている
+  await page.evaluate(() => void (window.__placed = []));
+  if (!(await page.evaluate(() => window.minicad.view.shows3d))) {
+    await page.keyboard.press('F3');
+  }
+  await sleep(600);
+  await page.click('button[title="3D の中でコメントを置く（面にカーソルを合わせてクリック）"]');
+  await sleep(300);
+  const wallSpot = await page.evaluate(() => {
+    const v = window.minicad.viewer;
+    const r = v.canvas.getBoundingClientRect();
+    const hits = [];
+    for (let y = 60; y < r.height - 60; y += 8)
+      for (let x = 60; x < r.width - 60; x += 8)
+        if (v.hitAt(x, y)?.kind === 'wall') hits.push({ x: r.left + x, y: r.top + y, sy: y });
+    hits.sort((a, b) => a.sy - b.sy);
+    return hits.length > 10 ? hits[Math.floor(hits.length * 0.15)] : null;
+  });
+  assert.ok(wallSpot, '3D で壁の面が拾えない');
+  const wallsBefore3dComment = (await state()).walls;
+  await page.mouse.move(wallSpot.x, wallSpot.y);
+  await sleep(250);
+  await page.mouse.down();
+  await page.mouse.up();
+  await sleep(400);
+  const placed3d = await page.evaluate(() => window.__placed[window.__placed.length - 1] ?? null);
+  assert.ok(placed3d, '3D で置いた通知が来ない');
+  assert.ok(placed3d.at.z > 100, `高さが落ちている (${JSON.stringify(placed3d.at)})`);
+  assert.ok(placed3d.ref && placed3d.ref.type === 'wall', '下の壁に紐づいていない');
+  // **図面は変わらない**（2D と同じ約束）
+  assert.equal((await state()).walls, wallsBefore3dComment, '3D のコメントで図面が変わった');
+  // 置いたバッジを叩いたら開く
+  await page.evaluate(() => void (window.__opened = []));
+  await page.mouse.move(wallSpot.x, wallSpot.y);
+  await sleep(250);
+  await page.mouse.down();
+  await page.mouse.up();
+  await sleep(300);
+  assert.deepEqual(
+    await page.evaluate(() => window.__opened),
+    [placed3d.id],
+    '3D のバッジを叩いても開かない',
+  );
+  await page.click('button[title="3D の中でコメントを置く（面にカーソルを合わせてクリック）"]');
+  await sleep(200);
+  await page.keyboard.press('F3');
+  await sleep(300);
+  await page.evaluate(() => window.minicadApi.setComments([]));
+  await sleep(250);
+  console.log('✔ 3D でコメントを置ける（高さが落ちず、図面は変わらない）');
+
   // --- 図面ビュー ---
   // **画層ではなく紙空間のビューポート。** 画層の見え方と縮尺の組を覚える
   await page.evaluate((f) => {

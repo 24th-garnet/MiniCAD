@@ -1,27 +1,32 @@
-import { removeEntities } from '../core/entity.ts';
-import { serialize } from '../io/scene.ts';
-import type { Scene } from '../core/types.ts';
-import type { ToolId } from '../tools/tool.ts';
-import { CommandInput } from './command-input.ts';
-import { Editor } from './editor.ts';
-import { defaultBindings, installKeymap, type Binding } from './keymap.ts';
-import type { Panel, PanelContext } from './panel.ts';
-import { buildSections } from './section-registry.ts';
-import { buildTools } from './tool-registry.ts';
-import { DEFAULT_MODE, type Mode } from './mode.ts';
-import { defaultCapabilities, type Capabilities, type HostCallbacks, type HostCatalogs } from '../host.ts';
-import { FileActions } from './panels/file-actions.ts';
-import { Inspector } from './panels/inspector.ts';
-import { OptionsBar } from './panels/options-bar.ts';
-import { Toolbar } from './panels/toolbar.ts';
-import { ModeSwitch } from './panels/mode-switch.ts';
-import { StatusBar } from './status-bar.ts';
-import { ViewTabs } from './panels/view-tabs.ts';
-import { Viewer3D } from '../render3d/viewer.ts';
-import { ViewState, type ViewMode } from './view-state.ts';
-import { buildShell } from './shell.ts';
-import { CommentTool } from '../tools/comment.ts';
-import type { CommentAnchor } from '../core/annotation.ts';
+import { removeEntities } from "../core/entity.ts";
+import { serialize } from "../io/scene.ts";
+import type { Scene } from "../core/types.ts";
+import type { ToolId } from "../tools/tool.ts";
+import { CommandInput } from "./command-input.ts";
+import { Editor } from "./editor.ts";
+import { defaultBindings, installKeymap, type Binding } from "./keymap.ts";
+import type { Panel, PanelContext } from "./panel.ts";
+import { buildSections } from "./section-registry.ts";
+import { buildTools } from "./tool-registry.ts";
+import { DEFAULT_MODE, type Mode } from "./mode.ts";
+import {
+  defaultCapabilities,
+  type Capabilities,
+  type HostCallbacks,
+  type HostCatalogs,
+} from "../host.ts";
+import { FileActions } from "./panels/file-actions.ts";
+import { Inspector } from "./panels/inspector.ts";
+import { OptionsBar } from "./panels/options-bar.ts";
+import { Toolbar } from "./panels/toolbar.ts";
+import { ModeSwitch } from "./panels/mode-switch.ts";
+import { StatusBar } from "./status-bar.ts";
+import { ViewTabs } from "./panels/view-tabs.ts";
+import { Viewer3D } from "../render3d/viewer.ts";
+import { ViewState, type ViewMode } from "./view-state.ts";
+import { buildShell } from "./shell.ts";
+import { CommentTool } from "../tools/comment.ts";
+import type { CommentAnchor } from "../core/annotation.ts";
 
 /**
  * 画面の配線だけを持つ。描画の中身は各パネルにある。
@@ -46,7 +51,7 @@ export class App {
   private readonly shellRoot: HTMLElement;
   private readonly teardown = new AbortController();
   private lastNotifiedVersion: number;
-  private lastNotifiedSelection = '';
+  private lastNotifiedSelection = "";
 
   constructor(container: HTMLElement, host: HostCallbacks = {}) {
     this.host = host;
@@ -63,7 +68,8 @@ export class App {
     this.view = new ViewState((mode) => this.applyView(mode));
 
     // 何を出すかはレジストリが決める。ここは並べるだけ
-    for (const tool of buildTools(this.currentMode, this.can)) this.editor.registerTool(tool);
+    for (const tool of buildTools(this.currentMode, this.can))
+      this.editor.registerTool(tool);
     // **保証は Store で掛ける。** 道具を隠すのは行き止まりを減らすためで、
     // インスペクタもドラッグもショートカットも別の経路で書きに来る
     this.editor.store.readOnly = !this.can.edit;
@@ -89,9 +95,9 @@ export class App {
     // 3D の切り替えだけは Viewer を掴む必要があるので、ここで足す。
     // 表に入れておけばショートカット一覧にも自動で出る
     bindings.push({
-      keys: ['F3'],
-      display: 'F3',
-      description: '2D / 3D 切り替え',
+      keys: ["F3"],
+      display: "F3",
+      description: "2D / 3D 切り替え",
       run: (ctx) => {
         this.view.toggle3d();
         ctx.refresh();
@@ -101,11 +107,22 @@ export class App {
     this.toolbar = toolbar;
     const fileActions = new FileActions(shell.fileActions);
     const modeSwitch = new ModeSwitch(shell.modeSwitch);
-    const commandInput = new CommandInput(shell.numeric, shell.numericInput, shell.numericLabel);
-    this.statusBar = new StatusBar(shell.statusHint, shell.statusReadout, this.viewer3d);
+    const commandInput = new CommandInput(
+      shell.numeric,
+      shell.numericInput,
+      shell.numericLabel,
+    );
+    this.statusBar = new StatusBar(
+      shell.statusHint,
+      shell.statusReadout,
+      this.viewer3d,
+    );
 
-    this.inspector = new Inspector(shell.inspector, buildSections({ bindings }, this.currentMode, this.can));
-    if (!this.can.edit) shell.root.classList.add('read-only');
+    this.inspector = new Inspector(
+      shell.inspector,
+      buildSections({ bindings }, this.currentMode, this.can),
+    );
+    if (!this.can.edit) shell.root.classList.add("read-only");
     this.panels = [
       toolbar,
       modeSwitch,
@@ -123,12 +140,14 @@ export class App {
     installKeymap(this.ctx, bindings, commandInput, this.teardown.signal);
 
     // 座標表示はポインタが動くたびに更新したいので、全体の再描画とは別経路にする
-    shell.canvas.addEventListener('pointermove', () => this.statusBar.refreshReadout(this.ctx));
+    shell.canvas.addEventListener("pointermove", () =>
+      this.statusBar.refreshReadout(this.ctx),
+    );
 
     // コメントはホストの持ち物。図面には入らないので `Store` を通さない
     this.editor.comments = host.comments ?? [];
     this.viewer3d.onCommentOpen = (id) => host.onCommentOpen?.(id);
-    const commentTool = this.editor.allTools().find((t) => t.id === 'comment');
+    const commentTool = this.editor.allTools().find((t) => t.id === "comment");
     if (commentTool instanceof CommentTool) {
       commentTool.onOpen = (id) => host.onCommentOpen?.(id);
       commentTool.onPlace = (anchor) => {
@@ -136,12 +155,17 @@ export class App {
         this.refresh();
       };
     }
+    // **3D でも置ける。** 同じ口へ流す（コメントはホストの持ち物）
+    this.viewer3d.comment.onPlace = (anchor) => {
+      host.onCommentPlace?.(anchor);
+      this.refresh();
+    };
 
     // 素材の表示色はホストのカタログから。MiniCAD は意味を読まない
     this.viewer3d.setMaterialColors(
       new Map(
         (this.catalogs.materials ?? [])
-          .filter((m) => typeof m.color === 'string' && m.color.length > 0)
+          .filter((m) => typeof m.color === "string" && m.color.length > 0)
           .map((m) => [m.ref, m.color as string]),
       ),
     );
@@ -176,13 +200,15 @@ export class App {
    * 「いま見ている方」が決まらないので、3D を優先する（絵として渡すなら
    * そちらを期待されるはず、という判断）。
    */
-  async capture(view?: '2d' | '3d'): Promise<Blob | null> {
-    const which = view ?? (this.view.shows3d ? '3d' : '2d');
-    if (which === '3d') {
+  async capture(view?: "2d" | "3d"): Promise<Blob | null> {
+    const which = view ?? (this.view.shows3d ? "3d" : "2d");
+    if (which === "3d") {
       if (!this.view.shows3d) return null; // 隠れている 3D は描かれていない
       return this.viewer3d.capture();
     }
-    return new Promise((resolve) => this.editor.canvas.toBlob((b) => resolve(b), 'image/png'));
+    return new Promise((resolve) =>
+      this.editor.canvas.toBlob((b) => resolve(b), "image/png"),
+    );
   }
 
   /** コメントを差し替える。**図面には触らない**ので `commit` を通さない */
@@ -206,7 +232,9 @@ export class App {
     this.ctx.mode = mode;
     this.editor.setTools(buildTools(mode, this.can));
     this.toolbar.build(this.ctx);
-    this.inspector.setSections(buildSections({ bindings: this.bindings }, mode, this.can));
+    this.inspector.setSections(
+      buildSections({ bindings: this.bindings }, mode, this.can),
+    );
     this.refresh();
   }
 
@@ -218,7 +246,7 @@ export class App {
    * 両方で「選択時にビューが 2D に切り替わる」と書いている。
    */
   private selectTool(id: ToolId): void {
-    if (id !== 'select' && !this.view.shows2d) this.view.set('2d');
+    if (id !== "select" && !this.view.shows2d) this.view.set("2d");
     this.editor.setTool(id);
   }
 
@@ -241,7 +269,7 @@ export class App {
    * 順番が逆だと、分割になる前の幅で測ってしまう。
    */
   private applyView(mode: ViewMode): void {
-    this.canvasWrap.classList.toggle('split', mode === 'split');
+    this.canvasWrap.classList.toggle("split", mode === "split");
     this.viewer3d.setVisible(this.view.shows3d);
     this.editor.requestRender();
     this.refresh();
@@ -267,7 +295,7 @@ export class App {
       this.host.onChange?.(serialize(this.editor.store.scene));
     }
     const selection = this.editor.store.selection;
-    const key = selection.map((r) => `${r.type}:${r.id}`).join(',');
+    const key = selection.map((r) => `${r.type}:${r.id}`).join(",");
     if (key !== this.lastNotifiedSelection) {
       this.lastNotifiedSelection = key;
       this.host.onSelectionChange?.([...selection]);

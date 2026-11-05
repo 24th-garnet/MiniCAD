@@ -144,6 +144,24 @@ export class ViewTabs implements Panel {
       ),
     );
 
+    // **3D の中でコメントを置く。** シーンには入らない（ホストの持ち物）
+    const commenting = this.viewer.tool3d === this.viewer.comment;
+    this.host.append(
+      el(
+        "button",
+        {
+          type: "button",
+          "aria-pressed": String(commenting),
+          title: "3D の中でコメントを置く（面にカーソルを合わせてクリック）",
+          onclick: () => {
+            this.viewer.setTool3D(commenting ? null : this.viewer.comment);
+            ctx.refresh();
+          },
+        },
+        ["コメント"],
+      ),
+    );
+
     // **3D の中にソリッドを置く。** 2D のツールバーには出さない——
     // 3D でしか意味を持たない道具なので、3D のビュータブに置く
     if (ctx.mode !== "pro") return;

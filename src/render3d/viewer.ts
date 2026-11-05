@@ -29,6 +29,7 @@ import {
 } from "./interact.ts";
 import { Place3D } from "./place3d.ts";
 import { Measure3D, measurementFaces } from "./measure3d.ts";
+import { Comment3D } from "./comment3d.ts";
 import { getLayer, LAYER_IDS } from "../core/layer.ts";
 import { distanceOf } from "../core/annotation.ts";
 import { type Face3 } from "./mesh.ts";
@@ -104,6 +105,8 @@ export class Viewer3D {
   readonly place = new Place3D();
   /** 3D の中で 2 点間を測る道具。測った結果は 2D の計測と同じ実体になる */
   readonly measure = new Measure3D();
+  /** 3D の中でコメントを置く道具。シーンには入らない（ホストの持ち物） */
+  readonly comment = new Comment3D();
   /**
    * いま効いている 3D の道具。**ツールバーには出ない。**
    * 2D の `ToolId` とは別の、3D のビュータブから選ぶ小さな union
