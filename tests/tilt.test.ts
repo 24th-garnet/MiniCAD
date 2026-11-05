@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   FIXTURE_KINDS,
   FIXTURE_SPECS,
+  fixturePrimitives,
   isTilted,
   localOutline,
   outline,
@@ -12,11 +13,13 @@ import {
   type FixtureKind,
 } from "../src/core/fixture.ts";
 import { deserialize, serialize } from "../src/io/scene.ts";
+import type { Primitive } from "../src/core/primitive.ts";
 import { defaultAttrs } from "../src/core/attrs.ts";
 import { DEFAULT_LEVEL_ID, defaultLevel } from "../src/core/level.ts";
 import {
   convexHull,
   cross,
+  pointInPolygon,
   signedArea,
   sub,
   vec,
@@ -468,4 +471,163 @@ test("凸包は、内側の点を捨てて反時計回りで返す", () => {
   );
   // 重なった点は 1 つに
   assert.equal(convexHull([vec(0, 0), vec(0, 0), vec(1, 0)]).length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// 平面の記号（第 5 版の 4 段目）
+// ---------------------------------------------------------------------------
+
+const primsOf = (f: Fixture, level = defaultLevel()): Primitive[] =>
+  fixturePrimitives(f, 2.5, level);
+
+test("傾いていなければ、平面の記号はこれまでのまま", () => {
+  // 塗りつぶしも中の記号も、倒していない限り 1 つも変わらない
+  for (const kind of FIXTURE_KINDS) {
+    const f = make(kind, { x: 300, y: -200, angle: 0.4, label: "あ" });
+    const prims = primsOf(f);
+    const poly = prims.filter((p) => p.kind === "polygon");
+    assert.equal(poly.length, 1, `${kind}: 多角形が 1 つでない`);
+    assert.equal(
+      poly[0].fill,
+      FIXTURE_SPECS[kind].filled ? "layer" : "none",
+      `${kind}: 塗りつぶしが変わった`,
+    );
+    const text = prims.find((p) => p.kind === "text");
+    assert.ok(text && near(text.angle, 0.4), `${kind}: 文字の向きが変わった`);
+    assert.ok(
+      text && near(text.at.x, 300) && near(text.at.y, -200),
+      `${kind}: 文字の位置が変わった`,
+    );
+  }
+});
+
+test("倒した角柱は、上下の輪郭と縦の稜線で出る。塗りつぶしは出さない", () => {
+  const f = make("box", {
+    size: { w: 900, h: 900 },
+    height: 1600,
+    tilt: { x: 0.5, y: 0 },
+  });
+  const prims = primsOf(f);
+  assert.equal(
+    prims.filter((p) => p.kind === "polygon").length,
+    0,
+    "塗りつぶせる多角形が出ている",
+  );
+  const segs = prims.find((p) => p.kind === "segments");
+  assert.ok(segs, "線が出ていない");
+  // 上の輪郭 4 + 下の輪郭 4 + 縦の稜線 4（角柱は 4 隅とも角）
+  assert.equal(segs.segments.length, 12, `線の数が ${segs.segments.length}`);
+});
+
+test("倒した円柱の縦線は左右の 2 本だけ", () => {
+  // **32 分割の縦線を全部引くと塗り潰れる。** 画面で見つけた
+  const f = make("cylinder", {
+    size: { w: 900, h: 900 },
+    height: 1600,
+    tilt: { x: 0.6, y: 0 },
+  });
+  const segs = primsOf(f).find((p) => p.kind === "segments");
+  assert.ok(segs);
+  // 上の輪郭 32 + 下の輪郭 32 + 縦 2
+  assert.equal(segs.segments.length, 66, `線の数が ${segs.segments.length}`);
+});
+
+test("押し出しでない種別は、倒したら範囲だけを出す", () => {
+  // 球を円柱の形で描き、階段の上端を footprint 全体に広げるのは嘘になる
+  for (const kind of FIXTURE_KINDS) {
+    if (FIXTURE_SPECS[kind].extruded) continue;
+    const f = make(kind, { tilt: { x: 0.7, y: 0.3 } });
+    const prims = primsOf(f);
+    assert.equal(
+      prims.filter((p) => p.kind === "segments").length,
+      0,
+      `${kind}: 稜線を描いている`,
+    );
+    const poly = prims.filter((p) => p.kind === "polygon");
+    assert.equal(poly.length, 1, `${kind}: 多角形が 1 つでない`);
+    assert.equal(poly[0].fill, "none", `${kind}: 倒したのに塗りつぶしている`);
+  }
+});
+
+test("倒したら、中の記号（段板・対角線）は出ない", () => {
+  // `stepGlyph` も `crossGlyph` も 2 次元の式で描いている。倒すと嘘になる
+  const glyphLines = (prims: Primitive[]): number =>
+    prims
+      .filter((p) => p.kind === "segments")
+      .reduce((n, p) => n + p.segments.length, 0);
+
+  for (const kind of [
+    "stair",
+    "stairU",
+    "stairL",
+    "stairWinder",
+    "void",
+  ] as const) {
+    assert.ok(
+      glyphLines(primsOf(make(kind))) > 0,
+      `${kind}: 倒す前に記号が無い`,
+    );
+    assert.equal(
+      glyphLines(primsOf(make(kind, { tilt: { x: 0.7, y: 0 } }))),
+      0,
+      `${kind}: 倒しても記号が残っている`,
+    );
+  }
+});
+
+test("文字は投影の真ん中に、投影した向きで出る", () => {
+  // 90 度倒すと影が丸ごと横へずれる。`f.x, f.y` に書くと影の外に出てしまう
+  const f = make("box", {
+    size: { w: 900, h: 900 },
+    height: 1600,
+    label: "あ",
+    angle: 0,
+    tilt: { x: Math.PI / 2, y: 0 },
+  });
+  const text = primsOf(f).find((p) => p.kind === "text");
+  assert.ok(text);
+  const poly = outline(f);
+  assert.ok(pointInPolygon(text.at, poly), "文字が影の外に出ている");
+  assert.ok(near(text.at.y, -800), `影の真ん中でない（${text.at.y}）`);
+
+  // y まわりに倒すと、ローカルの x 軸が縮むだけで向きは変わらない
+  const sideways = make("box", {
+    angle: 0.3,
+    label: "あ",
+    tilt: { x: 0, y: 0.5 },
+  });
+  const t2 = primsOf(sideways).find((p) => p.kind === "text");
+  assert.ok(t2 && near(t2.angle, 0.3), "向きが変わってしまった");
+
+  // x まわりに倒すと、ローカルの x 軸は動かない
+  const t3 = primsOf(
+    make("box", { angle: 0.3, label: "あ", tilt: { x: 0.5, y: 0 } }),
+  ).find((p) => p.kind === "text");
+  assert.ok(t3 && near(t3.angle, 0.3));
+});
+
+test("倒した吹抜が食う床面積は、投影の面積になる", async () => {
+  const { detectRooms } = await import("../src/core/rooms.ts");
+  const { findOrCreateNode, addWall } = await import("../src/core/ops.ts");
+
+  const scene = emptyScene();
+  const c = [vec(0, 0), vec(5000, 0), vec(5000, 4000), vec(0, 4000)].map((p) =>
+    findOrCreateNode(scene, p),
+  );
+  for (let i = 0; i < 4; i++) addWall(scene, c[i], c[(i + 1) % 4], 100);
+
+  scene.fixtures.v = make("void", {
+    id: "v",
+    x: 2500,
+    y: 2000,
+    size: { w: 2000, h: 2000 },
+    height: 1000,
+  });
+  const flat = detectRooms(scene)[0].voidArea;
+  assert.ok(near(flat, 4, 1e-6), `倒す前が ${flat} m²`);
+
+  // x まわりに 90 度倒すと、奥行き 2000 が潰れて高さ 1000 が出る → 2m × 1m
+  scene.fixtures.v.tilt = { x: Math.PI / 2, y: 0 };
+  const tilted = detectRooms(scene)[0].voidArea;
+  assert.ok(near(tilted, 2, 1e-6), `倒したあとが ${tilted} m²`);
 });

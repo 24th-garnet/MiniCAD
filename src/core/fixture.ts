@@ -1,9 +1,11 @@
 import type { Attrs } from "./attrs.ts";
 import {
   add,
+  angleOf,
   convexHull,
   rotate,
   signedArea,
+  sub,
   vec,
   vec3Like,
   type Vec,
@@ -200,6 +202,13 @@ export interface FixtureSpec {
    * **稜線の仕上げ（テーパ・面取り・丸め）が効くのはこれだけ。** 階段は段で、
    * スロープは楔で、円錐・球・半球は回転体で出来ていて、どれも段を積む作りではない。
    * `false` のものに仕上げを付けても何も起きないので、**画面で断る**ために持つ。
+   *
+   * **倒したときの平面の記号もこれで出し分ける。** `true` なら立体の形は
+   * 「輪郭 × 高さ」で言い尽くせるので、上下の輪郭と縦の稜線を投影すれば
+   * **本物の見え方**になる。`false` のものに同じことをすると、球が円柱の形に
+   * なり、階段の上端が footprint 全体に広がる——**画面で見つけた嘘**なので、
+   * そちらは範囲（凸包）だけを出す。`solid` でないもの（吹抜・天窓）は
+   * どちらの意味でも当てはまらないので `false`。
    */
   extruded: boolean;
 }
@@ -1048,23 +1057,115 @@ export function fixturePrimitives(
   level: Level = defaultLevel(),
 ): Primitive[] {
   const spec = specOf(f);
-  const out: Primitive[] = [
-    {
-      kind: "polygon",
-      points: outline(f, level),
-      fill: spec.filled ? "layer" : "none",
-    },
-    ...spec.glyph(f),
-  ];
+  const out: Primitive[] = isTilted(f)
+    ? spec.extruded
+      ? [{ kind: "segments", segments: projectedEdges(f, level) }]
+      : // 回転体や階段は「輪郭 × 高さ」で言い尽くせない。**範囲だけ出す**
+        [{ kind: "polygon", points: outline(f, level), fill: "none" }]
+    : [
+        {
+          kind: "polygon",
+          points: outline(f, level),
+          fill: spec.filled ? "layer" : "none",
+        },
+        ...spec.glyph(f),
+      ];
   if (f.label.length > 0) {
     out.push({
       kind: "text",
       text: f.label,
-      at: vec(f.x, f.y),
+      at: labelAt(f, level),
       paperMm: textPaperMm,
-      angle: f.angle,
+      angle: projectedTextAngle(f),
       align: "center",
     });
   }
   return out;
+}
+
+/** これ以上曲がっていれば「角」。円の近似（32 分割 = 11.25 度）は下回る */
+const CORNER_TURN = Math.PI / 6;
+
+/**
+ * 倒した立体を上から見た稜線。**塗りつぶしは出さない。**
+ *
+ * 上下の輪郭と、その間の縦の稜線を投影して重ねる。**1 本の輪郭にまとめない。**
+ * まとめるには 2D の多角形ブール演算が要り、`outline` が返す凸包では
+ * へこんだ形（L 字階段など）が嘘になる。線を重ねれば、どちらも要らない。
+ *
+ * **隠れ線は消さない。** 消すには面の前後関係が要る。平面図は投影図であって
+ * 絵ではないので、重なった線はそのまま出す。
+ *
+ * **縦の線は全部は引かない。** 輪郭の頂点ごとに引くと、円柱（32 分割）が
+ * 32 本の縦線で塗り潰されて何も読めなくなる——画面で確かめた。引くのは
+ * 2 つだけ:
+ *
+ * - **本当に角になっているところ。** 曲がりが {@link CORNER_TURN} を超える頂点。
+ *   角柱・階段・押し出しはここで全部の縦稜線が出る。円の近似は出ない
+ * - **影の輪郭になっているところ。** 両隣の側面が投影で逆を向く頂点。
+ *   丸い立体を倒したときの左右の端がこれで、角が 1 つも無くても出る
+ */
+function projectedEdges(f: Fixture, level: Level): Segment[] {
+  const local = localOutline(f);
+  const { z0, z1 } = localRange(f, level);
+  const at = (p: Vec, z: number): Vec => {
+    const q = toWorld3(f, p, z);
+    return vec(q.x, q.y);
+  };
+  const bottom = local.map((p) => at(p, z0));
+  const top = local.map((p) => at(p, z1));
+  const n = local.length;
+
+  // 側面 i（頂点 i から i+1）を投影した四角形の符号つき面積。
+  // 符号が向き、0 なら真横から見ている（＝それ自体が影の輪郭）
+  const facing = bottom.map((b, i) => {
+    const j = (i + 1) % n;
+    return signedArea([b, bottom[j], top[j], top[i]]);
+  });
+  const scale = Math.max(...facing.map(Math.abs), 1);
+  const side = (i: number): number =>
+    Math.abs(facing[i]) < scale * 1e-9 ? 0 : Math.sign(facing[i]);
+
+  const segments: Segment[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    segments.push({ a: bottom[i], b: bottom[j] });
+    segments.push({ a: top[i], b: top[j] });
+
+    const prev = local[(i - 1 + n) % n];
+    const turn = Math.abs(
+      angleOf(sub(local[i], prev)) - angleOf(sub(local[j], local[i])),
+    );
+    const corner = Math.min(turn, Math.PI * 2 - turn) > CORNER_TURN;
+    const onEdgeOfShadow = side((i - 1 + n) % n) * side(i) <= 0;
+    if (corner || onEdgeOfShadow) segments.push({ a: bottom[i], b: top[i] });
+  }
+  return segments;
+}
+
+/**
+ * 文字を置く位置。倒したら**投影の真ん中**へ寄せる。
+ *
+ * `f.x, f.y` は底面の中心で、倒すと影の外へ出ることがある
+ * （90 度倒せば影は丸ごと横にずれる）。倒していないときに重心へ変えると、
+ * L 字階段や三角柱の文字が今までと違う場所に出るので、そこは触らない。
+ */
+function labelAt(f: Fixture, level: Level): Vec {
+  if (!isTilted(f)) return vec(f.x, f.y);
+  const poly = outline(f, level);
+  if (poly.length === 0) return vec(f.x, f.y);
+  return centroid(poly);
+}
+
+/**
+ * 文字の傾き。**紙に平行に書くものなので、投影後の向きに落とす。**
+ *
+ * ローカルの x 軸を投影して、その向きを使う。真横から見る格好
+ * （y まわりに 90 度）では投影が点に潰れるので、そのときは `angle` に戻す。
+ */
+function projectedTextAngle(f: Fixture): number {
+  if (!isTilted(f)) return f.angle;
+  const d = rotateToWorld(f, vec3Like(1, 0, 0));
+  if (Math.hypot(d.x, d.y) < 1e-6) return f.angle;
+  return Math.atan2(d.y, d.x);
 }
