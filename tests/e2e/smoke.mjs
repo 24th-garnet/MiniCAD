@@ -3044,7 +3044,14 @@ async function run() {
   await sleep(600);
 
   const oneView = await state();
-  assert.equal(oneView.viewRows, 1, '最初から図面が 2 枚ある');
+  // **最初から 4 枚ある**（現状図 / レイアウト図 / 天井伏図 / 立面図）
+  assert.equal(oneView.viewRows, 4, `初期の図面が ${oneView.viewRows} 枚`);
+  assert.deepEqual(
+    await page.evaluate(() =>
+      Object.values(window.minicad.editorInstance.store.scene.views).map((v) => v.name)),
+    ['現状図', 'レイアウト図', '天井伏図', '立面図'],
+    '初期の図面の顔ぶれが違う',
+  );
   // 前の手順で縮尺が動いているので、絶対値ではなく元に戻るかを見る
   const baseScale = oneView.scale;
   const otherScale = baseScale === 50 ? 100 : 50;
@@ -3053,8 +3060,8 @@ async function run() {
   await page.locator('button', { hasText: 'いまの状態を図面として覚える' }).first().click();
   await sleep(300);
   const twoViews = await state();
-  assert.equal(twoViews.viewRows, 2, '2 枚目が増えていない');
-  assert.notEqual(twoViews.activeView, oneView.activeView, '2 枚目が作業中になっていない');
+  assert.equal(twoViews.viewRows, 5, '覚えた図面が増えていない');
+  assert.notEqual(twoViews.activeView, oneView.activeView, '覚えた図面が作業中になっていない');
 
   // 2 枚目で画層を消し、縮尺を変え、透過を入れる
   await page.evaluate((other) => {
@@ -3083,17 +3090,17 @@ async function run() {
   assert.equal(back1.wallOpacity, 1, '透過が残っている');
   assert.equal(back1.scale, baseScale, '縮尺が戻っていない');
 
-  // もう一度 2 枚目へ
-  await page.locator('.view-row').nth(1).locator('input.view-active').check();
+  // もう一度、覚えた図面へ（初期の 4 枚のあとに足されるので最後の行）
+  await page.locator('.view-row').last().locator('input.view-active').check();
   await sleep(350);
   const back2 = await state();
-  assert.equal(back2.wallVisible, false, '2 枚目の状態が当たっていない');
+  assert.equal(back2.wallVisible, false, '覚えた図面の状態が当たっていない');
   assert.equal(back2.wallOpacity, 0.4);
   assert.equal(back2.scale, otherScale);
 
   // 往復しても残る
   const saved = await page.evaluate(() => window.minicadApi.getScene());
-  assert.equal(Object.keys(saved.scene.views).length, 2, '図面が保存されていない');
+  assert.equal(Object.keys(saved.scene.views).length, 5, '図面が保存されていない');
   console.log('✔ 図面を切り替えると画層の見え方と縮尺がまとめて入れ替わる');
 
   // --- キャプチャとカメラ引数 ---

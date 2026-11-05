@@ -1,19 +1,19 @@
-import type { Attrs } from './attrs.ts';
-import type { Bay } from './bay.ts';
-import type { Vec } from './geometry.ts';
-import { newId, type Id } from './id.ts';
-import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from './layer.ts';
-import type { Shape } from './shapes.ts';
-import type { BlockDef, BlockInstance } from './block.ts';
-import type { Constraint } from './constraints.ts';
-import type { Fixture } from './fixture.ts';
-import type { Measurement } from './annotation.ts';
-import type { Assembly, Stamp } from './assembly.ts';
-import { DEFAULT_VIEW_ID, defaultViews, type DrawingView } from './view.ts';
-import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from './level.ts';
-import { builtinBlocks } from './blockPresets.ts';
-import { defaultSheet, type Sheet } from './sheet.ts';
-import { jisStandard, type DrawingStandard } from './standard.ts';
+import type { Attrs } from "./attrs.ts";
+import type { Bay } from "./bay.ts";
+import type { Vec } from "./geometry.ts";
+import { newId, type Id } from "./id.ts";
+import { defaultLayers, LAYER_IDS, type Layer, type LayerId } from "./layer.ts";
+import type { Shape } from "./shapes.ts";
+import type { BlockDef, BlockInstance } from "./block.ts";
+import type { Constraint } from "./constraints.ts";
+import type { Fixture } from "./fixture.ts";
+import type { Measurement } from "./annotation.ts";
+import type { Assembly, Stamp } from "./assembly.ts";
+import { DEFAULT_VIEW_ID, initialViews, type DrawingView } from "./view.ts";
+import { DEFAULT_LEVEL_ID, defaultLevels, type Level } from "./level.ts";
+import { builtinBlocks } from "./blockPresets.ts";
+import { defaultSheet, type Sheet } from "./sheet.ts";
+import { jisStandard, type DrawingStandard } from "./standard.ts";
 
 export { newId };
 export type { Id };
@@ -65,17 +65,17 @@ export interface Wall {
  * `OPENING_SYMBOLS`（core/opening.ts）の埋め忘れが型エラーになる。
  */
 export const OPENING_KINDS = [
-  'door',
-  'doubleDoor',
-  'unequalDoor',
-  'slidingDouble',
-  'slidingSingle',
-  'slidingPocket',
-  'folding',
-  'opening',
-  'window',
-  'windowSliding',
-  'windowRound',
+  "door",
+  "doubleDoor",
+  "unequalDoor",
+  "slidingDouble",
+  "slidingSingle",
+  "slidingPocket",
+  "folding",
+  "opening",
+  "window",
+  "windowSliding",
+  "windowRound",
 ] as const;
 
 export type OpeningKind = (typeof OPENING_KINDS)[number];
@@ -83,7 +83,7 @@ export type OpeningKind = (typeof OPENING_KINDS)[number];
 const OPENING_KIND_SET: ReadonlySet<string> = new Set<string>(OPENING_KINDS);
 
 export const isOpeningKind = (v: unknown): v is OpeningKind =>
-  typeof v === 'string' && OPENING_KIND_SET.has(v);
+  typeof v === "string" && OPENING_KIND_SET.has(v);
 
 /** 壁に開ける穴（ドア・窓）。壁の始点からの距離で位置を持つので、壁を伸ばしてもズレない */
 export interface Opening {
@@ -208,7 +208,7 @@ export function emptyScene(): Scene {
     fixtures: {},
     measurements: {},
     layers: defaultLayers(),
-    views: defaultViews(jisStandard().scale),
+    views: initialViews(jisStandard().scale),
     activeViewId: DEFAULT_VIEW_ID,
     standard: jisStandard(),
     sheet: defaultSheet(),
@@ -223,7 +223,7 @@ export function emptyScene(): Scene {
 }
 
 /** エンティティの種類から既定の画層を引く */
-export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, 'node'>, LayerId> = {
+export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, "node">, LayerId> = {
   wall: LAYER_IDS.wall,
   opening: LAYER_IDS.opening,
   blockInstance: LAYER_IDS.furniture,
@@ -234,14 +234,14 @@ export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, 'node'>, LayerId> = {
 };
 
 export type EntityType =
-  | 'node'
-  | 'wall'
-  | 'opening'
-  | 'blockInstance'
-  | 'roomLabel'
-  | 'shape'
-  | 'fixture'
-  | 'measurement';
+  | "node"
+  | "wall"
+  | "opening"
+  | "blockInstance"
+  | "roomLabel"
+  | "shape"
+  | "fixture"
+  | "measurement";
 
 export interface EntityRef {
   type: EntityType;
@@ -277,4 +277,3 @@ export interface Room {
   name: string | null;
   labelId: Id | null;
 }
-
