@@ -1,11 +1,29 @@
-import { vec3Like, type Vec3Like } from "./geometry.ts";
 import {
+  add,
+  boundsOf,
+  len,
+  lineLineIntersection,
+  mul,
+  norm,
+  signedArea,
+  sub,
+  vec,
+  vec3Like,
+  type Vec,
+  type Vec3Like,
+} from "./geometry.ts";
+import {
+  baseOf,
+  localOutline,
   isBoxFixture,
+  isRoundFixture,
   rotateToLocal,
   rotateToWorld,
   specOf,
+  type Fixture,
 } from "./fixture.ts";
-import { levelOf, wallHeightOf } from "./level.ts";
+import { hasCornerEdge } from "./edge3d.ts";
+import { levelOf, wallHeightOf, type Level } from "./level.ts";
 import type { EntityRef, Scene } from "./types.ts";
 
 /**
@@ -35,7 +53,7 @@ export const MIN_PUSH_SIZE = 1;
 /** 3D の点の最小の形。置き場は `core/geometry.ts` に移した */
 export type { Vec3Like };
 
-export type PushWhat = "top" | "bottom" | "side";
+export type PushWhat = "top" | "bottom" | "side" | "outlineEdge";
 
 export interface PushTarget {
   ref: EntityRef;
@@ -53,6 +71,8 @@ export interface PushTarget {
   axis: "x" | "y" | null;
   /** 側面のときだけ: +1 なら +軸側の面 */
   sign: 1 | -1;
+  /** `outlineEdge` のときだけ: 動かす辺の番号（**角を落とす前の**輪郭での） */
+  edgeIndex: number | null;
   /** 掴んだ時点の値。変位はここからの差で当てる */
   start: {
     base: number;
@@ -61,6 +81,8 @@ export interface PushTarget {
     h: number;
     x: number;
     y: number;
+    /** `outlineEdge` のときだけ: 掴んだ時点の輪郭（角を落とす前） */
+    outline: Vec[] | null;
   };
   /** 画面に出す名前 */
   label: string;
@@ -84,6 +106,7 @@ export function pushTargetOf(
   scene: Scene,
   ref: EntityRef,
   normal: Vec3Like,
+  at: Vec3Like | null = null,
 ): PushTarget | null {
   if (ref.type === "wall") {
     const wall = scene.walls[ref.id];
@@ -96,6 +119,7 @@ export function pushTargetOf(
       vertical: true,
       axis: null,
       sign: 1,
+      edgeIndex: null,
       start: {
         base: 0,
         height: wallHeightOf(wall, level),
@@ -103,6 +127,7 @@ export function pushTargetOf(
         h: 0,
         x: 0,
         y: 0,
+        outline: null,
       },
       label: "壁の高さ",
     };
@@ -119,6 +144,7 @@ export function pushTargetOf(
     h: f.size.h,
     x: f.x,
     y: f.y,
+    outline: localOutline(f).map((p) => vec(p.x, p.y)),
   };
 
   // **立体にとっての上下左右で見る。** 倒すとワールドの法線が斜めを向く
@@ -133,6 +159,7 @@ export function pushTargetOf(
       vertical: true,
       axis: null,
       sign: 1,
+      edgeIndex: null,
       start,
       label: "高さ",
     };
@@ -145,26 +172,124 @@ export function pushTargetOf(
       vertical: true,
       axis: null,
       sign: -1,
+      edgeIndex: null,
       start,
       label: "下端",
     };
   }
 
-  // 側面。**矩形の輪郭だけ**（それ以外は 1 面だけ動かした形が `{w, h}` で表せない）
-  if (!isBoxFixture(f.kind) || f.outline) return null;
-  const axis: "x" | "y" = Math.abs(local.x) >= Math.abs(local.y) ? "x" : "y";
-  const sign: 1 | -1 = (axis === "x" ? local.x : local.y) >= 0 ? 1 : -1;
+  // --- ここから側面 ---
+
+  // **輪郭をまっすぐ押した立体だけ。** 階段・スロープ・回転体の側面は
+  // 輪郭の辺と 1 対 1 に対応しないので、動かした結果を輪郭で表せない
+  if (!spec.extruded) return null;
+  // **丸い種別は断る。** 32 面の 1 枚を動かしても意味がない
+  if (isRoundFixture(f.kind)) return null;
+  // **縦の角を落としていたら断る。** 理由が 2 つある。
+  // ① 面が輪郭の辺と 1 対 1 でなくなり、面取りの面を掴んだときにどの辺か
+  //    決められない
+  // ② 書き戻す先は `f.outline`（角を落とす**前**の輪郭）なのに、ここで見ている
+  //    のは落とした**後**の輪郭。そのまま書き戻すと角が二重に落ちる
+  //
+  // **この断りを緩めるなら、`baseOutline` に相当するものが要る。**
+  if (hasCornerEdge(f.edge)) return null;
+
+  // 矩形は速い道のまま。`{w, h}` と中心で表せるので、輪郭を持たずに済む
+  if (isBoxFixture(f.kind) && !f.outline) {
+    const axis: "x" | "y" = Math.abs(local.x) >= Math.abs(local.y) ? "x" : "y";
+    const sign: 1 | -1 = (axis === "x" ? local.x : local.y) >= 0 ? 1 : -1;
+    return {
+      ref,
+      what: "side",
+      normal: world,
+      vertical: false,
+      axis,
+      sign,
+      edgeIndex: null,
+      start,
+      label: axis === "x" ? "幅" : "奥行",
+    };
+  }
+
+  // 一般の輪郭。掴んだ面がどの辺かを突き止める
+  const index = edgeUnder(
+    start.outline ?? [],
+    local,
+    at ? toLocalPoint(f, level, at) : null,
+  );
+  if (index === null) return null;
   return {
     ref,
-    what: "side",
+    what: "outlineEdge",
     normal: world,
     vertical: false,
-    axis,
-    sign,
+    axis: null,
+    sign: 1,
+    edgeIndex: index,
     start,
-    label: axis === "x" ? "幅" : "奥行",
+    label: "辺",
   };
 }
+
+/**
+ * 掴んだ面がローカルの輪郭のどの辺か。
+ *
+ * **法線だけでは決まらない。** L 字の輪郭には同じ向きの辺が 2 本あるので、
+ * 掴んだ点（ローカル）を使って近いほうを採る。点が無ければ、向きが合う辺が
+ * 1 本だけのときに限って返す——**当てずっぽうで別の辺を動かさない。**
+ */
+function edgeUnder(
+  poly: readonly Vec[],
+  local: Vec3Like,
+  at: Vec | null,
+): number | null {
+  if (poly.length < 3) return null;
+  const want = norm(vec(local.x, local.y));
+  if (len(want) < 0.5) return null;
+
+  const matched: number[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const n = outwardNormal(poly, i);
+    if (n && n.x * want.x + n.y * want.y > NORMAL_MATCH) matched.push(i);
+  }
+  if (matched.length === 0) return null;
+  if (matched.length === 1) return matched[0];
+  if (!at) return null;
+
+  let best = matched[0];
+  let bestD = Infinity;
+  for (const i of matched) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const m = vec((a.x + b.x) / 2, (a.y + b.y) / 2);
+    const d = Math.hypot(m.x - at.x, m.y - at.y);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** 反時計回りの輪郭の、辺 `i` の外向き法線（単位）。潰れていれば null */
+function outwardNormal(poly: readonly Vec[], i: number): Vec | null {
+  const a = poly[i];
+  const b = poly[(i + 1) % poly.length];
+  const d = sub(b, a);
+  if (len(d) < 1e-9) return null;
+  // 反時計回りなら、進行方向の右が外
+  return norm(vec(d.y, -d.x));
+}
+
+/** ワールドの点を、立体のローカルの 2 次元へ */
+function toLocalPoint(f: Fixture, level: Level, at: Vec3Like): Vec {
+  const floor = level.floorZ + baseOf(f, level);
+  const d = rotateToLocal(f, vec3Like(at.x - f.x, at.y - f.y, at.z - floor));
+  return vec(d.x, d.y);
+}
+
+/** これ以上そろっていれば「同じ向きの面」とみなす */
+const NORMAL_MATCH = 0.99;
 
 /**
  * 変位 `d`（面の外向き法線の向き、mm）を当てる。**掴んだ時点の値からの差**で
@@ -203,6 +328,8 @@ export function applyPush(
     return true;
   }
 
+  if (target.what === "outlineEdge") return pushOutlineEdge(f, target, d);
+
   // 側面。反対側の面を固定したまま、押した側だけを動かす
   const size = Math.max(
     MIN_PUSH_SIZE,
@@ -223,6 +350,61 @@ export function applyPush(
   if (shift.z !== 0) f.base = start.base + shift.z;
   return true;
 }
+
+/**
+ * 輪郭の辺を 1 本だけ外へずらす。**両隣の辺の線と交わらせて、形を閉じ直す。**
+ *
+ * 矩形なら `{w, h}` と中心で表せるが、三角柱や押し出した形ではそれができない。
+ * 代わりに**輪郭そのものを書き換える**——以後この立体は自前の輪郭を持つ。
+ *
+ * **両隣と平行なら断る。** 交点が無いので、動かした結果が閉じない。
+ * **裏返ったら断る。** 行きすぎて他の辺を追い越した形は、面積の符号で分かる。
+ */
+function pushOutlineEdge(f: Fixture, target: PushTarget, d: number): boolean {
+  const poly = target.start.outline;
+  const i = target.edgeIndex;
+  if (!poly || i === null || poly.length < 3) return false;
+  const n = poly.length;
+  const dir = outwardNormal(poly, i);
+  if (!dir) return false;
+
+  const j = (i + 1) % n;
+  const a = add(poly[i], mul(dir, d));
+  const b = add(poly[j], mul(dir, d));
+  // 両隣の辺の線（元のまま）と交わらせる。**両隣は `prev → poly[i]` と
+  // `next → poly[j]` の向きで渡す**——交点のパラメータ `t` が 1 の側に
+  // 動かす頂点が来るので、`t` が 0 を割ったら「隣の頂点を追い越した」と分かる
+  const prev = poly[(i - 1 + n) % n];
+  const next = poly[(j + 1) % n];
+  const hitA = lineLineIntersection(prev, poly[i], a, b);
+  const hitB = lineLineIntersection(next, poly[j], a, b);
+  if (!hitA || !hitB) return false;
+  // **隣の頂点を追い越したら断る。** 面積の符号では捕まらない——
+  // 三角形の底辺を頂点の向こうまで押すと、小さい三角形が**反時計回りのまま**残る
+  if (hitA.t < OVERRUN || hitB.t < OVERRUN) return false;
+
+  const moved = poly.map((p, k) =>
+    k === i ? hitA.point : k === j ? hitB.point : vec(p.x, p.y),
+  );
+  // 念のため、潰れた形も断る
+  if (signedArea(moved) < MIN_PUSH_AREA) return false;
+
+  f.outline = moved;
+  // **幅と奥行も合わせる。** 直さないとプロパティ欄が古い数字を出したままになる
+  // （輪郭を持つ立体では `size` は外接矩形の控えでしかない）
+  const box = boundsOf(moved);
+  if (box) {
+    f.size.w = Math.max(MIN_PUSH_SIZE, box.max.x - box.min.x);
+    f.size.h = Math.max(MIN_PUSH_SIZE, box.max.y - box.min.y);
+  }
+  return true;
+}
+
+/** 隣の辺を `prev → cur` と測ったときの、追い越していない下限 */
+const OVERRUN = 1e-9;
+
+/** これより小さい面積になったら、押しすぎとみなして断る (mm²) */
+const MIN_PUSH_AREA = 1;
 
 /**
  * 掴んだ面の外向き法線に沿った軸。ドラッグの測り方を決める。

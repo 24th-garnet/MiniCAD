@@ -9,6 +9,7 @@ import {
 import { extrudeShapes } from "../src/core/extrude.ts";
 import {
   baseOf,
+  localOutline,
   FIXTURE_SPECS,
   outline,
   rotateToWorld,
@@ -158,7 +159,7 @@ test("矩形でない輪郭の側面は押せない", () => {
   }
 });
 
-test("押し出した形は側面を押せないが、上下は押せる", () => {
+test("押し出した形も、側面の辺を 1 本ずつ押せる", () => {
   const scene = emptyScene();
   scene.shapes.p = {
     id: "p",
@@ -171,8 +172,22 @@ test("押し出した形は側面を押せないが、上下は押せる", () =>
   const id = extrudeShapes(scene, [{ type: "shape", id: "p" }], 800).created[0]
     .id;
   const ref = { type: "fixture" as const, id };
-  // 輪郭は矩形だが**自前の輪郭を持っている**ので、側面は押せない
-  assert.equal(pushTargetOf(scene, ref, { x: 1, y: 0, z: 0 }), null);
+  // **自前の輪郭を持っていても、辺を 1 本動かせる**（第 6 版の 5 段目）
+  const side = pushTargetOf(scene, ref, { x: 1, y: 0, z: 0 })!;
+  assert.ok(side, "自前の輪郭の側面が掴めない");
+  assert.equal(side.what, "outlineEdge");
+  assert.ok(applyPush(scene, side, 300));
+  const after = scene.fixtures[id].outline!;
+  assert.equal(after.length, 4, "頂点の数が変わった");
+  assert.ok(
+    Math.abs(Math.max(...after.map((p) => p.x)) - (500 + 300)) < 1e-6,
+    "+x の辺が 300 動いていない",
+  );
+  assert.ok(
+    Math.abs(Math.min(...after.map((p) => p.x)) - -500) < 1e-6,
+    "反対側の辺まで動いた",
+  );
+
   const top = pushTargetOf(scene, ref, UP)!;
   applyPush(scene, top, 400);
   assert.equal(scene.fixtures[id].height, 1200);
@@ -350,4 +365,162 @@ test("倒していなければ、下端は書き換えない（階の既定に�
   const t = pushTargetOf(scene, FIXTURE, { x: 1, y: 0, z: 0 })!;
   applyPush(scene, t, 300);
   assert.equal(f.base, null, "倒していないのに下端を書いた");
+});
+
+// ---------------------------------------------------------------------------
+// 矩形でない立体の側面（第 6 版の 5 段目）
+// ---------------------------------------------------------------------------
+
+test("三角柱の 1 面を押すと、その面だけが動く", () => {
+  const { scene, f } = sceneWith("prism", { size: { w: 1000, h: 800 } });
+  // 底辺（ローカル -y を向く面）
+  const t = pushTargetOf(scene, FIXTURE, { x: 0, y: -1, z: 0 })!;
+  assert.ok(t, "三角柱の側面が掴めない");
+  assert.equal(t.what, "outlineEdge");
+
+  const before = localOutline(f).map((p) => ({ ...p }));
+  assert.ok(applyPush(scene, t, 200));
+  const after = f.outline!;
+  assert.equal(after.length, 3, "頂点の数が変わった");
+  // 動かした辺（y が最小の 2 点）だけが 200 下がる
+  const lowBefore = Math.min(...before.map((p) => p.y));
+  const lowAfter = Math.min(...after.map((p) => p.y));
+  assert.ok(
+    Math.abs(lowAfter - (lowBefore - 200)) < 1e-6,
+    `底辺が動いていない (${lowAfter})`,
+  );
+  // 頂点（y が最大）は動かない
+  assert.ok(
+    Math.abs(
+      Math.max(...after.map((p) => p.y)) - Math.max(...before.map((p) => p.y)),
+    ) < 1e-6,
+    "反対側の頂点まで動いた",
+  );
+});
+
+test("同じ向きの辺が 2 本あるときは、掴んだ点で選ぶ", () => {
+  // L 字の輪郭には +x を向く辺が 2 本ある
+  const L = [
+    vec(-500, -500),
+    vec(500, -500),
+    vec(500, 0),
+    vec(0, 0),
+    vec(0, 500),
+    vec(-500, 500),
+  ];
+  const { scene, f } = sceneWith("box", { outline: L.map((p) => ({ ...p })) });
+
+  // 下の辺（x = 500、y は -500〜0）の近くを掴む
+  const low = pushTargetOf(
+    scene,
+    FIXTURE,
+    { x: 1, y: 0, z: 0 },
+    { x: 500, y: -250, z: 100 },
+  )!;
+  assert.ok(low, "掴めない");
+  applyPush(scene, low, 200);
+  const moved = f.outline!;
+  assert.ok(
+    moved.some((p) => Math.abs(p.x - 700) < 1e-6 && Math.abs(p.y + 500) < 1e-6),
+    "下の辺が動いていない",
+  );
+  assert.ok(
+    moved.some((p) => Math.abs(p.x) < 1e-6 && Math.abs(p.y - 500) < 1e-6),
+    "上の辺まで動いた",
+  );
+});
+
+test("掴んだ点が無く、同じ向きの辺が複数なら断る", () => {
+  // **当てずっぽうで別の辺を動かさない**
+  const L = [
+    vec(-500, -500),
+    vec(500, -500),
+    vec(500, 0),
+    vec(0, 0),
+    vec(0, 500),
+    vec(-500, 500),
+  ];
+  const { scene } = sceneWith("box", { outline: L });
+  assert.equal(pushTargetOf(scene, FIXTURE, { x: 1, y: 0, z: 0 }), null);
+  // 1 本しか無い向きなら、点が無くても決まる
+  assert.ok(
+    pushTargetOf(scene, FIXTURE, { x: 0, y: -1, z: 0 }),
+    "一意なのに断った",
+  );
+});
+
+test("丸い種別と、輪郭をまっすぐ押さない種別は断ったまま", () => {
+  for (const kind of [
+    "cylinder",
+    "cone",
+    "sphere",
+    "dome",
+    "stair",
+    "slope",
+  ] as FixtureKind[]) {
+    const { scene } = sceneWith(kind);
+    assert.equal(
+      pushTargetOf(
+        scene,
+        FIXTURE,
+        { x: 1, y: 0, z: 0 },
+        { x: 500, y: 0, z: 100 },
+      ),
+      null,
+      `${kind}: 側面を掴めてしまった`,
+    );
+  }
+});
+
+test("縦の角を落としていたら、側面は断る", () => {
+  // 面が輪郭の辺と 1 対 1 でなくなり、どの辺か決められない
+  const { scene } = sceneWith("box", {
+    size: { w: 1000, h: 1000 },
+    edge: { kind: "chamfer", size: 100, where: "corners" },
+  });
+  assert.equal(pushTargetOf(scene, FIXTURE, { x: 1, y: 0, z: 0 }), null);
+  // 上下は掴める
+  assert.ok(pushTargetOf(scene, FIXTURE, UP), "上面まで掴めなくなった");
+});
+
+test("押しすぎて裏返る手前で断る", () => {
+  // 三角柱の底辺を、頂点を追い越すまで内へ押す
+  const { scene, f } = sceneWith("prism", { size: { w: 1000, h: 800 } });
+  const t = pushTargetOf(scene, FIXTURE, { x: 0, y: -1, z: 0 })!;
+  assert.ok(t, "底辺が掴めない");
+  const before = JSON.stringify(f.outline);
+  // 底辺は y = -400、頂点は y = +400。1000 内へ押すと追い越す
+  assert.equal(applyPush(scene, t, -1000), false, "裏返る量でも通った");
+  assert.equal(JSON.stringify(f.outline), before, "断ったのに形が変わった");
+  // 追い越さない量なら通る
+  assert.equal(applyPush(scene, t, -700), true, "通る量まで断った");
+});
+
+test("辺を動かすと、幅と奥行も合う", () => {
+  // **画面で見つけた。** 直さないとプロパティ欄が古い数字を出したままになる
+  const { scene, f } = sceneWith("prism", { size: { w: 2000, h: 1600 } });
+  const t = pushTargetOf(scene, FIXTURE, { x: 0, y: -1, z: 0 })!;
+  assert.ok(applyPush(scene, t, 500));
+  const poly = f.outline!;
+  const xs = poly.map((p) => p.x);
+  const ys = poly.map((p) => p.y);
+  assert.ok(
+    Math.abs(f.size.w - (Math.max(...xs) - Math.min(...xs))) < 1e-6,
+    `幅が合っていない (${f.size.w})`,
+  );
+  assert.ok(
+    Math.abs(f.size.h - (Math.max(...ys) - Math.min(...ys))) < 1e-6,
+    `奥行が合っていない (${f.size.h})`,
+  );
+  assert.ok(f.size.h > 1600, "押したのに奥行が増えていない");
+});
+
+test("同じドラッグ中に何度当てても積み上がらない", () => {
+  const { scene, f } = sceneWith("prism", { size: { w: 1000, h: 800 } });
+  const t = pushTargetOf(scene, FIXTURE, { x: 0, y: -1, z: 0 })!;
+  applyPush(scene, t, 100);
+  applyPush(scene, t, 100);
+  applyPush(scene, t, 250);
+  const low = Math.min(...f.outline!.map((p) => p.y));
+  assert.ok(Math.abs(low - (-400 - 250)) < 1e-6, `積み上がっている (${low})`);
 });

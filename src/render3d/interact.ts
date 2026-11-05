@@ -145,7 +145,7 @@ export class Select3D implements Tool3D {
     // **Alt で押し引き。** 修飾なしのドラッグは今まで通り移動で、
     // 壁の天端だけは前から修飾なしで高さが変わる（その手触りを壊さない）
     const push = p.alt || (ref.type === 'wall' && isWallTop(hit))
-      ? pushTargetOf(editor.store.scene, ref, hit.face.normal)
+      ? pushTargetOf(editor.store.scene, ref, hit.face.normal, hit.point)
       : null;
     if (push) {
       const axis = pushAxis(push);
