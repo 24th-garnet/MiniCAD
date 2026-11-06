@@ -22,7 +22,13 @@ import {
 } from "../src/render3d/fixture3d.ts";
 import { defaultAttrs } from "../src/core/attrs.ts";
 import { DEFAULT_LEVEL_ID } from "../src/core/level.ts";
-import { cutCorners, signedArea, vec } from "../src/core/geometry.ts";
+import {
+  cutCorners,
+  cutCornersDetail,
+  signedArea,
+  sub,
+  vec,
+} from "../src/core/geometry.ts";
 import { emptyScene, type Scene } from "../src/core/types.ts";
 import type { Face3 } from "../src/render3d/mesh.ts";
 import type { Vec3 } from "../src/render3d/mat4.ts";
@@ -473,4 +479,82 @@ test("「どの稜線か」が JSON の往復を生き延びる / 欄が無い�
     "topBottom",
     "古いファイルが縦まで落ちている",
   );
+});
+
+/**
+ * 角を落とした辺が、元のどの辺から来たか（21 段）。
+ *
+ * **押し引きが掴むのは落とした後の面で、書き戻す先は落とす前の輪郭。**
+ * この対応が狂うと、押すたびに角が二重に落ちる。
+ */
+
+const SQUARE = [
+  vec(-500, -500),
+  vec(500, -500),
+  vec(500, 500),
+  vec(-500, 500),
+];
+
+test("面取りでは、元の辺と角の切片が交互に並ぶ", () => {
+  const got = cutCornersDetail(SQUARE, "chamfer", 100);
+  assert.equal(got.outline.length, 8);
+  // 角の切片が -1、元の辺が 0,1,2,3
+  assert.deepEqual(got.edgeOrigin, [-1, 0, -1, 1, -1, 2, -1, 3]);
+});
+
+test("丸めでは、元の辺は 4 本だけで残りは角の切片", () => {
+  const got = cutCornersDetail(SQUARE, "fillet", 100);
+  const real = got.edgeOrigin.filter((o) => o >= 0);
+  assert.deepEqual([...real].sort((a, b) => a - b), [0, 1, 2, 3]);
+  // 円弧の分割がそのぶん -1 で埋まる
+  assert.ok(
+    got.edgeOrigin.length > 20,
+    `分割されていない (${got.edgeOrigin.length})`,
+  );
+});
+
+test("まっすぐな頂点が混ざっても、元の辺の番号がずれない", () => {
+  // 右の辺の途中に、曲がらない頂点を 1 つ足す（落とされず 1 点のまま残る）
+  const withStraight = [
+    vec(-500, -500),
+    vec(500, -500),
+    vec(500, 0),
+    vec(500, 500),
+    vec(-500, 500),
+  ];
+  const got = cutCornersDetail(withStraight, "chamfer", 100);
+  // 頂点 2 は触られないので、その両隣の辺 1 と 2 が**どちらも**元の辺として出る
+  assert.deepEqual(got.edgeOrigin, [-1, 0, -1, 1, 2, -1, 3, -1, 4]);
+});
+
+test("元の辺だと言うからには、向きが元のままである", () => {
+  // **これが本題。** 番号が合っていても向きが変わっていたら、
+  // 押した先が元の輪郭で表せない
+  for (const kind of ["chamfer", "fillet"] as const) {
+    const got = cutCornersDetail(SQUARE, kind, 120);
+    const m = got.outline.length;
+    let checked = 0;
+    for (let k = 0; k < m; k++) {
+      const o = got.edgeOrigin[k];
+      if (o < 0) continue;
+      const cut = sub(got.outline[(k + 1) % m], got.outline[k]);
+      const base = sub(SQUARE[(o + 1) % SQUARE.length], SQUARE[o]);
+      // 外積が 0＝平行、内積が正＝同じ向き
+      assert.ok(
+        Math.abs(cut.x * base.y - cut.y * base.x) < 1e-6,
+        `${kind}: 辺 ${o} の向きが傾いた`,
+      );
+      assert.ok(cut.x * base.x + cut.y * base.y > 0, `${kind}: 辺 ${o} が逆向き`);
+      checked++;
+    }
+    assert.equal(checked, 4, `${kind}: 元の辺が 4 本そろっていない`);
+  }
+});
+
+test("角を落とさないときは、辺の番号がそのまま", () => {
+  const got = cutCornersDetail(SQUARE, "chamfer", 0);
+  assert.deepEqual(got.outline, SQUARE);
+  assert.deepEqual(got.edgeOrigin, [0, 1, 2, 3]);
+  // 包みの `cutCorners` が同じ輪郭を返すことも見る
+  assert.deepEqual(cutCorners(SQUARE, "chamfer", 0), got.outline);
 });

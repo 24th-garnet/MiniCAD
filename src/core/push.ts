@@ -1,6 +1,7 @@
 import {
   add,
   boundsOf,
+  cutCornersDetail,
   len,
   lineLineIntersection,
   mul,
@@ -14,7 +15,7 @@ import {
 } from "./geometry.ts";
 import {
   baseOf,
-  localOutline,
+  baseOutline,
   isBoxFixture,
   isRoundFixture,
   rotateToLocal,
@@ -158,8 +159,8 @@ const WHY_ROUND =
   "（曲面の押し引きは一般的な CAD にもありません）";
 const WHY_NOT_EXTRUDED =
   "この種別は輪郭をまっすぐ押し上げた形ではないので、側面は押せません";
-const WHY_CORNER_EDGE =
-  "縦の角を落とした立体の側面は押せません（上下の面は押せます）";
+const WHY_CORNER_FACE =
+  "面取りの面は押せません。元の辺（面取りでない平らな面）を掴んでください";
 const WHY_NO_EDGE =
   "どの辺を動かすか決められません。面の真ん中あたりを掴んでください";
 const WHY_WALL_SIDE = "壁は天端だけ押せます（厚みはプロパティの欄で）";
@@ -208,7 +209,8 @@ function resolvePush(
     h: f.size.h,
     x: f.x,
     y: f.y,
-    outline: localOutline(f).map((p) => vec(p.x, p.y)),
+    // **角を落とす前の輪郭。** 書き戻す先がこれなので、ここも同じものを持つ
+    outline: baseOutline(f).map((p) => vec(p.x, p.y)),
   };
 
   // **立体にとっての上下左右で見る。** 倒すとワールドの法線が斜めを向く
@@ -249,17 +251,18 @@ function resolvePush(
   if (!spec.extruded) return refuse(WHY_NOT_EXTRUDED);
   // **丸い種別は断る。** 32 面の 1 枚を動かしても意味がない
   if (isRoundFixture(f.kind)) return refuse(WHY_ROUND);
-  // **縦の角を落としていたら断る。** 理由が 2 つある。
-  // ① 面が輪郭の辺と 1 対 1 でなくなり、面取りの面を掴んだときにどの辺か
-  //    決められない
-  // ② 書き戻す先は `f.outline`（角を落とす**前**の輪郭）なのに、ここで見ている
-  //    のは落とした**後**の輪郭。そのまま書き戻すと角が二重に落ちる
-  //
-  // **この断りを緩めるなら、`baseOutline` に相当するものが要る。**
-  if (hasCornerEdge(f.edge)) return refuse(WHY_CORNER_EDGE);
+  const flat = at ? toLocalPoint(f, level, at) : null;
 
   // 矩形は速い道のまま。`{w, h}` と中心で表せるので、輪郭を持たずに済む
   if (isBoxFixture(f.kind) && !f.outline) {
+    // **角を落とした箱でも速い道を使う。** 大きさを変えれば面取りは付いてくる
+    //（`localOutline` が読むたびに落とし直す）ので、寸法のまま扱うほうが素直。
+    // ただし掴んだのが面取りの面なら、どちらの軸かを当てずっぽうで決めない
+    if (hasCornerEdge(f.edge)) {
+      const which = baseEdgeUnder(f, start.outline ?? [], local, flat);
+      if (which === "corner") return refuse(WHY_CORNER_FACE);
+      if (which === null) return refuse(WHY_NO_EDGE);
+    }
     const axis: "x" | "y" = Math.abs(local.x) >= Math.abs(local.y) ? "x" : "y";
     const sign: 1 | -1 = (axis === "x" ? local.x : local.y) >= 0 ? 1 : -1;
     return ok({
@@ -276,11 +279,8 @@ function resolvePush(
   }
 
   // 一般の輪郭。掴んだ面がどの辺かを突き止める
-  const index = edgeUnder(
-    start.outline ?? [],
-    local,
-    at ? toLocalPoint(f, level, at) : null,
-  );
+  const index = baseEdgeUnder(f, start.outline ?? [], local, flat);
+  if (index === "corner") return refuse(WHY_CORNER_FACE);
   if (index === null) return refuse(WHY_NO_EDGE);
   return ok({
     ref,
@@ -293,6 +293,39 @@ function resolvePush(
     start,
     label: "辺",
   });
+}
+
+/**
+ * 掴んだ面が、**角を落とす前の**輪郭のどの辺か。
+ *
+ * 角を落としていなければ `edgeUnder` そのまま。落としていれば、**見えている
+ * 輪郭**（落とした後）で辺を決めてから、`cutCornersDetail` の対応表で元の
+ * 番号へ戻す。掴むのは見えている面で、書き戻すのは元の輪郭だから、
+ * この往復が要る。
+ *
+ * **面取りの面を掴んだら `"corner"`。** 面取りは MiniCAD では「形」ではなく
+ * 「寸法」なので、その面を動かした結果を元の輪郭では表せない。
+ * 一般的な CAD が押せるのは、あちらが面取りを形として持っているため。
+ *
+ * **丸めでは掴んだ点が要る。** 円弧の最初の分割は元の辺と 5.6° しか違わず
+ * （`ARC_STEP` が π/16）、`NORMAL_MATCH` の 0.99 に収まってしまう。
+ * 点が無ければ `edgeUnder` が断る——当てずっぽうで別の辺を動かさない。
+ */
+function baseEdgeUnder(
+  f: Fixture,
+  base: readonly Vec[],
+  local: Vec3Like,
+  at: Vec | null,
+): number | "corner" | null {
+  const edge = f.edge;
+  if (!hasCornerEdge(edge) || edge === null || edge.kind === "taper") {
+    return edgeUnder(base, local, at);
+  }
+  const cut = cutCornersDetail(base, edge.kind, edge.size);
+  const k = edgeUnder(cut.outline, local, at);
+  if (k === null) return null;
+  const origin = cut.edgeOrigin[k];
+  return origin < 0 ? "corner" : origin;
 }
 
 /**

@@ -956,6 +956,19 @@ export function toWorld3(f: Placed, p: Vec, z: number): Vec3Like {
 }
 
 /**
+ * 角を落とす**前**の平面の輪郭。`localOutline` の素材。
+ *
+ * **押し引きが書き戻す先。** 掴む面は角を落とした**後**の輪郭の辺だが、
+ * `Fixture.outline` に入れてよいのは落とす**前**の形——後の形を書き戻すと、
+ * 読むたびに `cutCorners` がまた走って角が二重に落ちる。
+ *
+ * 角の面を掴んだときにどの辺か決める道は `core/push.ts` にある
+ * （`cutCornersDetail` が見えている辺と元の辺の対応を返す）。
+ */
+export const baseOutline = (f: Fixture): Vec[] =>
+  f.outline ?? specOf(f).localOutline(f.size);
+
+/**
  * ローカルの輪郭。自前の輪郭があればそちら、無ければ種別の既定。
  *
  * **縦の稜線の仕上げはここで効く。** 角柱の縦の稜線は輪郭の頂点そのものなので、
@@ -963,7 +976,7 @@ export function toWorld3(f: Placed, p: Vec, z: number): Vec3Like {
  * 上下の段（`edgeRings`）は、落としたあとの輪郭に対して効く。
  */
 export const localOutline = (f: Fixture): Vec[] => {
-  const base = f.outline ?? specOf(f).localOutline(f.size);
+  const base = baseOutline(f);
   const edge = f.edge;
   if (!hasCornerEdge(edge) || edge === null || edge.kind === "taper")
     return base;

@@ -473,15 +473,70 @@ test("丸い種別と、輪郭をまっすぐ押さない種別は断ったま�
   }
 });
 
-test("縦の角を落としていたら、側面は断る", () => {
-  // 面が輪郭の辺と 1 対 1 でなくなり、どの辺か決められない
-  const { scene } = sceneWith("box", {
+test("縦の角を落とした箱でも、元の辺なら押せる（面取りは残る）", () => {
+  const { scene, f } = sceneWith("box", {
     size: { w: 1000, h: 1000 },
     edge: { kind: "chamfer", size: 100, where: "corners" },
   });
-  assert.equal(pushTargetOf(scene, FIXTURE, { x: 1, y: 0, z: 0 }), null);
-  // 上下は掴める
+  const before = localOutline(f).length;
+  const t = pushTargetOf(scene, FIXTURE, { x: 1, y: 0, z: 0 });
+  assert.ok(t, "面取りした箱の側面が掴めない");
+  assert.ok(applyPush(scene, t, 300), "押せなかった");
+  assert.equal(f.size.w, 1300, "幅が増えていない");
+  // **面取りは寸法なので、大きさを変えても付いてくる**
+  assert.equal(localOutline(f).length, before, "面取りが落ちた");
+  assert.equal(f.edge?.size, 100, "面取りの寸法が変わった");
   assert.ok(pushTargetOf(scene, FIXTURE, UP), "上面まで掴めなくなった");
+});
+
+test("面取りの面そのものを掴んだら断る", () => {
+  const { scene } = sceneWith("box", {
+    size: { w: 1000, h: 1000 },
+    edge: { kind: "chamfer", size: 200, where: "corners" },
+  });
+  // 角の面の外向き法線は 45°
+  const diag = { x: Math.SQRT1_2, y: Math.SQRT1_2, z: 0 };
+  const at = { x: 400, y: 400, z: 100 };
+  assert.equal(pushTargetOf(scene, FIXTURE, diag, at), null);
+  const why = pushRefusal(scene, FIXTURE, diag, at);
+  assert.ok(why, "断ったのに理由が無い");
+  assert.ok(why.includes("面取り"), `何の面か言っていない: ${why}`);
+});
+
+test("角を落とした輪郭を押しても、角が二重に落ちない", () => {
+  // **ここが本題。** 掴むのは落とした後の面、書き戻す先は落とす前の輪郭。
+  // 取り違えると、押すたびに `cutCorners` が重ねがけになる
+  const { scene, f } = sceneWith("prism", {
+    size: { w: 2000, h: 1600 },
+    edge: { kind: "chamfer", size: 80, where: "corners" },
+  });
+  const shownBefore = localOutline(f).length;
+  const t = pushTargetOf(scene, FIXTURE, { x: 0, y: -1, z: 0 });
+  assert.ok(t, "三角柱の底辺が掴めない");
+  assert.ok(applyPush(scene, t, 400), "押せなかった");
+  // 書き戻したのは**元の輪郭**＝三角形のまま
+  assert.equal(f.outline?.length, 3, `元の輪郭が三角形でない (${f.outline?.length})`);
+  // 見えている形の点数も変わらない（二重に落ちていたら増える）
+  assert.equal(localOutline(f).length, shownBefore, "角が二重に落ちた");
+  const low = Math.min(...f.outline!.map((q) => q.y));
+  assert.ok(Math.abs(low - (-800 - 400)) < 1e-6, `押した量が合わない (${low})`);
+});
+
+test("丸めた角では、掴んだ点が無ければ断る", () => {
+  // 円弧の最初の分割は元の辺と 5.6° しか違わず、法線だけでは選べない。
+  // **当てずっぽうで別の辺を動かさない**という既存の作法どおりに断る
+  const { scene } = sceneWith("box", {
+    size: { w: 1000, h: 1000 },
+    outline: [vec(-500, -500), vec(500, -500), vec(500, 500), vec(-500, 500)],
+    edge: { kind: "fillet", size: 150, where: "corners" },
+  });
+  const normal = { x: 1, y: 0, z: 0 };
+  assert.equal(pushTargetOf(scene, FIXTURE, normal), null, "点なしで通った");
+  // 面の真ん中を掴めば決まる
+  const t = pushTargetOf(scene, FIXTURE, normal, { x: 500, y: 0, z: 100 });
+  assert.ok(t, "点を渡しても掴めない");
+  assert.ok(applyPush(scene, t, 200));
+  assert.equal(t.start.outline?.length, 4, "元の輪郭が四角形でない");
 });
 
 test("押しすぎて裏返る手前で断る", () => {
@@ -550,16 +605,6 @@ test("輪郭をまっすぐ押さない種別は、丸いものとは別の理�
   const stair = pushRefusal(sceneWith("stair").scene, FIXTURE, normal, at);
   assert.ok(stair, "階段の理由が無い");
   assert.notEqual(stair, round, "どちらも同じ文言になっている");
-});
-
-test("縦の角を落とした立体は、上下なら押せると言い添えて断る", () => {
-  const { scene } = sceneWith("box", {
-    size: { w: 1000, h: 1000 },
-    edge: { kind: "chamfer", size: 100, where: "corners" },
-  });
-  const why = pushRefusal(scene, FIXTURE, { x: 1, y: 0, z: 0 });
-  assert.ok(why, "断ったのに理由が無い");
-  assert.ok(why.includes("上下"), `逃げ道が書かれていない: ${why}`);
 });
 
 test("壁の側面は、天端なら押せると言い添えて断る", () => {

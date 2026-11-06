@@ -125,9 +125,43 @@ export function cutCorners(
   kind: "chamfer" | "fillet",
   size: number,
 ): Vec[] {
-  if (!(size > 0) || poly.length < 3) return [...poly];
+  return cutCornersDetail(poly, kind, size).outline;
+}
+
+/**
+ * 角を落とした輪郭と、**見えている辺が元のどの辺から来たか。**
+ *
+ * `edgeOrigin[i]` は、返した輪郭の辺 `i`（`outline[i] → outline[i+1]`）が
+ * 元の輪郭の何番目の辺だったか。角を落として出来た切片なら `-1`。
+ *
+ * **押し引きのために要る。** 掴んだ面は角を落とした**後**の輪郭の辺だが、
+ * 書き戻す先は落とす**前**の輪郭（`Fixture.outline`）。対応が取れないと
+ * 角が二重に落ちる。
+ *
+ * **計算し直さずに取れる。** 下の `for` は頂点ごとに点の塊を並べるだけで、
+ * 塊と塊の間には元の辺が（短くなって）そのまま残る——向きも外向き法線も
+ * 変わらない。だから「隣り合う 2 点の出どころの頂点が違う」ことが、
+ * そのまま「ここは元の辺」を意味する。
+ *
+ * **刻みは一定ではない。** 面取りは 1 頂点が 2 点、丸めは円弧の分割だけ、
+ * まっすぐな頂点は 1 点のまま。番号を計算では出せないので、ここで覚える。
+ */
+export function cutCornersDetail(
+  poly: readonly Vec[],
+  kind: "chamfer" | "fillet",
+  size: number,
+): { outline: Vec[]; edgeOrigin: number[] } {
+  if (!(size > 0) || poly.length < 3) {
+    return { outline: [...poly], edgeOrigin: poly.map((_, i) => i) };
+  }
   const n = poly.length;
   const out: Vec[] = [];
+  /** 各点の出どころの頂点。塊の境目＝元の辺 */
+  const owner: number[] = [];
+  const put = (p: Vec, i: number): void => {
+    out.push(p);
+    owner.push(i);
+  };
 
   for (let i = 0; i < n; i++) {
     const prev = poly[(i - 1 + n) % n];
@@ -138,7 +172,7 @@ export function cutCorners(
     const lenPrev = len(toPrev);
     const lenNext = len(toNext);
     if (lenPrev < EPS || lenNext < EPS) {
-      out.push(cur);
+      put(cur, i);
       continue;
     }
     const d1 = mul(toPrev, 1 / lenPrev);
@@ -146,20 +180,21 @@ export function cutCorners(
     // 頂点での開き。π に近ければ「まっすぐ」なので触らない
     const open = Math.acos(Math.max(-1, Math.min(1, dot(d1, d2))));
     if (open > Math.PI - CORNER_EPS || open < CORNER_EPS) {
-      out.push(cur);
+      put(cur, i);
       continue;
     }
     const half = open / 2;
     const want = kind === "chamfer" ? size : size / Math.tan(half);
     const t = Math.min(want, lenPrev / 2, lenNext / 2);
     if (t < EPS) {
-      out.push(cur);
+      put(cur, i);
       continue;
     }
     const a = add(cur, mul(d1, t));
     const b = add(cur, mul(d2, t));
     if (kind === "chamfer") {
-      out.push(a, b);
+      put(a, i);
+      put(b, i);
       continue;
     }
     // 丸め。中心は二等分線の上、頂点から t / cos(half)
@@ -171,9 +206,14 @@ export function cutCorners(
     // 短いほうへ回る。頂点をまたがない側が外へ膨らまない
     let sweep = normalizeAngle(to - from);
     if (sweep > Math.PI) sweep -= Math.PI * 2;
-    out.push(...arcPolyline(center, radius, from, sweep));
+    for (const q of arcPolyline(center, radius, from, sweep)) put(q, i);
   }
-  return out;
+
+  const m = out.length;
+  const edgeOrigin = out.map((_, k) =>
+    owner[k] === owner[(k + 1) % m] ? -1 : owner[k],
+  );
+  return { outline: out, edgeOrigin };
 }
 
 /** これより小さい曲がりは「まっすぐ」とみなす（ラジアン） */
