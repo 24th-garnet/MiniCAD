@@ -262,6 +262,8 @@ export function deserialize(raw: unknown): Scene {
       a: w.a,
       b: w.b,
       thickness: numberOr(w.thickness, 120),
+      // 円弧壁の膨らみ。**欄が無い古いファイルは 0 ＝直線**なので版は上げない
+      bulge: numberOr(w.bulge, 0),
       height: finiteOrNull(w.height),
       // 下端は負にならない。古いファイルには欄が無く、床に着く
       base: Math.max(0, numberOr(w.base, 0)),
@@ -492,6 +494,8 @@ function readAssembly(
       a: w.a,
       b: w.b,
       thickness: numberOr(w.thickness, 120),
+      // 円弧壁の膨らみ。**欄が無い古いファイルは 0 ＝直線**なので版は上げない
+      bulge: numberOr(w.bulge, 0),
       height: finiteOrNull(w.height),
       base: Math.max(0, numberOr(w.base, 0)),
       layerId: layerOr(w.layerId, LAYER_IDS.wall),

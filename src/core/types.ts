@@ -39,6 +39,16 @@ export interface Wall {
   b: Id;
   /** 壁厚 (mm) */
   thickness: number;
+  /**
+   * 円弧壁の膨らみ。**0 なら直線**（ワイヤー 5 枚目「円弧壁」）。
+   *
+   * `bulge = tan(掃過角 / 4)` で、DXF の `LWPOLYLINE` と同じ流儀。
+   * **中心と半径は持たない**——持つと端点を動かした瞬間に矛盾する。
+   * 中心は `core/geometry.ts` の `arcFromBulge` が毎回導く。
+   *
+   * **正なら反時計回りで、弧は進行方向の右へ膨らむ**（中心が左にあるため）。
+   */
+  bulge: number;
   /** 壁の高さ (mm)。null なら階の既定 */
   height: number | null;
   /**

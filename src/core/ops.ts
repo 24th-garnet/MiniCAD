@@ -1,5 +1,8 @@
 import { defaultAttrs } from './attrs.ts';
-import { dist, closestOnSegment, vec, type Vec } from './geometry.ts';
+import {
+  add, arcFromBulge, bulgeArcLength, closestOnSegment, dist, mul, norm,
+  pointOnBulgeArc, sub, vec, type BulgeArc, type Vec,
+} from './geometry.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
 import { newId, type Id, type Opening, type Scene, type Wall } from './types.ts';
 import { sameOpening, type OpeningIdentity } from './opening.ts';
@@ -17,9 +20,59 @@ export function wallEnds(scene: Scene, wall: Wall): [Vec, Vec] {
   return [nodePos(scene, wall.a), nodePos(scene, wall.b)];
 }
 
+/**
+ * 壁の円弧。**直線なら null。** 中心は 2 端点と膨らみから毎回導く
+ *
+ * ここが円弧壁の唯一の出どころ。壁の形を知りたいところは全部これを通す。
+ */
+export function wallArc(scene: Scene, wall: Wall): BulgeArc | null {
+  const [a, b] = wallEnds(scene, wall);
+  return arcFromBulge(a, b, wall.bulge);
+}
+
+/**
+ * 壁の長さ。**円弧壁では弧長**で、弦の長さではない。
+ *
+ * **ここを弦のままにすると開口が全部ずれる。** `clampOpening` も
+ * `mergeOpeningSpan` も `wallSpans` も、開口の `offset` を
+ * 「0 から `wallLength` までの 1 次元の座標」として扱っている。
+ * その物差しが縮むと、置いた窓が黙って動く。
+ */
 export function wallLength(scene: Scene, wall: Wall): number {
+  const arc = wallArc(scene, wall);
+  if (arc) return bulgeArcLength(arc);
   const [a, b] = wallEnds(scene, wall);
   return dist(a, b);
+}
+
+/**
+ * 壁の上の点。`along` は**始点ノードからの弧長**（直線なら距離）。
+ *
+ * 直線の道は触っていない——`wallPointAt`（`core/shape.ts`）のコメントが
+ * 「式を組み替えるな」と言っているのと同じ理由で、DXF の出力を揺らさない。
+ */
+export function wallPointAtLength(scene: Scene, wall: Wall, along: number): Vec {
+  const [a, b] = wallEnds(scene, wall);
+  const arc = wallArc(scene, wall);
+  if (!arc) {
+    const total = dist(a, b);
+    return total < 1e-9 ? a : add(a, mul(norm(sub(b, a)), along));
+  }
+  const total = bulgeArcLength(arc);
+  return pointOnBulgeArc(arc, total < 1e-9 ? 0 : along / total);
+}
+
+/** 壁の上の点での進行方向（単位）。円弧では**その点の接線** */
+export function wallDirAtLength(scene: Scene, wall: Wall, along: number): Vec {
+  const [a, b] = wallEnds(scene, wall);
+  const arc = wallArc(scene, wall);
+  if (!arc) return norm(sub(b, a));
+  const total = bulgeArcLength(arc);
+  const t = total < 1e-9 ? 0 : along / total;
+  const angle = arc.from + arc.sweep * t;
+  // 反時計回りなら接線は半径を +90 度、時計回りなら −90 度
+  const sign = arc.sweep >= 0 ? 1 : -1;
+  return vec(-Math.sin(angle) * sign, Math.cos(angle) * sign);
 }
 
 /**
@@ -44,18 +97,29 @@ export function findOrCreateNode(
 }
 
 /** 壁は両端ノードの階に乗る。食い違っていれば作らない */
-export function addWall(scene: Scene, a: Id, b: Id, thickness: number, layerId: LayerId = LAYER_IDS.wall): Wall | null {
+export function addWall(
+  scene: Scene,
+  a: Id,
+  b: Id,
+  thickness: number,
+  layerId: LayerId = LAYER_IDS.wall,
+  bulge = 0,
+): Wall | null {
   if (a === b) return null;
   const na = scene.nodes[a];
   const nb = scene.nodes[b];
   if (!na || !nb || na.levelId !== nb.levelId) return null;
+  // **膨らみが違えば別の壁。** 同じ 2 ノードの間に直線と円弧、あるいは
+  // 逆向きに曲がる 2 本を置けないと、レンズ形の部屋が作れない
   const existing = Object.values(scene.walls).find(
-    (w) => (w.a === a && w.b === b) || (w.a === b && w.b === a),
+    (w) =>
+      ((w.a === a && w.b === b) || (w.a === b && w.b === a)) &&
+      Math.abs(w.bulge) === Math.abs(bulge),
   );
   if (existing) return existing;
   const id = newId('w');
   const wall: Wall = {
-    id, a, b, thickness, height: null, base: 0, layerId, levelId: na.levelId, attrs: defaultAttrs(),
+    id, a, b, thickness, bulge, height: null, base: 0, layerId, levelId: na.levelId, attrs: defaultAttrs(),
   };
   scene.walls[id] = wall;
   return wall;
