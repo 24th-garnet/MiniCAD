@@ -68,9 +68,15 @@ export class ShapeTool implements Tool {
   readonly cursor = 'crosshair';
   readonly group = 'draw' as const;
 
-  /** このツールが出せるモード。先頭が既定 */
-  private readonly modes: readonly ShapeToolMode[];
-  /** 選択中のモード。`modes` が 2 つ以上なら「種類」セレクタで切り替わる */
+  /**
+   * この道具が描ける種類。**先頭が既定。**
+   *
+   * 公開しているのは、**「このモードで何が描けるか」を道具の分け方と
+   * 切り離して確かめられるようにする**ため。ワイヤーが求めているのは
+   * 「矩形が描けること」であって「作図ツールにあること」ではない。
+   */
+  readonly kinds: readonly ShapeToolMode[];
+  /** 選択中の種類。`kinds` が 2 つ以上なら「種類」セレクタで切り替わる */
   private mode: ShapeToolMode;
   /** 確定済みのクリック点 */
   private points: Vec[] = [];
@@ -105,8 +111,8 @@ export class ShapeTool implements Tool {
     label: string,
     shortcut: string,
   ) {
-    this.modes = typeof modes === 'string' ? [modes] : modes;
-    this.mode = this.modes[0];
+    this.kinds = typeof modes === 'string' ? [modes] : modes;
+    this.mode = this.kinds[0];
     this.id = id;
     this.label = label;
     this.shortcut = shortcut;
@@ -445,14 +451,14 @@ export class ShapeTool implements Tool {
 
   /** 出せるモードが 2 つ以上あるときだけ「種類」を出す */
   private modeField(): OptionField[] {
-    if (this.modes.length < 2) return [];
+    if (this.kinds.length < 2) return [];
     return [{
       kind: 'select',
       label: '種類',
       value: this.mode,
-      options: this.modes.map((m) => ({ value: m, label: MODE_LABELS[m] })),
+      options: this.kinds.map((m) => ({ value: m, label: MODE_LABELS[m] })),
       onChange: (v: string) => {
-        this.mode = this.modes.find((m) => m === v) ?? this.mode;
+        this.mode = this.kinds.find((m) => m === v) ?? this.mode;
         this.points = [];
       },
     }];

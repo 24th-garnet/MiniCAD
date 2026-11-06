@@ -195,12 +195,34 @@ async function run() {
   // **既定は通常モード。** ワイヤーが 2 度明記している
   const normal = await state();
   assert.equal(normal.mode, 'normal', '既定が通常モードではない');
-  for (const hidden of ['offset', 'trim', 'extend', 'point', 'shape', 'split', 'corner', 'vertex', 'array']) {
+  for (const hidden of ['offset', 'trim', 'extend', 'point', 'split', 'vertex', 'array']) {
     assert.ok(!normal.toolbar.includes(hidden), `通常モードに ${hidden} が出ている`);
   }
-  for (const shown of ['select', 'wall', 'door', 'window', 'block', 'room']) {
+  // **作図と角は通常モードにも出る。** ワイヤー 8 枚目のペイント（矩形・曲線）と
+  // 7 枚目の「壁結合などは通常モードを利用する前提」。中身はモードで絞られる
+  for (const shown of ['select', 'wall', 'door', 'window', 'block', 'room', 'shape', 'corner']) {
     assert.ok(normal.toolbar.includes(shown), `通常モードに ${shown} が無い`);
   }
+  // 通常モードの作図は矩形と曲線だけ
+  await page.locator('#toolbar button[data-tool="shape"]').click();
+  await sleep(300);
+  const paintKinds = await page.evaluate(() => {
+    const sel = document.querySelector('#options select');
+    return sel ? [...sel.options].map((o) => o.textContent) : null;
+  });
+  assert.deepEqual(paintKinds, ['四角形', '曲線'],
+    `通常モードの作図の種類が違う: ${JSON.stringify(paintKinds)}`);
+  // 通常モードの角ツールは結合だけ（種類の欄が出ない）
+  await page.locator('#toolbar button[data-tool="corner"]').click();
+  await sleep(300);
+  const joinOnly = await page.evaluate(() => ({
+    label: document.querySelector('#toolbar button[data-tool="corner"]')?.textContent ?? '',
+    selects: document.querySelectorAll('#options select').length,
+  }));
+  assert.equal(joinOnly.selects, 0, '通常モードの角ツールに種類の欄が出ている');
+  assert.ok(joinOnly.label.includes('結合'), `通常モードの名前が「結合」でない: ${joinOnly.label}`);
+  await page.locator('#toolbar button[data-tool="select"]').click();
+  await sleep(200);
   assert.ok(!normal.inspectorHeads.some((h) => h.includes('幾何拘束') || h.includes('製図規格')),
     `通常モードに CAD 寄りの区画が出ている: ${normal.inspectorHeads}`);
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTools, TOOL_REGISTRY } from '../src/ui/tool-registry.ts';
-import { MODES } from '../src/ui/mode.ts';
+import { MODES, type Mode } from '../src/ui/mode.ts';
 import { defaultCapabilities } from '../src/host.ts';
 
 const ALL = defaultCapabilities();
@@ -11,9 +11,12 @@ import type { ToolId } from '../src/tools/tool.ts';
 test('表のキーとツール自身の id が一致する', () => {
   // **ここが食い違うと静かに壊れる。** `Editor.registerTool` は `tool.id` で
   // 登録するので、表のキーが `copy` なのに中身が回転なら、ツールバーの
-  // 複写ボタンが何も選ばない。型は `make(): Tool` としか言っていない
-  for (const [id, entry] of Object.entries(TOOL_REGISTRY)) {
-    assert.equal(entry.make().id, id, `${id} の欄が別のツールを作っている`);
+  // 複写ボタンが何も選ばない。型は `make(mode): Tool` としか言っていない。
+  // **モードで中身が変わるものがある**ので、両方で見る
+  for (const mode of MODES) {
+    for (const [id, entry] of Object.entries(TOOL_REGISTRY)) {
+      assert.equal(entry.make(mode).id, id, `${mode}: ${id} の欄が別のツールを作っている`);
+    }
   }
 });
 
@@ -70,11 +73,13 @@ test('キーを持たないツールも、ツールバーからは選べる', ()
 });
 
 test('グリフと表示名が全部入っている', () => {
-  for (const [id, entry] of Object.entries(TOOL_REGISTRY)) {
-    assert.ok(entry.glyph.length > 0, `${id} のグリフが空`);
-    const tool = entry.make();
-    assert.ok(tool.label.length > 0, `${id} の表示名が空`);
-    assert.ok(tool.cursor.length > 0, `${id} のカーソルが空`);
+  for (const mode of MODES) {
+    for (const [id, entry] of Object.entries(TOOL_REGISTRY)) {
+      assert.ok(entry.glyph.length > 0, `${id} のグリフが空`);
+      const tool = entry.make(mode);
+      assert.ok(tool.label.length > 0, `${mode}: ${id} の表示名が空`);
+      assert.ok(tool.cursor.length > 0, `${mode}: ${id} のカーソルが空`);
+    }
   }
 });
 
@@ -110,4 +115,67 @@ test('コメントは comment の権限で出し分ける', () => {
   assert.ok(!buildTools('normal', noComment).some((t) => t.id === 'comment'));
   // **編集できなくてもコメントは置ける。** 図面を変えないので
   assert.ok(buildTools('normal', VIEW_ONLY).some((t) => t.id === 'comment'));
+});
+
+/**
+ * モードで出し分ける種類（22 段）。
+ *
+ * ワイヤーは 4 枚でモードを分けている——**5/6 が 3D（プロ／通常）、
+ * 7/8 が 2D（プロ／通常）**。長い作図一覧は 7 枚目（プロの 2D）だけのもので、
+ * 8 枚目（通常の 2D）が求めているのは「ペイント：直線 / 矩形 / 曲線 /
+ * 外部領域」の 4 つ。**ここを読み違えて、矩形と曲線をプロ専用にしていた。**
+ */
+
+const kindsOf = (mode: Mode, id: string): readonly string[] => {
+  const tool = buildTools(mode, ALL).find((t) => t.id === id);
+  assert.ok(tool, `${mode} に ${id} が出ていない`);
+  return (tool as unknown as { kinds: readonly string[] }).kinds;
+};
+
+test('通常モードの作図はペイントの 2 つだけ、プロは 7 つ', () => {
+  // 直線は `line` ツールが受け持つので、ここには入らない
+  assert.deepEqual(kindsOf('normal', 'shape'), ['rect', 'spline']);
+  assert.equal(kindsOf('pro', 'shape').length, 7);
+  // プロは通常の上位集合。狭めていないことを見る
+  for (const k of kindsOf('normal', 'shape')) {
+    assert.ok(kindsOf('pro', 'shape').includes(k), `プロから ${k} が消えている`);
+  }
+});
+
+test('通常モードの角ツールは結合だけ、プロは 3 つ', () => {
+  // ワイヤー 7 枚目「例）壁、円弧壁、壁結合などは、通常モードを利用する前提」
+  assert.deepEqual(kindsOf('normal', 'corner'), ['join']);
+  assert.deepEqual(kindsOf('pro', 'corner'), ['fillet', 'chamfer', 'join']);
+});
+
+test('種類が 1 つだけのときは「種類」の欄を出さない', () => {
+  const tool = buildTools('normal', ALL).find((t) => t.id === 'corner')!;
+  const selects = (tool.options?.({} as never) ?? []).filter((f) => f.kind === 'select');
+  assert.equal(selects.length, 0, '選ぶものが無いのに欄が出ている');
+});
+
+test('通常モードでも名前が中身と合っている', () => {
+  // 「角」という名前で結合しかしない道具は嘘になる
+  const normal = buildTools('normal', ALL).find((t) => t.id === 'corner')!;
+  const pro = buildTools('pro', ALL).find((t) => t.id === 'corner')!;
+  assert.equal(normal.label, '結合');
+  assert.equal(pro.label, '角');
+});
+
+test('ワイヤー 8 枚目のペイントが通常モードで描ける', () => {
+  // **道具の名前では見ない。** どう分けても、描ける形が揃っていればよい
+  const drawable = new Set<string>();
+  for (const tool of buildTools('normal', ALL)) {
+    const kinds = (tool as unknown as { kinds?: readonly string[] }).kinds;
+    if (kinds) for (const k of kinds) drawable.add(k);
+  }
+  for (const [kind, name] of [
+    ['line', '直線'],
+    ['rect', '矩形'],
+    ['spline', '曲線'],
+  ] as const) {
+    assert.ok(drawable.has(kind), `通常モードで${name}が描けない`);
+  }
+  // 外部領域はまだ無い。**描けないものを「描ける」と言わない**ための控え
+  assert.equal(drawable.has('outerArea' as string), false);
 });

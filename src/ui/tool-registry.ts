@@ -42,7 +42,15 @@ import { BOTH_MODES, PRO_ONLY, type Mode } from './mode.ts';
 
 /** ツール 1 つぶんの記述。グリフもここに置く（表を 2 枚にしないため） */
 export interface ToolEntry {
-  make(): Tool;
+  /**
+   * ツールを 1 つ作る。
+   *
+   * **モードを受け取るのは、同じ道具でも出す種類が変わるものがあるため**
+   * （作図と角）。実行時にモードを読む仕組みは要らない——`App.setMode` が
+   * `setTools` でツールを作り直すので、組み立て時に決まっていれば足りる。
+   * `Tool` に `Mode` を持たせると、どこで分岐しているか追えなくなる。
+   */
+  make(mode: Mode): Tool;
   /** ツールバーのアイコン */
   glyph: string;
   /** どのモードで出すか */
@@ -75,7 +83,21 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
     make: () => new ModifyTool(['split', 'erase'], 'split', '切断', 'P'),
     glyph: '⨉', modes: PRO_ONLY, edits: true,
   },
-  corner: { make: () => new CornerTool(), glyph: '◝', modes: PRO_ONLY, edits: true },
+  /**
+   * 角と結合。**結合だけは通常モードにも出す。**
+   *
+   * ワイヤー 7 枚目が「例）壁、円弧壁、**壁結合**などは、**通常モードを
+   * 利用する前提**」と書いている。角の丸めと面取りは 7 枚目（プロの 2D）に
+   * しか無いので、プロだけ。通常モードでは名前も「結合」にする——
+   * 「角」という名前で結合しかしない道具は嘘になる。
+   */
+  corner: {
+    make: (mode) =>
+      mode === 'pro'
+        ? new CornerTool(['fillet', 'chamfer', 'join'], '角')
+        : new CornerTool(['join'], '結合'),
+    glyph: '◝', modes: BOTH_MODES, edits: true,
+  },
   vertex: { make: () => new VertexTool(), glyph: '◆', modes: PRO_ONLY, edits: true },
   // 3D のソリッドとは無関係。2D でも 3D でも同じものが動く
   array: { make: () => new ArrayCopyTool(), glyph: '⠿', modes: PRO_ONLY, edits: true },
@@ -96,12 +118,20 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   // シンボルは置いた瞬間に実体へ展開される（スタンプ）
   assembly: { make: () => new AssemblyTool(), glyph: '⊞', modes: BOTH_MODES, edits: true },
   line: { make: () => new ShapeTool('line', 'line', '線', 'L'), glyph: '／', modes: BOTH_MODES, edits: true },
-  // **プロモードの作図はここにまとめる。** 1 種別 1 ツールにするとツールバーが
-  // 破綻するので、建具と同じく「種類」セレクタで切り替える
-  shape: { make: () => new ShapeTool(
-      ['rect', 'roundRect', 'ngon', 'ellipse', 'spline', 'doubleLine', 'leader'],
-      'shape', '作図', 'F',
-    ), glyph: '▭', modes: PRO_ONLY, edits: true },
+  /**
+   * 作図。**1 種別 1 ツールにするとツールバーが破綻する**ので、建具と同じく
+   * 「種類」セレクタで切り替える。
+   *
+   * **出す種類はモードで変わる。** ワイヤー 8 枚目（通常モードの 2D）の
+   * 「ペイント」は **直線 / 矩形 / 曲線 / 外部領域** の 4 つだけで、
+   * 長い作図一覧は 7 枚目（プロの 2D）にしかない。直線は `line` ツールが
+   * 受け持つので、ここに出すのは矩形と曲線。
+   */
+  shape: {
+    make: (mode) =>
+      new ShapeTool(mode === 'pro' ? PRO_SHAPES : PAINT_SHAPES, 'shape', '作図', 'F'),
+    glyph: '▭', modes: BOTH_MODES, edits: true,
+  },
   arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), glyph: '○', modes: BOTH_MODES, edits: true },
   point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), glyph: '・', modes: PRO_ONLY, edits: true },
   text: { make: () => new ShapeTool('text', 'text', '文字', 'T'), glyph: 'A', modes: BOTH_MODES, edits: true },
@@ -111,11 +141,19 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   comment: { make: () => new CommentTool(), glyph: '💬', modes: BOTH_MODES, edits: false, needs: 'comment' },
 };
 
+/** ワイヤー 8 枚目「ペイント」のうち、作図ツールが受け持つもの（直線は `line`） */
+const PAINT_SHAPES = ['rect', 'spline'] as const;
+
+/** ワイヤー 7 枚目（プロの 2D）の作図一覧 */
+const PRO_SHAPES = [
+  'rect', 'roundRect', 'ngon', 'ellipse', 'spline', 'doubleLine', 'leader',
+] as const;
+
 /** そのモードとできることで出すツールを順に作る。並びは表のキーの順 */
 export function buildTools(mode: Mode, can: Capabilities): Tool[] {
   return Object.values(TOOL_REGISTRY)
     .filter((entry) => entry.modes.includes(mode))
     .filter((entry) => can.edit || !entry.edits)
     .filter((entry) => !entry.needs || can[entry.needs])
-    .map((entry) => entry.make());
+    .map((entry) => entry.make(mode));
 }

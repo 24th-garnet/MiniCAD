@@ -20,19 +20,37 @@ import { wallEnds } from '../core/ops.ts';
  * **壁は面取りだけ。角の丸めはできない。** `Wall` が 2 つのノードを結ぶ直線で、
  * 円弧壁がまだ無いので、丸めた円弧を壁として置く先が無い。
  * 黙って変なものを作るより、断って理由を出す。
+ *
+ * **出す種類はモードで変わる。** ワイヤー 7 枚目が「壁結合などは通常モードを
+ * 利用する前提」と書いているので、**結合は両モードに出す**。角の丸めと面取りは
+ * 7 枚目（プロの 2D）にしか書かれていないのでプロだけ。`ShapeTool` が種類の
+ * 一覧をコンストラクタで受け取っているのと同じ形にしてある。
  */
 export class CornerTool implements Tool {
   readonly id = 'corner' as const;
-  readonly label = '角';
+  readonly label: string;
   readonly shortcut = 'A';
   readonly cursor = 'crosshair';
   readonly group = 'modify' as const;
+
+  /** 出す種類。**先頭が既定** */
+  private readonly kinds: readonly (CornerKind | 'join')[];
 
   /**
    * 何をするか。**どれも「2 つ選ぶ」という操作が同じ**なので 1 つのツールに
    * まとめてある（建具が 11 種別を 2 ツールで出しているのと同じ考え方）。
    */
-  kind: CornerKind | 'join' = 'fillet';
+  kind: CornerKind | 'join';
+
+  constructor(
+    kinds: readonly (CornerKind | 'join')[] = ['fillet', 'chamfer', 'join'],
+    label = '角',
+  ) {
+    this.kinds = kinds;
+    this.kind = kinds[0];
+    this.label = label;
+  }
+
   /** 面取りで角から戻る距離 (mm) */
   distance = 300;
   /** 角の丸めの半径 (mm) */
@@ -102,20 +120,24 @@ export class CornerTool implements Tool {
 
   options(): OptionField[] {
     return [
-      {
-        kind: 'select',
-        label: '種類',
-        value: this.kind,
-        options: [
-          { value: 'fillet', label: '角の丸め' },
-          { value: 'chamfer', label: '面取り' },
-          { value: 'join', label: '結合' },
-        ],
-        onChange: (v) => {
-          this.kind = v === 'chamfer' || v === 'join' ? v : 'fillet';
-          this.first = null;
-        },
-      },
+      // **1 種類しか出さないなら欄を出さない。** `ShapeTool` と同じ作法
+      ...(this.kinds.length < 2
+        ? []
+        : [
+            {
+              kind: 'select' as const,
+              label: '種類',
+              value: this.kind,
+              options: this.kinds.map((k) => ({
+                value: k,
+                label: KIND_LABELS[k],
+              })),
+              onChange: (v: string) => {
+                this.kind = this.kinds.find((k) => k === v) ?? this.kind;
+                this.first = null;
+              },
+            },
+          ]),
       ...(this.kind === 'join'
         ? [{ kind: 'note' as const, text: '端点が合っているものどうしを繋ぎます（伸ばしはしません）' }]
         : []),
@@ -190,3 +212,10 @@ function outlineOf(editor: Editor, ref: EntityRef): { a: { x: number; y: number 
   const [a, b] = wallEnds(scene, wall);
   return [{ a, b }];
 }
+
+/** 種類の表示名。`Record` にして、種類を増やしたら埋め忘れで止まるようにする */
+const KIND_LABELS: Record<CornerKind | 'join', string> = {
+  fillet: '角の丸め',
+  chamfer: '面取り',
+  join: '結合',
+};
