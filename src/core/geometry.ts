@@ -696,3 +696,118 @@ export function arcFromChordAndLength(
   const radius = chord / (2 * Math.sin(half));
   return Number.isFinite(radius) && radius > 0 ? { radius, half } : null;
 }
+
+/**
+ * 膨らみ（bulge）で表した円弧（ワイヤー 5 枚目「円弧壁」）。
+ *
+ * **中心と半径を持たず、2 つの端点と膨らみだけで表す。** DXF の `LWPOLYLINE` が
+ * 同じ流儀で、`bulge = tan(掃過角 / 4)`。0 なら直線、1 なら半円。
+ *
+ * **ノードが動いても壊れないのが利点。** 中心を覚えておくと、端点を動かした
+ * 瞬間に「中心が弦の垂直二等分線の上に無い」矛盾した円弧になる。膨らみなら
+ * 中心を毎回導くので、端点がどこへ行っても必ず筋の通った円弧になる。
+ *
+ * **向きを取り違えやすい。** 正の膨らみ＝反時計回りで、そのとき**中心は
+ * 進行方向の左**にある。左に曲がるのだから、**弧は右へ膨らむ**。
+ * 「正なら左へ膨らむ」と読むと必ず上下が逆になる。
+ */
+export interface BulgeArc {
+  center: Vec;
+  /** 正の半径 */
+  radius: number;
+  /** 始点（a）の角度 */
+  from: number;
+  /** **符号つき**の掃過角。正なら反時計回り */
+  sweep: number;
+}
+
+/** これより小さい膨らみは直線とみなす */
+export const BULGE_EPS = 1e-9;
+
+/**
+ * 2 つの端点と膨らみから円弧を出す。**直線（膨らみ 0）なら null。**
+ *
+ * `sweep = 4·atan(bulge)`、`半径 = 弦 / (2·sin(sweep/2))`、中心は弦の中点から
+ * 垂直に `半径·cos(sweep/2)` 離れたところ。**掃過角が π を超えると
+ * `cos` が負になり、中心がひとりでに反対側へ回る**——優弧がこれで出る。
+ */
+export function arcFromBulge(a: Vec, b: Vec, bulge: number): BulgeArc | null {
+  if (!Number.isFinite(bulge) || Math.abs(bulge) < BULGE_EPS) return null;
+  const chord = dist(a, b);
+  if (chord < EPS) return null;
+  const sweep = 4 * Math.atan(bulge);
+  const half = sweep / 2;
+  const sinHalf = Math.sin(half);
+  if (Math.abs(sinHalf) < 1e-12) return null;
+  const radius = chord / (2 * sinHalf);
+  // 進行方向の左へ垂直に。半径も `cos` も符号を持つので、向きは自然に決まる
+  const n = perp(norm(sub(b, a)));
+  const center = add(mid(a, b), mul(n, radius * Math.cos(half)));
+  return {
+    center,
+    radius: Math.abs(radius),
+    from: angleOf(sub(a, center)),
+    sweep,
+  };
+}
+
+/** 円弧の長さ。半径 × 掃過角の絶対値 */
+export const bulgeArcLength = (arc: BulgeArc): number =>
+  arc.radius * Math.abs(arc.sweep);
+
+/** 円弧の上の点。`t` は 0（始点）から 1（終点）へ */
+export const pointOnBulgeArc = (arc: BulgeArc, t: number): Vec =>
+  arcPointAt(arc.center, arc.radius, arc.from + arc.sweep * t);
+
+/**
+ * 3 点を通る円弧の膨らみ。真ん中の点を通る側に膨らむ。
+ *
+ * 一直線に並んでいれば 0（＝直線）。**壁を描く入口で使う**——
+ * 始点・終点・膨らみの 3 クリックから `Wall.bulge` を出す。
+ */
+export function bulgeFromThree(a: Vec, via: Vec, b: Vec): number {
+  const got = circleThrough(a, via, b);
+  if (!got || !Number.isFinite(got.radius)) return 0;
+  const chord = dist(a, b);
+  if (chord < EPS || got.radius < chord / 2 - EPS) return 0;
+  // 真ん中の点が弦のどちら側にあるか
+  const side = cross(sub(b, a), sub(via, a));
+  if (Math.abs(side) < EPS) return 0;
+  const half = Math.asin(Math.min(1, chord / (2 * got.radius)));
+  // 中心が通る点と**同じ側**にあれば優弧（弦の向こうから回り込む）
+  const major = cross(sub(b, a), sub(got.center, a)) * side > 0;
+  // **符号は逆。** 左へ膨らませたいなら時計回り（負の掃過角）にする
+  const sweep = (major ? Math.PI * 2 - 2 * half : 2 * half) * -Math.sign(side);
+  return Math.tan(sweep / 4);
+}
+
+/**
+ * 点 p に最も近い円弧の上の点。**円弧の外なら近いほうの端点。**
+ *
+ * `closestOnSegment` と同じ形（`point` / `t` / `dist`）で返すので、
+ * 呼ぶ側は線分と円弧を同じに扱える。
+ */
+export function closestOnArc(p: Vec, arc: BulgeArc): ClosestResult {
+  const d = sub(p, arc.center);
+  const at = (t: number): ClosestResult => {
+    const point = pointOnBulgeArc(arc, t);
+    return { point, t, dist: dist(p, point) };
+  };
+  if (len(d) < EPS) return at(0.5);
+  // 円へ射影してから、掃過の範囲に入っているかを見る
+  const angle = angleOf(d);
+  const t = normalizeSigned(angle - arc.from) / arc.sweep;
+  if (t >= 0 && t <= 1) return at(t);
+  // 範囲の外。近いほうの端点
+  const a = at(0);
+  const b = at(1);
+  return a.dist <= b.dist ? a : b;
+}
+
+/** −π〜π に畳む。`normalizeAngle`（0〜2π）とは別物 */
+function normalizeSigned(angle: number): number {
+  let v = angle % (Math.PI * 2);
+  if (v > Math.PI) v -= Math.PI * 2;
+  if (v < -Math.PI) v += Math.PI * 2;
+  return v;
+}
