@@ -14,7 +14,13 @@ import { solveScene } from '../core/constraintSolver.ts';
 import { sameRef, type EntityRef, type Scene } from '../core/types.ts';
 import type { Editor } from '../ui/editor.ts';
 import { pickRay, rayOnAxis, rayPlane, type Plane3, type Ray3, type RayHit } from './ray.ts';
-import { applyPush, pushAxis, pushTargetOf, type PushTarget } from '../core/push.ts';
+import {
+  applyPush,
+  pushAxis,
+  pushRefusal,
+  pushTargetOf,
+  type PushTarget,
+} from '../core/push.ts';
 import { vec3, type Vec3 } from './mat4.ts';
 import type { Face3 } from './mesh.ts';
 
@@ -144,9 +150,20 @@ export class Select3D implements Tool3D {
     const hit = p.hit!;
     // **Alt で押し引き。** 修飾なしのドラッグは今まで通り移動で、
     // 壁の天端だけは前から修飾なしで高さが変わる（その手触りを壊さない）
-    const push = p.alt || (ref.type === 'wall' && isWallTop(hit))
+    const wantPush = p.alt || (ref.type === 'wall' && isWallTop(hit));
+    // **断った理由は掴み直すまで出したまま。** 消すのはここ 1 か所
+    this.refused = null;
+    const push = wantPush
       ? pushTargetOf(editor.store.scene, ref, hit.face.normal, hit.point)
       : null;
+    if (wantPush && !push) {
+      // **黙って移動に落とさない。** 押せると思って Alt を押しているので、
+      // 何も起きなければ壊れたように見える
+      this.refused = pushRefusal(editor.store.scene, ref, hit.face.normal, hit.point);
+      // **言わないと出ない。** 既に選ばれているものを掴み直したときは
+      // `setSelection` が走らないので、ここで知らせないと status が古いまま
+      if (this.refused) editor.notifyUi();
+    }
     if (push) {
       const axis = pushAxis(push);
       const grab = rayOnAxis(p.ray, hit.point, vec3(axis.x, axis.y, axis.z), p.ray.origin);
@@ -290,12 +307,16 @@ export class Select3D implements Tool3D {
     editor.notifyUi();
   }
 
+  /** 直前に押し引きを断った理由。掴み直すまで status に出す */
+  private refused: string | null = null;
+
   status(editor: Editor): string {
     if (this.drag.kind === 'push') {
       const t = this.drag.target;
       return `${t.label} ${Math.round(sizeOf(editor.store.scene, t))}mm / Esc で取り消し`;
     }
     if (this.drag.kind === 'move') return 'ドラッグで移動 / Esc で取り消し';
+    if (this.refused) return this.refused;
     const n = editor.store.selection.length;
     if (n === 0) return 'クリックで選択 / ドラッグで回転 / Shift+ドラッグで平行移動 / ホイールで拡大縮小';
     return `${n} 個を選択中（掴んで移動 / Alt+ドラッグで面を押し引き）`;

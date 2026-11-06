@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyPush,
   pushAxis,
+  pushRefusal,
   pushTargetOf,
   MIN_PUSH_SIZE,
 } from "../src/core/push.ts";
@@ -523,4 +524,64 @@ test("同じドラッグ中に何度当てても積み上がらない", () => {
   applyPush(scene, t, 250);
   const low = Math.min(...f.outline!.map((p) => p.y));
   assert.ok(Math.abs(low - (-400 - 250)) < 1e-6, `積み上がっている (${low})`);
+});
+
+/**
+ * 断った理由（21 段）。**画面に出す文言そのもの。**
+ *
+ * 以前は `pushTargetOf` が `null` を返して終わりだったので、掴んでも何も
+ * 起きないように見えた。理由は「できません」で止めず、次の一手まで言う。
+ */
+
+test("丸い立体の側面は、直径の欄を案内して断る", () => {
+  const { scene } = sceneWith("cylinder");
+  const normal = { x: 1, y: 0, z: 0 };
+  const at = { x: 500, y: 0, z: 100 };
+  assert.equal(pushTargetOf(scene, FIXTURE, normal, at), null);
+  const why = pushRefusal(scene, FIXTURE, normal, at);
+  assert.ok(why, "断ったのに理由が無い");
+  assert.ok(why.includes("直径"), `代わりの手が書かれていない: ${why}`);
+});
+
+test("輪郭をまっすぐ押さない種別は、丸いものとは別の理由で断る", () => {
+  const at = { x: 500, y: 0, z: 100 };
+  const normal = { x: 1, y: 0, z: 0 };
+  const round = pushRefusal(sceneWith("cylinder").scene, FIXTURE, normal, at);
+  const stair = pushRefusal(sceneWith("stair").scene, FIXTURE, normal, at);
+  assert.ok(stair, "階段の理由が無い");
+  assert.notEqual(stair, round, "どちらも同じ文言になっている");
+});
+
+test("縦の角を落とした立体は、上下なら押せると言い添えて断る", () => {
+  const { scene } = sceneWith("box", {
+    size: { w: 1000, h: 1000 },
+    edge: { kind: "chamfer", size: 100, where: "corners" },
+  });
+  const why = pushRefusal(scene, FIXTURE, { x: 1, y: 0, z: 0 });
+  assert.ok(why, "断ったのに理由が無い");
+  assert.ok(why.includes("上下"), `逃げ道が書かれていない: ${why}`);
+});
+
+test("壁の側面は、天端なら押せると言い添えて断る", () => {
+  const scene = emptyScene();
+  const a = findOrCreateNode(scene, vec(0, 0));
+  const b = findOrCreateNode(scene, vec(4000, 0));
+  const wall = addWall(scene, a, b, 120)!;
+  const ref = { type: "wall" as const, id: wall.id };
+  const why = pushRefusal(scene, ref, { x: 0, y: 1, z: 0 });
+  assert.ok(why, "断ったのに理由が無い");
+  assert.ok(why.includes("天端"), `逃げ道が書かれていない: ${why}`);
+});
+
+test("押せるときは理由を出さない", () => {
+  const { scene } = sceneWith("box");
+  assert.ok(pushTargetOf(scene, FIXTURE, UP), "上面が押せない");
+  assert.equal(
+    pushRefusal(scene, FIXTURE, UP),
+    null,
+    "押せるのに断り書きが出ている",
+  );
+  // 側面も同じ
+  assert.ok(pushTargetOf(scene, FIXTURE, { x: 1, y: 0, z: 0 }));
+  assert.equal(pushRefusal(scene, FIXTURE, { x: 1, y: 0, z: 0 }), null);
 });

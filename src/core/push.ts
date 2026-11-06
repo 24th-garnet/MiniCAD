@@ -34,17 +34,21 @@ import type { EntityRef, Scene } from "./types.ts";
  * ほうが自然な操作になる。**書くのはやはり数値 1〜2 個**で、
  * ノードも輪郭も動かさない。
  *
- * **掴めるのは 3 通りだけ。**
+ * **掴めるのは 4 通り。**
  *
  * | 掴んだ面 | 動くもの | 固定されるもの |
  * |---|---|---|
  * | 壁・立体の上面 | 高さ | 下端 |
  * | 立体の下面 | 下端と高さ | 上端 |
- * | **矩形の**立体の側面 | その向きの大きさと中心 | 反対側の面 |
+ * | 矩形の立体の側面 | その向きの大きさと中心 | 反対側の面 |
+ * | 一般の輪郭の側面 | その辺 1 本 | ほかの辺 |
  *
- * **側面は矩形の輪郭だけ。** 円・三角・L 形・押し出した形では、1 つの面を
- * 動かした結果が `{w, h}` で表せない（辺を 1 本だけずらした形になる）。
- * 黙って別の形に変えるより、断って理由を出す。
+ * **矩形だけ速い道がある。** `{w, h}` と中心で表せるので輪郭を持たずに済む。
+ * 三角・L 形・押し出した形は輪郭そのものを書き換える（`pushOutlineEdge`）。
+ *
+ * **断るときは理由を出す。** 曲面も、輪郭をまっすぐ押していない種別も押せないが、
+ * 黙って `null` を返すと「掴んだのに何も起きない」としか見えない。
+ * `pushRefusal` が文言を返し、3D の状況表示がそのまま出す。
  */
 
 /** 高さと大きさの下限 (mm)。インスペクタの `Math.max(1, v)` と揃える */
@@ -108,11 +112,71 @@ export function pushTargetOf(
   normal: Vec3Like,
   at: Vec3Like | null = null,
 ): PushTarget | null {
+  return resolvePush(scene, ref, normal, at).target;
+}
+
+/**
+ * 押し引きを断った理由。**画面にそのまま出す。**
+ *
+ * 押せるとき、および言うことが無いときは null。
+ *
+ * **これが無いと、断ったことが画面のどこにも出ない。** `pushTargetOf` が
+ * `null` を返して終わりなので、掴んでも何も起きないように見える。
+ */
+export function pushRefusal(
+  scene: Scene,
+  ref: EntityRef,
+  normal: Vec3Like,
+  at: Vec3Like | null = null,
+): string | null {
+  return resolvePush(scene, ref, normal, at).why;
+}
+
+/**
+ * 掴んだ面の判定。**押せるかどうかと、押せない理由を一度に出す。**
+ *
+ * 判定を `pushTargetOf` と `pushRefusal` に分けて 2 回書くと、片方だけ直した
+ * ときに必ず食い違う——「押せないのに理由が出ない」「押せるのに断り書きが
+ * 出る」。計算はここ 1 つだけにして、上の 2 つは取り出すだけにしてある。
+ */
+interface PushResolution {
+  target: PushTarget | null;
+  /** 断ったときに画面へ出す理由。言うことが無ければ null */
+  why: string | null;
+}
+
+const ok = (target: PushTarget): PushResolution => ({ target, why: null });
+const refuse = (why: string | null): PushResolution => ({ target: null, why });
+
+/**
+ * 断る理由の文言。**画面にそのまま出るので、次の一手まで書く。**
+ *
+ * 「できません」だけだと、使う人は壊れたのか自分の操作が悪いのか分からない。
+ */
+const WHY_ROUND =
+  "丸い面は押せません。直径はプロパティのサイズ欄で変えられます" +
+  "（曲面の押し引きは一般的な CAD にもありません）";
+const WHY_NOT_EXTRUDED =
+  "この種別は輪郭をまっすぐ押し上げた形ではないので、側面は押せません";
+const WHY_CORNER_EDGE =
+  "縦の角を落とした立体の側面は押せません（上下の面は押せます）";
+const WHY_NO_EDGE =
+  "どの辺を動かすか決められません。面の真ん中あたりを掴んでください";
+const WHY_WALL_SIDE = "壁は天端だけ押せます（厚みはプロパティの欄で）";
+
+function resolvePush(
+  scene: Scene,
+  ref: EntityRef,
+  normal: Vec3Like,
+  at: Vec3Like | null,
+): PushResolution {
   if (ref.type === "wall") {
     const wall = scene.walls[ref.id];
-    if (!wall || normal.z < UP) return null; // 壁は天端だけ。側面を押すと厚みの話になる
+    if (!wall) return refuse(null);
+    // 壁は天端だけ。側面を押すと厚みの話になる
+    if (normal.z < UP) return refuse(WHY_WALL_SIDE);
     const level = levelOf(scene, wall.levelId);
-    return {
+    return ok({
       ref,
       what: "top",
       normal: vec3Like(0, 0, 1),
@@ -130,11 +194,11 @@ export function pushTargetOf(
         outline: null,
       },
       label: "壁の高さ",
-    };
+    });
   }
-  if (ref.type !== "fixture") return null;
+  if (ref.type !== "fixture") return refuse(null);
   const f = scene.fixtures[ref.id];
-  if (!f || !specOf(f).solid) return null;
+  if (!f || !specOf(f).solid) return refuse(null);
   const level = levelOf(scene, f.levelId);
   const spec = specOf(f);
   const start = {
@@ -152,7 +216,7 @@ export function pushTargetOf(
   const world = vec3Like(normal.x, normal.y, normal.z);
 
   if (local.z > UP) {
-    return {
+    return ok({
       ref,
       what: "top",
       normal: world,
@@ -162,10 +226,10 @@ export function pushTargetOf(
       edgeIndex: null,
       start,
       label: "高さ",
-    };
+    });
   }
   if (local.z < -UP) {
-    return {
+    return ok({
       ref,
       what: "bottom",
       normal: world,
@@ -175,16 +239,16 @@ export function pushTargetOf(
       edgeIndex: null,
       start,
       label: "下端",
-    };
+    });
   }
 
   // --- ここから側面 ---
 
   // **輪郭をまっすぐ押した立体だけ。** 階段・スロープ・回転体の側面は
   // 輪郭の辺と 1 対 1 に対応しないので、動かした結果を輪郭で表せない
-  if (!spec.extruded) return null;
+  if (!spec.extruded) return refuse(WHY_NOT_EXTRUDED);
   // **丸い種別は断る。** 32 面の 1 枚を動かしても意味がない
-  if (isRoundFixture(f.kind)) return null;
+  if (isRoundFixture(f.kind)) return refuse(WHY_ROUND);
   // **縦の角を落としていたら断る。** 理由が 2 つある。
   // ① 面が輪郭の辺と 1 対 1 でなくなり、面取りの面を掴んだときにどの辺か
   //    決められない
@@ -192,13 +256,13 @@ export function pushTargetOf(
   //    のは落とした**後**の輪郭。そのまま書き戻すと角が二重に落ちる
   //
   // **この断りを緩めるなら、`baseOutline` に相当するものが要る。**
-  if (hasCornerEdge(f.edge)) return null;
+  if (hasCornerEdge(f.edge)) return refuse(WHY_CORNER_EDGE);
 
   // 矩形は速い道のまま。`{w, h}` と中心で表せるので、輪郭を持たずに済む
   if (isBoxFixture(f.kind) && !f.outline) {
     const axis: "x" | "y" = Math.abs(local.x) >= Math.abs(local.y) ? "x" : "y";
     const sign: 1 | -1 = (axis === "x" ? local.x : local.y) >= 0 ? 1 : -1;
-    return {
+    return ok({
       ref,
       what: "side",
       normal: world,
@@ -208,7 +272,7 @@ export function pushTargetOf(
       edgeIndex: null,
       start,
       label: axis === "x" ? "幅" : "奥行",
-    };
+    });
   }
 
   // 一般の輪郭。掴んだ面がどの辺かを突き止める
@@ -217,8 +281,8 @@ export function pushTargetOf(
     local,
     at ? toLocalPoint(f, level, at) : null,
   );
-  if (index === null) return null;
-  return {
+  if (index === null) return refuse(WHY_NO_EDGE);
+  return ok({
     ref,
     what: "outlineEdge",
     normal: world,
@@ -228,7 +292,7 @@ export function pushTargetOf(
     edgeIndex: index,
     start,
     label: "辺",
-  };
+  });
 }
 
 /**
