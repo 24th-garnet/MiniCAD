@@ -3,6 +3,7 @@ import {
   angleOf,
   arcPointAt,
   arcPolyline,
+  circleThrough,
   closestOnSegment,
   ellipsePoints,
   regularPolygonPoints,
@@ -638,6 +639,32 @@ export function textBox(s: TextShape, std: DrawingStandard): Vec[] {
 }
 
 /** 2点から円弧を作る（中心・始点・終点）。常に反時計回りになるよう整える */
+/**
+ * 3 点を通る円弧。**真ん中の点を通る向き**に回す。
+ *
+ * `arcFromPoints` は反時計回りと決めているので、そのままでは
+ * 真ん中の点を通らない側（長いほうの弧）になることがある。
+ * 通るかどうかを掃過角で見て、通らなければ始点と終点を入れ替える。
+ *
+ * **「3 点を通る」と「弧長指定」が同じ道を通る。** 弧長から出した
+ * 膨らみの頂点を真ん中の点として渡せば、向きの判断がそのまま効く。
+ */
+export function arcThrough(
+  a: Vec,
+  via: Vec,
+  b: Vec,
+): Omit<ArcShape, 'id' | 'layerId' | 'levelId' | 'attrs' | 'shape'> | null {
+  const got = circleThrough(a, via, b);
+  if (!got || got.radius < 1) return null;
+  const arc = arcFromPoints(got.center, a, b);
+  const through = arcFromPoints(got.center, a, via);
+  const sweep = normalizeAngle(arc.endAngle - arc.startAngle);
+  const toVia = normalizeAngle(through.endAngle - through.startAngle);
+  return toVia <= sweep
+    ? arc
+    : { ...arc, startAngle: arc.endAngle, endAngle: arc.startAngle };
+}
+
 export function arcFromPoints(center: Vec, from: Vec, to: Vec): Omit<ArcShape, 'id' | 'layerId' | 'levelId' | 'attrs' | 'shape'> {
   return {
     center,

@@ -645,3 +645,54 @@ export function projectParam(a: Vec, b: Vec, p: Vec): number {
   const l2 = lenSq(d);
   return l2 < 1e-12 ? 0 : dot(sub(p, a), d) / l2;
 }
+
+/**
+ * 始点での**接線の向き**が決まっている円弧の中心（ワイヤー 7 枚目「円弧 7 種類」）。
+ *
+ * 中心は 2 本の直線の交点で決まる——**始点で接線に立てた法線**と、
+ * **弦の垂直二等分線**。接線が弦と平行なら交わらないので `null`
+ * （そのときは円弧ではなく直線）。
+ *
+ * **線に接する円弧がこれで描ける。** 始点を線の上に取り、接線の向きとして
+ * 同じ線の上の点を指せば、その線に接する円弧になる。
+ */
+export function centerFromTangent(a: Vec, b: Vec, tangent: Vec): Vec | null {
+  if (len(tangent) < 1e-9) return null;
+  const chord = sub(b, a);
+  if (len(chord) < 1e-9) return null;
+  const m = mid(a, b);
+  const hit = lineLineIntersection(
+    a, add(a, perp(tangent)),
+    m, add(m, perp(chord)),
+  );
+  return hit ? hit.point : null;
+}
+
+/**
+ * 弦の長さと**弧長**から半径を出す（ワイヤー 7 枚目「円弧 7 種類」）。
+ *
+ * `弧長 = 2R·θ`、`弦 = 2R·sin θ`（θ は中心角の半分）なので
+ * `弧長/弦 = θ/sin θ`。**これは θ について閉じた式にならない**ので、
+ * 二分法で解く。θ/sin θ は (0, π) で 1 から ∞ へ単調に増えるので、
+ * 挟み撃ちが必ず収まる。
+ *
+ * 弧長が弦以下なら円弧にならない（等しければ直線）ので `null`。
+ */
+export function arcFromChordAndLength(
+  chord: number,
+  arcLength: number,
+): { radius: number; half: number } | null {
+  if (!(chord > 0) || !(arcLength > chord)) return null;
+  const want = arcLength / chord;
+  let lo = 1e-9;
+  let hi = Math.PI - 1e-9;
+  // 80 回で倍精度の限界まで詰む
+  for (let i = 0; i < 80; i++) {
+    const t = (lo + hi) / 2;
+    if (t / Math.sin(t) < want) lo = t;
+    else hi = t;
+  }
+  const half = (lo + hi) / 2;
+  const radius = chord / (2 * Math.sin(half));
+  return Number.isFinite(radius) && radius > 0 ? { radius, half } : null;
+}

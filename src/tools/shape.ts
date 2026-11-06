@@ -1,9 +1,10 @@
 import {
-  centerFromChord, circleThrough, dist, mid, normalizeAngle, offsetPolyline,
-  rectFromDiagonal, splinePoints, type Vec,
+  add, arcFromChordAndLength, centerFromChord, centerFromTangent, dist, mid,
+  mul, norm, offsetPolyline, perp, rectFromDiagonal, splinePoints, sub,
+  type Vec,
 } from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
-import { arcFromPoints, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
+import { arcFromPoints, arcThrough, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import type { TextAlign } from '../core/primitive.ts';
 import { JIS_TEXT_HEIGHTS } from '../core/standard.ts';
@@ -16,14 +17,22 @@ import type { Editor } from '../ui/editor.ts';
 import { pointerAngleFrom } from './wall.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
-/** 円・円弧の描き方 */
-export type ArcMode = 'circle' | 'arc' | 'three' | 'chord';
+/**
+ * 円・円弧の描き方。ワイヤー 7 枚目の「円弧　(7種類の描き方から選んで描くことが可能)」。
+ *
+ * **7 という数は Vectorworks の円弧ツールの 7 モードと一致する。** 仕様に内訳が
+ * 無かったのでそこから採った（半径 / 3 点 / 線に接する / 2 点と中心 /
+ * 2 点と半径 / 両端と通過点 / 弧長と弦長）。
+ */
+export type ArcMode = 'circle' | 'arc' | 'three' | 'chord' | 'tangent' | 'length';
 
 const ARC_MODE_LABELS: Record<ArcMode, string> = {
   circle: '円（中心・半径）',
   arc: '円弧（中心・始点・終点）',
   three: '円弧（3 点を通る）',
   chord: '円弧（始点・終点・半径）',
+  tangent: '円弧（始点・終点・接線の向き）',
+  length: '円弧（始点・終点・弧長）',
 };
 
 export type ShapeToolMode =
@@ -98,6 +107,8 @@ export class ShapeTool implements Tool {
   arcMode: ArcMode = 'circle';
   /** 始点・終点・半径で描くときの半径 (mm) */
   arcRadius = 1000;
+  /** 弧長で描くときの弧長 (mm) */
+  arcLength = 2000;
   /** 同上。進行方向の左に膨らませるか */
   arcLeft = true;
   /** 文字モード */
@@ -151,7 +162,11 @@ export class ShapeTool implements Tool {
   private get previewPoints(): number {
     switch (this.mode) {
       case 'arc':
-        return this.arcMode === 'circle' || this.arcMode === 'chord' ? 2 : 3;
+        return this.arcMode === 'circle'
+          || this.arcMode === 'chord'
+          || this.arcMode === 'length'
+          ? 2
+          : 3;
       case 'line':
       case 'doubleLine':
       case 'rect':
@@ -186,11 +201,14 @@ export class ShapeTool implements Tool {
       case 'arc':
         switch (this.arcMode) {
           case 'circle':
-            return 2;
           case 'chord':
+          // 弧長は数値で入れるので、打つのは両端の 2 点だけ
+          case 'length':
             return 2;
           case 'arc':
           case 'three':
+          // 3 点目は接線の向きを指すための点（始点から見た向きだけを読む）
+          case 'tangent':
             return 3;
         }
       case 'text':
@@ -372,17 +390,37 @@ export class ShapeTool implements Tool {
           }
           // 3 点を通る円弧。真ん中の点を通る向きに回す
           case 'three': {
-            const got = circleThrough(pts[0], pts[1], pts[2]);
-            if (!got || got.radius < 1) return null;
-            const arc = arcFromPoints(got.center, pts[0], pts[2]);
-            // 始点→終点の反時計回りが真ん中の点を含まないなら、向きを入れ替える
-            const through = arcFromPoints(got.center, pts[0], pts[1]);
-            const sweep = normalizeAngle(arc.endAngle - arc.startAngle);
-            const mid = normalizeAngle(through.endAngle - through.startAngle);
+            const arc = arcThrough(pts[0], pts[1], pts[2]);
+            return arc ? { id, shape: 'arc', layerId, levelId, attrs, ...arc } : null;
+          }
+          // 始点での接線の向きが決まっている円弧。
+          // **3 点目は位置ではなく向きだけを読む**——線の上の点を指せば、
+          // その線に接する円弧になる
+          case 'tangent': {
+            const center = centerFromTangent(pts[0], pts[1], sub(pts[2], pts[0]));
+            if (!center) return null;
+            const arc = arcFromPoints(center, pts[0], pts[1]);
+            // 反時計回りの接線が指した向きと逆なら、向きを入れ替える
+            const ccw = perp(sub(pts[0], center));
+            const want = sub(pts[2], pts[0]);
+            const along = ccw.x * want.x + ccw.y * want.y >= 0;
             return {
               id, shape: 'arc', layerId, levelId, attrs,
-              ...(mid <= sweep ? arc : { ...arc, startAngle: arc.endAngle, endAngle: arc.startAngle }),
+              ...(along ? arc : { ...arc, startAngle: arc.endAngle, endAngle: arc.startAngle }),
             };
+          }
+          // 弦と弧長。**半径は閉じた式にならない**ので二分法で解く
+          case 'length': {
+            const chord = dist(pts[0], pts[1]);
+            const got = arcFromChordAndLength(chord, this.arcLength);
+            if (!got) return null;
+            // 膨らみの頂点を出して、「3 点を通る」と同じ道を通す
+            const n = perp(norm(sub(pts[1], pts[0])));
+            const side = this.arcLeft ? n : mul(n, -1);
+            const rise = got.radius * (1 - Math.cos(got.half));
+            const apex = add(mid(pts[0], pts[1]), mul(side, rise));
+            const arc = arcThrough(pts[0], apex, pts[1]);
+            return arc ? { id, shape: 'arc', layerId, levelId, attrs, ...arc } : null;
           }
           // 始点・終点と半径。中心は弦の垂直二等分線の上にある
           case 'chord': {
@@ -544,7 +582,7 @@ export class ShapeTool implements Tool {
               this.points = [];
             },
           },
-          // 半径で描くときだけ、半径と膨らむ側を出す
+          // 半径で描くときだけ半径を出す
           ...(this.arcMode === 'chord'
             ? [
                 {
@@ -556,11 +594,42 @@ export class ShapeTool implements Tool {
                   suffix: 'mm',
                   onChange: (v: number) => void (this.arcRadius = Math.max(1, v)),
                 },
+              ]
+            : []),
+          // 弧長で描くときだけ弧長を出す
+          ...(this.arcMode === 'length'
+            ? [
+                {
+                  kind: 'number' as const,
+                  label: '弧長',
+                  value: this.arcLength,
+                  step: 100,
+                  min: 1,
+                  suffix: 'mm',
+                  onChange: (v: number) => void (this.arcLength = Math.max(1, v)),
+                },
+                {
+                  kind: 'note' as const,
+                  text: '弧長は 2 点の間の直線より長くしてください（同じなら直線です）',
+                },
+              ]
+            : []),
+          // 膨らむ側は、半径でも弧長でも要る
+          ...(this.arcMode === 'chord' || this.arcMode === 'length'
+            ? [
                 {
                   kind: 'toggle' as const,
                   label: '左へ膨らませる',
                   value: this.arcLeft,
                   onChange: (v: boolean) => void (this.arcLeft = v),
+                },
+              ]
+            : []),
+          ...(this.arcMode === 'tangent'
+            ? [
+                {
+                  kind: 'note' as const,
+                  text: '始点 → 終点 → 接線の向きを指す点。線の上を指すとその線に接します',
                 },
               ]
             : []),
@@ -657,6 +726,14 @@ export class ShapeTool implements Tool {
             return this.points.length === 0
               ? `クリックで始点を指定（半径 ${this.arcRadius}mm）`
               : 'クリックで終点を指定';
+          case 'tangent':
+            return ['クリックで始点を指定', 'クリックで終点を指定', '接線の向きを指す点をクリック'][
+              this.points.length
+            ]!;
+          case 'length':
+            return this.points.length === 0
+              ? `クリックで始点を指定（弧長 ${this.arcLength}mm）`
+              : 'クリックで終点を指定（弧長より短い間隔にしてください）';
         }
       case 'doubleLine':
         return this.points.length === 0
