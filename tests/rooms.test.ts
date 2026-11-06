@@ -108,7 +108,7 @@ test('階が違えば同じ座標でも別の部屋になる', () => {
 
   const rooms = detectRooms(scene);
   assert.equal(rooms.length, 2, '同じ座標の 2 階ぶんが 1 部屋に溶けている');
-  const levels = rooms.map((r) => scene.walls[r.wallIds[0]].levelId).sort();
+  const levels = rooms.map((r) => r.levelId).sort();
   assert.deepEqual(levels, ['lv-1', 'lv-2']);
 });
 

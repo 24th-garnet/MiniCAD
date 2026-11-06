@@ -72,6 +72,19 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     const poly = room.innerPolygon.length >= 3 ? room.innerPolygon : room.polygon;
     out.push(`<polygon points="${pointsAttr(poly)}" fill="#ffffff"/>`);
   }
+  // **外部領域は境も出す。** 壁が無いので、塗りだけでは紙の上でどこまでか
+  // 分からない。画面と同じ破線にする
+  const areaLayer = layerOf(LAYER_IDS.roomName, LAYER_IDS.roomName);
+  if (visible(areaLayer)) {
+    for (const room of rooms) {
+      if (!room.outdoor) continue;
+      out.push(
+        `<polygon points="${pointsAttr(room.polygon)}" fill="none"`
+        + ` stroke="${areaLayer.color}" stroke-width="${paperToWorld(0.25, std)}"`
+        + ` stroke-dasharray="${paperToWorld(1.5, std)},${paperToWorld(1, std)}"/>`,
+      );
+    }
+  }
 
   // --- 壁 ---
   for (const wall of Object.values(scene.walls)) {

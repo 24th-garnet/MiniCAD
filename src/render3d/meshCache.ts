@@ -151,7 +151,7 @@ function instanceFingerprint(scene: Scene, id: Id): string {
 function floorFingerprint(scene: Scene, rooms: Room[]): string {
   const parts: (string | number)[] = [];
   for (const room of rooms) {
-    const levelId = scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId;
+    const levelId = room.levelId;
     parts.push(levelId, levelOf(scene, levelId).floorZ, '|');
     for (const p of room.innerPolygon) parts.push(p.x, p.y);
     parts.push(';');

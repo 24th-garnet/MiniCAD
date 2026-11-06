@@ -11,6 +11,8 @@ export const theme = {
   nodeSelected: '#1d4ed8',
   roomFill: '#ffffff',
   roomFillAlt: 'rgba(37, 99, 235, 0.05)',
+  /** 外部領域の境。壁が無いので、どこまでかを破線で示す */
+  roomEdge: 'rgba(37, 99, 235, 0.55)',
   roomName: '#27272a',
   roomArea: '#71717a',
   dimension: '#9a8c6a',

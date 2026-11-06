@@ -52,6 +52,15 @@ export interface MeasuresFile {
   plan_id: string;
   name: string;
   rooms: MeasuredRoom[];
+  /**
+   * 外部領域（中庭・テラス）。**部屋とは別に並べる。**
+   *
+   * 床面積の合計に足すかどうかは実務の規約で、幾何からは決まらない
+   * （建築基準法でもバルコニーは一定部分を算入しない）。混ぜて返すと
+   * **拾う側が分けられなくなる**ので、分けたまま渡して足し方は向こうに任せる
+   * （`docs/questions.md` の 32）。無ければ欄ごと出さない。
+   */
+  exterior_areas?: MeasuredRoom[];
   basis: Record<string, Basis>;
   basis_note: Record<string, string>;
 }
@@ -204,7 +213,7 @@ export function sceneToMeasures(
 
   const out: MeasuredRoom[] = rooms.map((room, index) => {
     // 部屋の壁は同じ階にあるので、階は最初の壁から引ける
-    const level = levelOf(scene, scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId);
+    const level = levelOf(scene, room.levelId);
     // 入れ子（柱型・PS）を引く。引かないと床も天井も仕上げが多すぎる数になる
     const inner = nesting.get(index) ?? [];
     const holeArea = inner.reduce((sum, i) => sum + rooms[i].innerArea, 0);
@@ -282,7 +291,8 @@ export function sceneToMeasures(
       id: room.labelId ?? `r${index + 1}`,
       name: room.name ?? '',
       floor_area: round(floor),
-      ceiling_area: round(floor),
+      // **屋外に天井は無い。** 床と同じ数を入れると、拾う側が天井を仕上げる
+      ceiling_area: room.outdoor ? 0 : round(floor),
       perimeter: Math.round(perimeter),
       height: Math.round(level.wallHeight),
       wall_area: round(wallArea),
@@ -294,12 +304,16 @@ export function sceneToMeasures(
     };
   });
 
+  const indoor = out.filter((_, i) => !rooms[i].outdoor);
+  const outdoor = out.filter((_, i) => rooms[i].outdoor);
+
   return {
     schema_version: SCHEMA,
     source: 'minicad',
     plan_id: options.planId,
     name: options.name ?? options.planId,
-    rooms: out,
+    rooms: indoor,
+    ...(outdoor.length > 0 ? { exterior_areas: outdoor } : {}),
     // **天井高を持っていない。** 壁高で代用していることを名乗る
     basis: { ceiling_height: '代用', swing: '未計測' },
     basis_note: {

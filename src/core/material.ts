@@ -48,6 +48,8 @@ export function attrsOf(scene: Scene, ref: EntityRef): Attrs | null {
     case 'measurement':
       return scene.measurements[ref.id]?.attrs ?? null;
     case 'node':
+    case 'area':
+      return scene.areas[ref.id]?.attrs ?? null;
     case 'roomLabel':
       return null;
   }

@@ -121,6 +121,19 @@ export function pickAt(
     if (dist(p, vec(label.x, label.y)) <= tolerance * 3) return ref;
   }
 
+  // **外部領域は輪郭の近くだけで拾う。** 中まで拾うと、テラスに置いた家具や
+  // 室名より先に大きな領域が当たって、何も選べなくなる（床と同じ扱い）
+  for (const area of Object.values(scene.areas)) {
+    const ref: EntityRef = { type: "area", id: area.id };
+    if (!ok(ref)) continue;
+    const n = area.outline.length;
+    for (let i = 0; i < n; i++) {
+      const a = area.outline[i];
+      const b = area.outline[(i + 1) % n];
+      if (closestOnSegment(p, a, b).dist <= tolerance) return ref;
+    }
+  }
+
   // 計測はいちばん最後。図面の上に重ねた道具なので、図面の邪魔をしない
   for (const m of Object.values(scene.measurements)) {
     const ref: EntityRef = { type: "measurement", id: m.id };
@@ -183,6 +196,12 @@ export function pickInRect(
     if (!ok(ref)) continue;
     const pts = shapeVertices(scene, shape);
     if (pts.length === 0) continue;
+    if (crossing ? pts.some(inside) : pts.every(inside)) refs.push(ref);
+  }
+  for (const area of Object.values(scene.areas)) {
+    const ref: EntityRef = { type: "area", id: area.id };
+    if (!ok(ref)) continue;
+    const pts = area.outline;
     if (crossing ? pts.some(inside) : pts.every(inside)) refs.push(ref);
   }
   for (const f of Object.values(scene.fixtures)) {

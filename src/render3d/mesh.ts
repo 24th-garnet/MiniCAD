@@ -133,7 +133,7 @@ export function buildFloorFaces(scene: Scene, rooms: Room[], out: Face3[]): void
   for (const room of rooms) {
     const poly = room.innerPolygon;
     if (poly.length < 3) continue;
-    const levelId = scene.walls[room.wallIds[0]]?.levelId ?? scene.activeLevelId;
+    const levelId = room.levelId;
     const level = levelOf(scene, levelId);
     out.push(flatFace(poly, level.floorZ, theme.floor3d, 'floor', { ref: null, levelId }));
   }

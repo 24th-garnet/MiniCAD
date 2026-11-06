@@ -158,6 +158,16 @@ function drawRooms(frame: Frame): void {
     ctx.fill();
     ctx.fillStyle = theme.roomFillAlt;
     ctx.fill();
+    // **外部領域だけは輪郭も描く。** 壁で囲まれた部屋は壁が境を示すが、
+    // 外部領域には壁が無いので、塗りだけだとどこまでか分からない
+    if (room.outdoor) {
+      tracePolygon(frame, poly);
+      ctx.strokeStyle = theme.roomEdge;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 }
 

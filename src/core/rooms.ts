@@ -16,7 +16,7 @@ import {
 import { nodePos } from "./ops.ts";
 import { FIXTURE_SPECS, outline } from "./fixture.ts";
 import { levelOf } from "./level.ts";
-import type { Id, Room, Scene } from "./types.ts";
+import type { ExteriorArea, Id, Room, Scene } from "./types.ts";
 
 interface HalfEdge {
   key: string;
@@ -39,7 +39,7 @@ const heKey = (from: Id, to: Id): string => `${from}>${to}`;
  * ノードしか使い回さない）、壁は両端ノードと同じ階にしか作れない（`addWall`）ので、
  * **ノードの同一性だけでグラフが階ごとに分かれる**。ここに階の判定を足すと、
  * 同じことを二重に保証して食い違う余地が生まれる。
- * 部屋がどの階かは `room.wallIds[0]` の壁から引ける。
+ * 部屋がどの階かは `room.levelId` が持つ（壁から引き写す）。
  */
 export function detectRooms(scene: Scene): Room[] {
   const halfEdges = new Map<string, HalfEdge>();
@@ -133,13 +133,50 @@ export function detectRooms(scene: Scene): Room[] {
       floorArea: Math.max(0, innerArea - voidArea) / 1e6,
       center: centroid(innerPolygon.length >= 3 ? innerPolygon : polygon),
       wallIds,
+      levelId: scene.walls[wallIds[0]]?.levelId ?? scene.activeLevelId,
+      outdoor: false,
       name: null,
       labelId: null,
     });
   }
 
+  for (const area of Object.values(scene.areas)) {
+    rooms.push(exteriorRoom(scene, area));
+  }
+
   attachLabels(scene, rooms);
   return rooms;
+}
+
+/**
+ * 外部領域を部屋の形にする（ワイヤー 8 枚目「外部領域」）。
+ *
+ * **壁が無いので内法も無い。** 壁芯と内法が同じ輪郭になり、`wallIds` は空。
+ * だから壁面積も開口も出ない——`measures.ts` は空の配列をそのまま扱える。
+ *
+ * **吹抜は同じように抜く。** テラスの真ん中に吹抜があれば床は無い。
+ * 屋内と別の規則にする理由が無い。
+ */
+function exteriorRoom(scene: Scene, area: ExteriorArea): Room {
+  // 反時計回りに揃える。面積の符号を見る側（`roomAt` など）が揃いを前提にする
+  const polygon =
+    signedArea(area.outline) < 0 ? [...area.outline].reverse() : [...area.outline];
+  const raw = Math.abs(signedArea(polygon));
+  const voidArea = voidAreaIn(scene, polygon);
+  return {
+    polygon,
+    innerPolygon: polygon,
+    area: raw / 1e6,
+    innerArea: raw / 1e6,
+    voidArea: voidArea / 1e6,
+    floorArea: Math.max(0, raw - voidArea) / 1e6,
+    center: centroid(polygon),
+    wallIds: [],
+    levelId: area.levelId,
+    outdoor: true,
+    name: null,
+    labelId: null,
+  };
 }
 
 /**

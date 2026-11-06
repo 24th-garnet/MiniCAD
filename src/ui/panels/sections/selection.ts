@@ -41,6 +41,7 @@ import {
   type Fixture,
 } from "../../../core/fixture.ts";
 import { closedPolygonOf, extrudeShapes } from "../../../core/extrude.ts";
+import { areasFromShapes } from "../../../core/area.ts";
 import { combineShapes } from "../../../core/join.ts";
 import { POLY_OPS, type PolyOp } from "../../../core/polybool.ts";
 import {
@@ -88,6 +89,7 @@ export class SelectionSection implements Section {
         ...attrFields(ctx, sel),
         layerField(ctx),
         extrudeButton(ctx),
+        areaButton(ctx),
         ...combineButtons(ctx),
         ...shapeBooleanButtons(ctx),
         splitButton(ctx),
@@ -115,6 +117,7 @@ export class SelectionSection implements Section {
       ...attrFields(ctx, sel),
       layerField(ctx),
       extrudeButton(ctx),
+      areaButton(ctx),
       explodeButton(ctx),
       blockifyButton(ctx),
       groupButton(ctx),
@@ -374,6 +377,20 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
           },
           ["分解する"],
         ),
+      ];
+    }
+    case "area": {
+      const area = scene.areas[ref.id];
+      if (!area) return [];
+      // **名前と仕上げはここに出さない。** 外部領域は部屋として扱うので、
+      // 名前も床材も室名ラベルが受け持つ（壁で囲まれた部屋とまったく同じ道）
+      return [
+        readonlyField("種類", "外部領域"),
+        readonlyField("頂点", `${area.outline.length} 点`),
+        el("p", { class: "empty-note" }, [
+          "中庭・テラスなど、壁も天井も無い床の範囲です。"
+          + "名前と床の仕上げは「部屋名」ツールで付けてください（部屋と同じ扱いです）。",
+        ]),
       ];
     }
     case "roomLabel": {
@@ -1009,6 +1026,63 @@ function extrudeButton(ctx: PanelContext): HTMLElement | null {
       },
     },
     ["押し出す"],
+  );
+}
+
+/**
+ * 閉じた図形を外部領域にする（ワイヤー 8 枚目「ペイント／…／外部領域」）。
+ *
+ * **通常モードにも出す。** 8 枚目は通常モードの画面で、プロモードの
+ * 7 枚目には外部領域が無い。「押し出す」がプロだけなのとは逆。
+ *
+ * **専用のツールを足さない。** 閉じた図形を選んで変える——「押し出す」と
+ * 同じ作法にして、ツールバーを増やさない。
+ */
+function areaButton(ctx: PanelContext): HTMLElement | null {
+  const scene = ctx.editor.store.scene;
+  const refs = ctx.editor.store.selection.filter((r) => r.type === "shape");
+  if (!refs.some((r) => closedPolygonOf(scene, r.id))) return null;
+
+  return el(
+    "button",
+    {
+      class: "wide",
+      type: "button",
+      title:
+        "閉じた図形を外部領域（中庭・テラス）にする。元の図形は消えます（undo で戻ります）",
+      onclick: () => {
+        let made: EntityRef[] = [];
+        let notClosed = 0;
+        let overlapped = 0;
+        ctx.edit(() => {
+          const r = areasFromShapes(
+            scene,
+            refs,
+            // **部屋と重なっていないかを見るために、いまの部屋を渡す。**
+            // `core` は検出済みの部屋を自分で持たない（派生データなので）
+            ctx.editor.rooms.map((room) =>
+              room.innerPolygon.length >= 3 ? room.innerPolygon : room.polygon,
+            ),
+          );
+          made = r.created;
+          notClosed = r.notClosed;
+          overlapped = r.overlapped;
+          return made.length > 0;
+        });
+        if (made.length > 0) ctx.editor.store.setSelection(made);
+        const why = [
+          notClosed > 0 ? `${notClosed} 個は閉じていません` : "",
+          overlapped > 0 ? `${overlapped} 個は部屋と重なっています` : "",
+        ].filter(Boolean);
+        if (why.length > 0) {
+          window.alert(
+            `外部領域にできなかったものがあります——${why.join("、")}。`
+            + "外部領域は部屋の外側にしか置けません。",
+          );
+        }
+      },
+    },
+    ["外部領域にする"],
   );
 }
 

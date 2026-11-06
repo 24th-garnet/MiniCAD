@@ -247,6 +247,16 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
 
   // 室名・面積
   const nameLayer = layerOf(LAYER_IDS.roomName, LAYER_IDS.roomName);
+  // **外部領域の境。** 壁が無いので、出さないと名前だけが宙に浮く
+  if (printable(nameLayer)) {
+    for (const room of rooms) {
+      if (!room.outdoor) continue;
+      entities.push(...dxfPrimitives(
+        [{ kind: 'polygon', points: room.polygon, fill: 'none', lineType: 'dashed' }],
+        nameLayer, std, text,
+      ));
+    }
+  }
   if (printable(nameLayer)) {
     const nameSize = paperToWorld(std.textHeight.room, std);
     const areaSize = paperToWorld(std.textHeight.area, std);

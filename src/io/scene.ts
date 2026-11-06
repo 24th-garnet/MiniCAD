@@ -436,6 +436,21 @@ export function deserialize(raw: unknown): Scene {
       levelId: levelOr(l.levelId),
     };
   }
+
+  // 外部領域。**3 点に満たない輪郭は捨てる**——面積の無い「領域」は図面の嘘
+  for (const [id, a] of Object.entries(
+    table<Record<string, unknown>>("areas"),
+  )) {
+    const outline = readOutline(a?.outline);
+    if (!outline || outline.length < 3) continue;
+    scene.areas[id] = {
+      id,
+      outline,
+      layerId: layerOr(a.layerId, LAYER_IDS.roomName),
+      levelId: levelOr(a.levelId),
+      attrs: readAttrs(a.attrs),
+    };
+  }
   return scene;
 }
 

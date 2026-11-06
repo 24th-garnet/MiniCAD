@@ -155,6 +155,31 @@ export interface RoomLabel {
   levelId: Id;
 }
 
+/**
+ * 外部領域（ワイヤー 8 枚目「ペイント／直線・矩形・曲線・**外部領域**」）。
+ *
+ * **仕様に説明が無い。** 語が 1 つ並んでいるだけだが、すぐ上に
+ * 「※COOHOMの内容を踏襲」と書いてあるので、そちらの External Area に
+ * 合わせた——中庭・テラスなど、**既存の部屋の外側**にある、
+ * **天井も壁も無い独立したスラブ**。
+ *
+ * **部屋として扱う。** COOHOM が「本質的に、外部領域は部屋属性を持つ部屋
+ * として扱われる」と書いているとおり、`detectRooms` が壁から作る部屋と
+ * 並べて返す。名前も仕上げも `RoomLabel` が受け持つ——**名前の付け方を
+ * 2 つにしない**ため、壁で囲まれた部屋とまったく同じ道を通る。
+ *
+ * **壁を持たない。** だから `Room.wallIds` が空になり、壁面積も開口も出ない。
+ * `Room.levelId` を足したのはこのため（以前は `wallIds[0]` から引いていた）。
+ */
+export interface ExteriorArea {
+  id: Id;
+  /** 閉じた輪郭。反時計回り。ワールド座標 */
+  outline: Vec[];
+  layerId: LayerId;
+  levelId: Id;
+  attrs: Attrs;
+}
+
 export interface Scene {
   nodes: Record<Id, Node>;
   walls: Record<Id, Wall>;
@@ -162,6 +187,11 @@ export interface Scene {
   roomLabels: Record<Id, RoomLabel>;
   /** 間取りの意味を持たない汎用図形（線・円弧・円・ポリライン・文字・点） */
   shapes: Record<Id, Shape>;
+  /**
+   * 外部領域（中庭・テラス）。**壁を持たない床の範囲**で、部屋として数える。
+   * 名前と仕上げは `roomLabels` が受け持つ（壁で囲まれた部屋と同じ道）
+   */
+  areas: Record<Id, ExteriorArea>;
   /** 構造物（柱・梁・階段・スロープ・吹抜）。壁グラフには参加しない */
   fixtures: Record<Id, Fixture>;
   /** 距離計測。図面ではなく打ち合わせの道具なので、紙には出さない */
@@ -205,6 +235,7 @@ export function emptyScene(): Scene {
     openings: {},
     roomLabels: {},
     shapes: {},
+    areas: {},
     fixtures: {},
     measurements: {},
     layers: defaultLayers(),
@@ -230,6 +261,7 @@ export const DEFAULT_LAYER_FOR: Record<Exclude<EntityType, "node">, LayerId> = {
   roomLabel: LAYER_IDS.roomName,
   shape: LAYER_IDS.shape,
   fixture: LAYER_IDS.wall,
+  area: LAYER_IDS.roomName,
   measurement: LAYER_IDS.draft,
 };
 
@@ -241,6 +273,7 @@ export type EntityType =
   | "roomLabel"
   | "shape"
   | "fixture"
+  | "area"
   | "measurement";
 
 export interface EntityRef {
@@ -274,6 +307,23 @@ export interface Room {
   floorArea: number;
   center: Vec;
   wallIds: Id[];
+  /**
+   * どの階か。
+   *
+   * **以前は `scene.walls[room.wallIds[0]].levelId` と引いていた。**
+   * 壁を持つ部屋では同じ値になるが、**壁を持たない領域**（外部領域）では
+   * 引く先が無く、作業中の階に落ちていた——2 階のテラスが 1 階の高さに出る。
+   * 部屋が自分で持てば、その穴が塞がる。
+   */
+  levelId: Id;
+  /**
+   * 屋外か（外部領域から来たか）。
+   *
+   * **床面積の合計に足すかどうかは実務の規約**なので、ここでは混ぜずに
+   * 札だけ立てる。積算は屋内と屋外を別に並べ、足し方は拾う側が決める
+   * （[questions.md](../../docs/questions.md) の 32）。
+   */
+  outdoor: boolean;
   name: string | null;
   labelId: Id | null;
 }

@@ -184,6 +184,23 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     points: () => [],
   },
 
+  area: {
+    label: "外部領域",
+    table: (scene) => scene.areas,
+    layerIdOf: (scene, id) => scene.areas[id]?.layerId ?? null,
+    setLayerId: (scene, id, layerId) => {
+      const a = scene.areas[id];
+      if (!a) return false;
+      a.layerId = layerId;
+      return true;
+    },
+    remove: (scene, id) => {
+      if (!scene.areas[id]) return false;
+      delete scene.areas[id];
+      return true;
+    },
+    points: (scene, id) => scene.areas[id]?.outline.map((p) => vec(p.x, p.y)) ?? [],
+  },
   roomLabel: {
     label: "室名",
     table: (scene) => scene.roomLabels,
