@@ -232,10 +232,26 @@ body {
   border-left: 1px solid var(--panel-border);
 }
 
-.options-bar {
+/* 図面の左上に積む列。階の切り替えと道具の設定が重ならないように、
+   絶対配置はこの箱だけが持つ */
+.overlay-left {
   position: absolute;
   top: 10px;
   left: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  /* 列そのものは当たり判定を持たない。図面を掴むのを邪魔しない */
+  pointer-events: none;
+}
+
+.overlay-left > * {
+  pointer-events: auto;
+}
+
+.options-bar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -835,6 +851,93 @@ input.layer-name:focus {
   border-radius: 6px;
   background: rgb(255 255 255 / 85%);
   box-shadow: 0 1px 4px rgb(24 24 27 / 12%);
+}
+
+/* 階の区画。画層の行と同じ組み方 */
+.level-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.level-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.level-head .level-pick {
+  flex: none;
+  width: 24px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.level-head .level-pick[aria-pressed='true'] {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.level-head .level-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.level-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.level-controls .level-num {
+  width: 62px;
+}
+
+.level-controls .level-count {
+  margin-left: auto;
+}
+
+.level-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.level-add button {
+  flex: 1;
+}
+
+/* 階の切り替え。`view-tabs` と同じ作法で、図面の上に浮かせる */
+/* **`display: flex` は `hidden` を打ち負かす。** 1 階しか無いときに
+   隠しているつもりで出ていた。属性のほうを明示して勝たせる */
+.level-switch[hidden] {
+  display: none;
+}
+
+.level-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 85%);
+  box-shadow: 0 1px 4px rgb(24 24 27 / 12%);
+}
+
+.level-switch .level-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.level-switch button[aria-pressed='true'] {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
 }
 
 .view-tabs button[aria-pressed='true'] {

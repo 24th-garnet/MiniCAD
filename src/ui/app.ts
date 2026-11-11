@@ -22,6 +22,7 @@ import { Toolbar } from "./panels/toolbar.ts";
 import { ModeSwitch } from "./panels/mode-switch.ts";
 import { StatusBar } from "./status-bar.ts";
 import { ViewTabs } from "./panels/view-tabs.ts";
+import { LevelSwitch } from "./panels/level-switch.ts";
 import { Viewer3D } from "../render3d/viewer.ts";
 import { ViewState, type ViewMode } from "./view-state.ts";
 import { buildShell } from "./shell.ts";
@@ -132,6 +133,7 @@ export class App {
       this.statusBar,
       commandInput,
       new ViewTabs(shell.viewTabs, this.viewer3d),
+      new LevelSwitch(shell.levelSwitch),
     ];
 
     toolbar.build(this.ctx);

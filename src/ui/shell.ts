@@ -24,6 +24,7 @@ export interface Shell {
   readonly canvas: HTMLCanvasElement;
   readonly canvas3d: HTMLCanvasElement;
   readonly viewTabs: HTMLElement;
+  readonly levelSwitch: HTMLElement;
   readonly options: HTMLElement;
   readonly numeric: HTMLFormElement;
   readonly numericLabel: HTMLElement;
@@ -40,6 +41,8 @@ export function buildShell(host: HTMLElement): Shell {
   const canvas = el('canvas', { id: 'canvas', tabindex: 0 }, []);
   const canvas3d = el('canvas', { id: 'canvas3d', tabindex: 0, hidden: true }, []);
   const viewTabs = el('div', { class: 'view-tabs', id: 'view-tabs' }, []);
+  // 階は図面の属性なので、上部バーではなく図面の上に出す
+  const levelSwitch = el('div', { class: 'level-switch', id: 'level-switch', hidden: true }, []);
   const options = el('div', { class: 'options-bar', id: 'options' }, []);
   const numericLabel = el('label', { for: 'numeric-input', id: 'numeric-label' }, ['長さ']);
   const numericInput = el('input', {
@@ -49,7 +52,10 @@ export function buildShell(host: HTMLElement): Shell {
     spellcheck: false,
   }, []);
   const numeric = el('form', { class: 'numeric', id: 'numeric', hidden: true }, [numericLabel, numericInput]);
-  const canvasWrap = el('main', { class: 'canvas-wrap' }, [canvas, canvas3d, viewTabs, options, numeric]);
+    // **左上は 1 本の縦の列にまとめる。** 階の切り替えと道具の設定はどちらも
+  // 図面の左上に出したいもので、別々に絶対配置すると重なる
+  const overlayLeft = el('div', { class: 'overlay-left' }, [levelSwitch, options]);
+  const canvasWrap = el('main', { class: 'canvas-wrap' }, [canvas, canvas3d, viewTabs, overlayLeft, numeric]);
   const inspector = el('aside', { class: 'inspector', id: 'inspector', 'aria-label': 'プロパティ' }, []);
   const statusHint = el('span', { id: 'status-hint' }, []);
   const statusReadout = el('span', { id: 'status-readout' }, []);
@@ -67,7 +73,7 @@ export function buildShell(host: HTMLElement): Shell {
   host.append(root);
 
   return {
-    root, modeSwitch, fileActions, toolbar, canvasWrap, canvas, canvas3d, viewTabs,
+    root, modeSwitch, fileActions, toolbar, canvasWrap, canvas, canvas3d, viewTabs, levelSwitch,
     options, numeric, numericLabel, numericInput, inspector, statusHint, statusReadout,
   };
 }

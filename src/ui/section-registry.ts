@@ -5,6 +5,7 @@ import { BOTH_MODES, PRO_ONLY, type Mode } from './mode.ts';
 import { BlocksSection } from './panels/sections/blocks.ts';
 import { ConstraintsSection } from './panels/sections/constraints.ts';
 import { LayersSection } from './panels/sections/layers.ts';
+import { LevelsSection } from './panels/sections/levels.ts';
 import { LibrarySection } from './panels/sections/library.ts';
 import { MissingSection } from './panels/sections/missing.ts';
 import { RoomsSection } from './panels/sections/rooms.ts';
@@ -29,6 +30,7 @@ export type SectionId =
   | 'standard'
   | 'sheet'
   | 'views'
+  | 'levels'
   | 'layers'
   | 'blocks'
   | 'settings'
@@ -60,6 +62,9 @@ export const SECTION_REGISTRY: Record<SectionId, SectionEntry> = {
   sheet: { make: () => new SheetSection(), modes: PRO_ONLY, edits: true },
   // 図面ビューは画層の上に乗るので、画層より先に出す
   views: { make: () => new ViewsSection(), modes: BOTH_MODES, edits: true },
+  // 階は 2D が何を描くかを決めるので、画層より先に出す。
+  // **閲覧のみでも出す**——切り替えだけはできないと、2 階を見てもらえない
+  levels: { make: () => new LevelsSection(), modes: BOTH_MODES, edits: false },
   layers: { make: () => new LayersSection(), modes: BOTH_MODES, edits: false },
   blocks: { make: () => new BlocksSection(), modes: BOTH_MODES, edits: true },
   settings: { make: () => new SettingsSection(), modes: BOTH_MODES, edits: false },
