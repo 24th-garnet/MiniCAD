@@ -160,6 +160,13 @@ interface OpeningPart {
   height?: number;
   /** 既定の建具符号 */
   designation?: string;
+  /**
+   * 角に置く L 型出窓か。**壁ではなく角をクリックする。**
+   *
+   * 角をまたぐものは `Opening` 1 つでは表せない（窓 2 つ ＋ L 字の張り出し
+   * 1 つになる）ので、`OpeningKind` は増やさずにここで分ける。
+   */
+  corner?: boolean;
   /** どの物件用途でよく使うか（ワイヤー 8 枚目のタグ） */
   uses: readonly Use[];
 }
@@ -209,6 +216,8 @@ const OPENING_PARTS: OpeningPart[] = [
   { label: '弓型出窓', family: 'window', kind: 'window', sillHeight: 800, bay: { shape: 'bow', depth: 450, side: 1 }, uses: ['住'] },
   // ハーフ出窓は窓台が高いだけ。欄は増やさない
   { label: 'ハーフ出窓', family: 'window', kind: 'window', sillHeight: 1100, bay: { shape: 'box', depth: 300, side: 1 }, uses: ['住'] },
+  // L 型出窓は角に置く。窓 2 つ ＋ L 字の張り出し 1 つになる
+  { label: 'L型出窓', family: 'window', kind: 'window', width: 1200, sillHeight: 800, bay: { shape: 'box', depth: 450, side: 1 }, corner: true, uses: ['住'] },
   { label: 'ニッチ', family: 'door', kind: 'opening', bay: { shape: 'box', depth: -150, side: 1 }, uses: ALL_USES },
 ];
 
@@ -232,6 +241,9 @@ function openingButton(part: OpeningPart, ctx: PanelContext): HTMLElement {
         tool.height = part.height ?? null;
         tool.designation = part.designation ?? '';
         tool.bay = part.bay ? { ...part.bay } : null;
+        // **角に置くかどうかも戻す。** 戻さないと、L 型出窓を押した後に
+        // 普通の窓を押しても角モードのままになる
+        tool.corner = part.corner === true;
       }
       ctx.editor.canvas.focus();
       ctx.refresh();

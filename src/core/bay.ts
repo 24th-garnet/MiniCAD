@@ -16,8 +16,9 @@ import type { Primitive } from './primitive.ts';
  * ニッチは同じものが内側へ凹んだだけなので、**奥行の符号**で表す。
  *
  * 「ハーフ出窓」は窓台の高さ（`sillHeight`）が違うだけなので、欄は要らない。
- * **L 型・U 型は角をまたぐ**ので、1 つの壁に付く `Opening` では表せない。
- * まだ無い（[README](../../README.md) の「構造」に書いてある）。
+ * **L 型は角をまたぐ**ので、1 つの壁に付く `Opening` では表せない。
+ * 窓 2 つ ＋ L 字の張り出し 1 つで作る（[cornerBay.ts](./cornerBay.ts)）。
+ * U 型は壁 3 本にまたがるので、まだ無い。
  */
 export const BAY_SHAPES = ['box', 'trapezoid', 'bow'] as const;
 
@@ -93,9 +94,9 @@ export function bayOutline(frame: OpeningFrame, bay: Bay): Vec[] {
 }
 
 /** 平面に出すもの。張り出しの輪郭だけで、窓の記号は `OPENING_SYMBOLS` が出す */
-export function bayPrimitives(frame: OpeningFrame, bay: Bay): Primitive[] {
-  if (Math.abs(bay.depth) < 1e-6) return [];
-  return [{ kind: 'segments', segments: chain(bayOutline(frame, bay)) }];
+export function bayPrimitives(frame: OpeningFrame, opening: Opening): Primitive[] {
+  if (!hasBay(opening)) return [];
+  return [{ kind: 'segments', segments: chain(bayOutline(frame, opening.bay!)) }];
 }
 
 const chain = (points: Vec[]): { a: Vec; b: Vec }[] =>

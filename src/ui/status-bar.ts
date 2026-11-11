@@ -10,11 +10,22 @@ export class StatusBar implements Panel {
   ) {}
 
   refresh(ctx: PanelContext): void {
+    this.refreshHint(ctx);
+    this.refreshReadout(ctx);
+  }
+
+  /**
+   * ツールの案内。**ポインタが動くたびに出し直す。**
+   *
+   * 以前はクリックのたびにしか更新しなかったので、「ここには置けません」
+   * という断りが**1 手遅れて**出ていた。狙っているあいだに読めないと、
+   * 断りを出している意味がない。
+   */
+  refreshHint(ctx: PanelContext): void {
     // 3D だけを出しているあいだは 2D のツールに手が届かない。掴んでいる最中は
     // 分割でも 3D の説明を優先する（壁の高さの数値はそこにしか出ない）
     const use3d = ctx.view.mode === '3d' || (ctx.view.isSplit && this.viewer.isGrabbing());
     this.hint.textContent = use3d ? this.viewer.status() : ctx.editor.tool.status(ctx.editor);
-    this.refreshReadout(ctx);
   }
 
   /** 座標表示だけはポインタ移動のたびに更新したいので、単独で呼べるようにしてある */

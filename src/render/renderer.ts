@@ -34,7 +34,6 @@ import {
   instanceVertices,
   labelFits,
 } from "../core/block.ts";
-import { bayPrimitives, hasBay } from "../core/bay.ts";
 import { commentOnLevel, distanceOf, planMid } from "../core/annotation.ts";
 import { fixturePrimitives } from "../core/fixture.ts";
 import { levelBelow, levelOf } from "../core/level.ts";
@@ -335,10 +334,8 @@ function drawOpenings(frame: Frame): void {
     applyLayer(frame, layer, accent);
     strokeSegments(frame, openingJambs(f));
 
-    // 出窓・ニッチの張り出しは壁の幾何なので、記号とは別に出す
-    if (hasBay(op))
-      drawPrimitives(frame, bayPrimitives(f, op.bay!), layer, accent);
-
+    // 張り出し（出窓・ニッチ）は `openingPrimitives` が一緒に出す。
+    // ここで別に描いていたせいで、**SVG と DXF にだけ出ていなかった**
     drawPrimitives(frame, openingPrimitives(scene, op), layer, accent);
   }
 }

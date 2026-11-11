@@ -1,5 +1,5 @@
 import { defaultAttrs } from '../core/attrs.ts';
-import { closestOnSegment, dist, type Vec } from '../core/geometry.ts';
+import { closestOnSegment, dist, vec, type Vec } from '../core/geometry.ts';
 import { clampOpening, mergeOpeningSpan, wallEnds, wallLength } from '../core/ops.ts';
 import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
 import type { OpeningIdentity } from '../core/opening.ts';
@@ -11,6 +11,10 @@ import { drawPrimitives } from '../render/primitive.ts';
 import { getLayer } from '../core/layer.ts';
 import type { Frame } from '../render/renderer.ts';
 import { BAY_LABELS, BAY_SHAPES, type Bay, type BayShape } from '../core/bay.ts';
+import {
+  cornerBayBlocker, defaultCornerBay, nearestCorner, placeCornerBay,
+  type CornerBayOptions,
+} from '../core/cornerBay.ts';
 import type { Editor } from '../ui/editor.ts';
 import type { OptionField, PointerInfo, Tool, ToolId } from './tool.ts';
 
@@ -47,6 +51,15 @@ export class OpeningTool implements Tool {
   flipY = false;
 
   private candidate: Candidate | null = null;
+  /**
+   * L 型出窓を置くモード。**壁ではなく角をクリックする。**
+   *
+   * 種別を増やさずにここで分けるのは、角をまたぐものが `Opening` 1 つでは
+   * 表せないから（窓 2 つ ＋ L 字の張り出し 1 つになる）。
+   */
+  corner = false;
+  private cornerAt: Id | null = null;
+  private cornerWhy: string | null = null;
 
   constructor(family: 'door' | 'window', id: ToolId, label: string, shortcut: string) {
     this.family = family;
@@ -72,11 +85,19 @@ export class OpeningTool implements Tool {
   }
 
   onPointerMove(editor: Editor, p: PointerInfo): void {
+    if (this.corner) {
+      this.aimCorner(editor, p.raw);
+      return;
+    }
     this.candidate = this.findCandidate(editor, p.raw);
   }
 
   onPointerDown(editor: Editor, p: PointerInfo): void {
     if (p.button !== 0) return;
+    if (this.corner) {
+      this.placeCorner(editor, p.raw);
+      return;
+    }
     const candidate = this.candidate ?? this.findCandidate(editor, p.raw);
     if (!candidate) return;
     const store = editor.store;
@@ -107,6 +128,37 @@ export class OpeningTool implements Tool {
       return true;
     }
     return false;
+  }
+
+  /** いちばん近い角と、そこに置けるかどうか */
+  private aimCorner(editor: Editor, at: Vec): void {
+    this.candidate = null;
+    const scene = editor.store.scene;
+    const node = nearestCorner(scene, at, editor.pickRadius() * 4);
+    this.cornerAt = node;
+    this.cornerWhy = node ? cornerBayBlocker(scene, node, this.cornerOptions()) : null;
+  }
+
+  /** L 型出窓を置く。**置けないときは何も変えない**（理由は状況表示に出ている） */
+  private placeCorner(editor: Editor, at: Vec): void {
+    this.aimCorner(editor, at);
+    const node = this.cornerAt;
+    if (!node || this.cornerWhy) return;
+    const store = editor.store;
+    const opts = {
+      ...this.cornerOptions(),
+      layerId: resolveNewLayer(store.scene.layers, store.settings.currentLayerId, LAYER_IDS.opening),
+    };
+    store.commit(() => void placeCornerBay(store.scene, node, opts));
+  }
+
+  private cornerOptions(): CornerBayOptions {
+    return {
+      width: this.width,
+      depth: this.bay?.depth ?? defaultCornerBay().depth,
+      sillHeight: this.sillHeight,
+      height: this.height,
+    };
   }
 
   /** カーソルに最も近い壁の、開口が収まる位置を探す */
@@ -184,6 +236,10 @@ export class OpeningTool implements Tool {
   }
 
   drawOverlay(editor: Editor, frame: Frame): void {
+    if (this.corner) {
+      this.drawCornerAim(editor, frame);
+      return;
+    }
     const candidate = this.candidate;
     if (!candidate) return;
     const scene = editor.store.scene;
@@ -288,8 +344,30 @@ export class OpeningTool implements Tool {
     return fields;
   }
 
+  /** 狙っている角に印を出す。置けないときは赤くして理由を状況表示に出す */
+  private drawCornerAim(editor: Editor, frame: Frame): void {
+    const node = this.cornerAt ? editor.store.scene.nodes[this.cornerAt] : null;
+    if (!node) return;
+    const { ctx, vp } = frame;
+    const s = vp.toScreen(vec(node.x, node.y));
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 9, 0, Math.PI * 2);
+    ctx.strokeStyle = this.cornerWhy ? theme.constraintConflict : theme.preview;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   status(editor: Editor): string {
     if (Object.keys(editor.store.scene.walls).length === 0) return 'まず壁を描いてください';
+    if (this.corner) {
+      if (this.cornerWhy) return this.cornerWhy;
+      return this.cornerAt
+        ? `L 型出窓  幅 ${this.width}mm / 出 ${this.cornerOptions().depth}mm  —  クリックで置きます`
+        : '壁 2 本が折れている角にカーソルを合わせてクリック';
+    }
     if (!this.candidate) return '壁の上にカーソルを合わせてクリック';
     const wall = editor.store.scene.walls[this.candidate.wallId];
     const total = wall ? Math.round(wallLength(editor.store.scene, wall)) : 0;

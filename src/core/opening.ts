@@ -1,4 +1,5 @@
 import { angleOf, sub } from './geometry.ts';
+import { bayPrimitives } from './bay.ts';
 import type { Primitive } from './primitive.ts';
 import {
   doorSwing, openingAt, openingFrame, openingLine, subFrame,
@@ -412,6 +413,10 @@ export function openingPrimitives(scene: Scene, opening: Opening): Primitive[] {
   const frame = openingFrame(scene, opening);
   if (!frame) return [];
   const out = OPENING_SYMBOLS[opening.kind].primitives(frame, opening);
+  // **張り出しもここで出す。** 以前は画面と 3D だけが別に描いていたので、
+  // **SVG と DXF に出窓の箱が出ていなかった**——紙に落ちた瞬間に、
+  // 出窓が普通の窓になっていた
+  out.push(...bayPrimitives(frame, opening));
   // **符号は図面に出す。** 持っているのに出さないと、インスペクタを開かないと
   // 分からない情報になり、紙に落ちた瞬間に消える
   if (opening.designation.length > 0) {

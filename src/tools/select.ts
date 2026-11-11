@@ -5,6 +5,7 @@ import { pickInRect } from '../core/pick.ts';
 import { mergeNodesAt } from '../core/ops.ts';
 import { translation } from '../core/transform.ts';
 import { transformEntities } from '../core/transformOps.ts';
+import { cornerBayMoveBlocker } from '../core/cornerBay.ts';
 import {
   captureOrigins,
   isEmptySelection,
@@ -45,6 +46,8 @@ export class SelectTool implements Tool {
   readonly group = 'modify' as const;
 
   private drag: DragState = { kind: 'none' };
+  /** 動かせないものを掴もうとしたときの理由。次に掴むまで出し続ける */
+  private refusal: string | null = null;
 
   onDeactivate(): void {
     this.drag = { kind: 'none' };
@@ -78,6 +81,7 @@ export class SelectTool implements Tool {
     } else if (!store.isSelected(ref)) {
       store.setSelection([ref]);
     }
+    this.refusal = null;
     this.drag = { kind: 'pending', start: p.world, ref };
   }
 
@@ -91,6 +95,13 @@ export class SelectTool implements Tool {
       if (editor.isSameSpot(drag.start, p.world)) return;
       const sel = resolveSelection(editor.store.scene, editor.store.selection);
       if (isEmptySelection(sel)) {
+        this.drag = { kind: 'none' };
+        return;
+      }
+      // **動かせないものは掴ませない。** 動かしてから戻すと、戻し損ねたときに
+      // 図面が静かにずれる。理由は状況表示に出る
+      this.refusal = cornerBayMoveBlocker(editor.store.scene, editor.store.selection);
+      if (this.refusal) {
         this.drag = { kind: 'none' };
         return;
       }
@@ -254,6 +265,7 @@ export class SelectTool implements Tool {
 
   status(editor: Editor): string {
     const n = editor.store.selection.length;
+    if (this.refusal) return this.refusal;
     if (this.drag.kind === 'rect') return '左→右: 完全に含むものを選択 / 右→左: 触れるものを選択';
     if (n === 0) return 'クリックで選択・ドラッグで範囲選択 / Shift+クリックで追加';
     return `${n} 個を選択中 — ドラッグで移動（Alt で複写）、矢印キーで微調整、[ ] で家具を回転、Delete で削除`;

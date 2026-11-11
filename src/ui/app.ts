@@ -142,9 +142,10 @@ export class App {
     installKeymap(this.ctx, bindings, commandInput, this.teardown.signal);
 
     // 座標表示はポインタが動くたびに更新したいので、全体の再描画とは別経路にする
-    shell.canvas.addEventListener("pointermove", () =>
-      this.statusBar.refreshReadout(this.ctx),
-    );
+    shell.canvas.addEventListener("pointermove", () => {
+      this.statusBar.refreshReadout(this.ctx);
+      this.statusBar.refreshHint(this.ctx);
+    });
 
     // コメントはホストの持ち物。図面には入らないので `Store` を通さない
     this.editor.comments = host.comments ?? [];
