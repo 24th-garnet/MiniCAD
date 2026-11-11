@@ -135,6 +135,16 @@ export class ModifyTool implements Tool {
     }
   }
 
+  /** 円弧壁に効かない操作なら、その理由。効くなら null */
+  private refusalFor(editor: Editor, target: EntityRef | null): string | null {
+    if (!target || target.type !== 'wall') return null;
+    const wall = editor.store.scene.walls[target.id];
+    if (!wall || wall.bulge === 0) return null;
+    if (this.mode === 'trim') return '円弧壁は切り落とせません（分割は使えます）';
+    if (this.mode === 'extend') return '円弧壁は延長できません（伸ばすと半径が変わります）';
+    return null;
+  }
+
   /**
    * 図形と壁だけを拾う。家具や建具は対象外。
    *
@@ -227,6 +237,10 @@ export class ModifyTool implements Tool {
 
   status(editor: Editor): string {
     const target = this.pickTarget(editor, editor.pointerWorld());
+    // **断る理由を書く。** 黙って何も起きないと、狙いが外れたのか
+    // 効かない操作なのか分からない
+    const refusal = this.refusalFor(editor, target);
+    if (refusal) return refusal;
     switch (this.mode) {
       case 'offset':
         return target ? `${this.distance}mm 離してコピーします` : '図形か壁にカーソルを合わせ、出したい側をクリック';

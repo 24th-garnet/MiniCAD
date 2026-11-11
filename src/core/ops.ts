@@ -1,6 +1,6 @@
 import { defaultAttrs } from './attrs.ts';
 import {
-  add, arcFromBulge, bulgeArcLength, closestOnSegment, dist, mul, norm,
+  add, arcFromBulge, bulgeArcLength, closestOnArc, closestOnSegment, dist, mul, norm,
   pointOnBulgeArc, sub, vec, type BulgeArc, type Vec,
 } from './geometry.ts';
 import { LAYER_IDS, type LayerId } from './layer.ts';
@@ -135,8 +135,11 @@ export function splitWall(scene: Scene, wallId: Id, p: Vec, tolerance = 20): Id 
   const wall = scene.walls[wallId];
   if (!wall) return null;
   const [a, b] = wallEnds(scene, wall);
-  const { t, point } = closestOnSegment(p, a, b);
-  const total = dist(a, b);
+  const arc = wallArc(scene, wall);
+  // **円弧は弧の上で割る。** 弦の上で割ると、新しい節点が壁から外れたところに
+  // 置かれ、開口の位置（弧長で測ってある）も一緒にずれる
+  const { t, point } = arc ? closestOnArc(p, arc) : closestOnSegment(p, a, b);
+  const total = arc ? bulgeArcLength(arc) : dist(a, b);
   const atStart = t * total;
   if (atStart <= tolerance) return wall.a;
   if (total - atStart <= tolerance) return wall.b;
@@ -146,7 +149,14 @@ export function splitWall(scene: Scene, wallId: Id, p: Vec, tolerance = 20): Id 
 
   const originalB = wall.b;
   wall.b = midId;
-  const second = addWall(scene, midId, originalB, wall.thickness, wall.layerId);
+  // **掃過角も割る。** 前半に元の膨らみを残すと、短くなった弦に同じ角度が
+  // 乗って半径が勝手に縮む。後半を直線にすると曲がりが黙って消える
+  const sweep = arc ? arc.sweep : 0;
+  if (arc) wall.bulge = Math.tan((sweep * t) / 4);
+  const second = addWall(
+    scene, midId, originalB, wall.thickness, wall.layerId,
+    arc ? Math.tan((sweep * (1 - t)) / 4) : 0,
+  );
   // 角度系の拘束は後半にも効かせ、長さの拘束は意味が壊れるので捨てる
   if (second) splitConstraints(scene, wallId, second.id);
 

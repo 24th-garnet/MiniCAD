@@ -88,6 +88,19 @@ export interface ConstraintSpec {
   applicable(scene: Scene, walls: Id[]): boolean;
 }
 
+/**
+ * まっすぐな壁か。**円弧壁には拘束を付けない。**
+ *
+ * ソルバが扱うのは弦（`leg`）なので、円弧壁に「水平」を付けると、
+ * 曲がった壁の**弦だけ**が水平になる。画面には水平に見えない壁が
+ * 水平の記号を付けて立つことになり、何が保たれているのか読めない。
+ * 曲率そのものを拘束するなら別の仕組みが要る（まだ持っていない）。
+ */
+const isStraightWall = (scene: Scene, id: Id): boolean => {
+  const wall = scene.walls[id];
+  return !!wall && wall.bulge === 0;
+};
+
 /** 壁の端点と方向。退化していたら null */
 interface Leg {
   a: Id;
@@ -158,7 +171,7 @@ export const CONSTRAINT_SPECS: Record<ConstraintKind, ConstraintSpec> = {
       return l ? [{ nodeId: l.b, dx: 0, dy: 1 }, { nodeId: l.a, dx: 0, dy: -1 }] : [];
     },
     initialValue: () => null,
-    applicable: (scene, walls) => walls.length === 1 && !!scene.walls[walls[0]],
+    applicable: (scene, walls) => walls.length === 1 && isStraightWall(scene, walls[0]),
   },
 
   vertical: {
@@ -175,7 +188,7 @@ export const CONSTRAINT_SPECS: Record<ConstraintKind, ConstraintSpec> = {
       return l ? [{ nodeId: l.b, dx: 1, dy: 0 }, { nodeId: l.a, dx: -1, dy: 0 }] : [];
     },
     initialValue: () => null,
-    applicable: (scene, walls) => walls.length === 1 && !!scene.walls[walls[0]],
+    applicable: (scene, walls) => walls.length === 1 && isStraightWall(scene, walls[0]),
   },
 
   distance: {
@@ -198,7 +211,7 @@ export const CONSTRAINT_SPECS: Record<ConstraintKind, ConstraintSpec> = {
       ];
     },
     initialValue: (scene, walls) => leg(scene, walls[0])?.len ?? null,
-    applicable: (scene, walls) => walls.length === 1 && !!scene.walls[walls[0]],
+    applicable: (scene, walls) => walls.length === 1 && isStraightWall(scene, walls[0]),
   },
 
   parallel: {
@@ -221,7 +234,8 @@ export const CONSTRAINT_SPECS: Record<ConstraintKind, ConstraintSpec> = {
     },
     initialValue: () => null,
     applicable: (scene, walls) =>
-      walls.length === 2 && walls[0] !== walls[1] && !!scene.walls[walls[0]] && !!scene.walls[walls[1]],
+      walls.length === 2 && walls[0] !== walls[1]
+      && isStraightWall(scene, walls[0]) && isStraightWall(scene, walls[1]),
   },
 
   perpendicular: {
@@ -244,7 +258,8 @@ export const CONSTRAINT_SPECS: Record<ConstraintKind, ConstraintSpec> = {
     },
     initialValue: () => null,
     applicable: (scene, walls) =>
-      walls.length === 2 && walls[0] !== walls[1] && !!scene.walls[walls[0]] && !!scene.walls[walls[1]],
+      walls.length === 2 && walls[0] !== walls[1]
+      && isStraightWall(scene, walls[0]) && isStraightWall(scene, walls[1]),
   },
 };
 

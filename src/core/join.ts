@@ -4,12 +4,14 @@ import { polyBoolean, type PolyOp } from "./polybool.ts";
 import {
   NODE_MERGE_TOLERANCE,
   openingsOnWall,
+  wallArc,
   wallEnds,
+  wallLength,
   wallsAtNode,
 } from "./ops.ts";
 import { dropConstraintsForWall } from "./constraintOps.ts";
 import type { Shape } from "./shapes.ts";
-import type { EntityRef, Id, Scene } from "./types.ts";
+import type { EntityRef, Id, Scene, Wall } from "./types.ts";
 
 /**
  * 結合と合成。ワイヤー 7 枚目の「結合/合成」。
@@ -103,11 +105,15 @@ export function joinWalls(scene: Scene, x: Id, y: Id): boolean {
   const shared = sharedNode(wx, wy);
   if (!shared) return false;
   if (wallsAtNode(scene, shared).length !== 2) return false;
-  if (!collinear(scene, x, y)) return false;
+  if (!continuous(scene, x, y)) return false;
 
   const farEnd = wy.a === shared ? wy.b : wy.a;
-  const lenX = dist(...wallEnds(scene, wx));
-  const lenY = dist(...wallEnds(scene, wy));
+  // **弧長で測る。** 開口の offset は弧長の目盛りなので、弦で足し引きすると
+  // 繋いだ瞬間に窓が動く（直線では同じ値になるので、直線の道は変わらない）
+  const lenX = wallLength(scene, wx);
+  const lenY = wallLength(scene, wy);
+  const merged = mergedBulge(scene, wx, wy, shared);
+  if (merged === null) return false;
   // 開口の offset は壁の始点（a）から測る。**どちら側に伸ばすかで
   // 既存の開口まで動く**ので、2 つの場合を分けて書く
   const sharedAtA = wx.a === shared;
@@ -135,6 +141,7 @@ export function joinWalls(scene: Scene, x: Id, y: Id): boolean {
   delete scene.walls[y];
   if (sharedAtA) wx.a = farEnd;
   else wx.b = farEnd;
+  wx.bulge = merged;
   // 使われなくなった共有ノードを落とす
   if (wallsAtNode(scene, shared).length === 0) delete scene.nodes[shared];
   return true;
@@ -144,6 +151,44 @@ function sharedNode(a: { a: Id; b: Id }, b: { a: Id; b: Id }): Id | null {
   if (a.a === b.a || a.a === b.b) return a.a;
   if (a.b === b.a || a.b === b.b) return a.b;
   return null;
+}
+
+/**
+ * 繋いで 1 本にしてよい 2 本か。
+ *
+ * **直線どうしなら一直線のとき、円弧どうしなら同じ円のときだけ。**
+ * 直線と円弧を繋ぐと、残った側の膨らみが相手にも効いて**繋いでいない
+ * ほうの壁まで曲がる**。円弧と円弧でも、中心か半径が違えば 1 本の
+ * 円弧では表せない。
+ */
+function continuous(scene: Scene, x: Id, y: Id): boolean {
+  const ax = wallArc(scene, scene.walls[x]);
+  const ay = wallArc(scene, scene.walls[y]);
+  if (!ax && !ay) return collinear(scene, x, y);
+  if (!ax || !ay) return false;
+  // 中心と半径が図面の精度で一致するか。1mm 以内
+  return dist(ax.center, ay.center) < 1 && Math.abs(ax.radius - ay.radius) < 1;
+}
+
+/**
+ * 繋いだあとの膨らみ。**掃過角は足し算になる。**
+ *
+ * 向きを合わせるのが肝で、共有ノードがどちらの端にあるかで符号が裏返る。
+ * 足して 1 周を超えると 1 本の円弧では表せない（膨らみは tan(掃過角/4) で、
+ * 掃過角 2π は tan(π/2) ＝ 無限大）ので断る。
+ */
+function mergedBulge(scene: Scene, wx: Wall, wy: Wall, shared: Id): number | null {
+  const ax = wallArc(scene, wx);
+  const ay = wallArc(scene, wy);
+  if (!ax && !ay) return 0;
+  if (!ax || !ay) return null;
+  const ySharedAtA = wy.a === shared;
+  const total = wx.a === shared
+    // 繋いだ壁は farEnd → wx.b。wy を逆に辿るかどうかで符号が決まる
+    ? (ySharedAtA ? -ay.sweep : ay.sweep) + ax.sweep
+    : ax.sweep + (ySharedAtA ? ay.sweep : -ay.sweep);
+  if (Math.abs(total) >= Math.PI * 2 - 1e-9) return null;
+  return Math.tan(total / 4);
 }
 
 /** 2 本の壁が一直線に並んでいるか。外積で見る */

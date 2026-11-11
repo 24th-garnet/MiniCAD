@@ -26,7 +26,7 @@ import {
   type Vec,
 } from './geometry.ts';
 import { newId } from './id.ts';
-import { addWall, mergeNodesAt, splitWall, wallEnds } from './ops.ts';
+import { addWall, mergeNodesAt, splitWall, wallArc, wallEnds } from './ops.ts';
 import { roundRectParts, type Shape } from './shapes.ts';
 import type { Id, Scene, Wall } from './types.ts';
 
@@ -90,9 +90,25 @@ export function shapeCurves(shape: Shape): Curve[] {
   }
 }
 
+/**
+ * 壁を曲線として取り出す。**円弧壁は円弧として返す。**
+ *
+ * トリムの刃や角の丸めが弦を相手にすると、交点が壁から外れたところに出る。
+ */
 export function wallCurve(scene: Scene, wall: Wall): Curve {
   const [a, b] = wallEnds(scene, wall);
-  return { kind: 'segment', a, b };
+  const arc = wallArc(scene, wall);
+  if (!arc) return { kind: 'segment', a, b };
+  return {
+    kind: 'arc',
+    arc: {
+      center: arc.center,
+      radius: arc.radius,
+      // `Arc` は start→end を反時計回りに読む。時計回りの弧は端を入れ替える
+      start: arc.sweep >= 0 ? arc.from : arc.from + arc.sweep,
+      end: arc.sweep >= 0 ? arc.from + arc.sweep : arc.from,
+    },
+  };
 }
 
 /** 曲線どうしの交点。infinite なら線分を無限直線として扱う（延長の判定に使う） */
@@ -553,6 +569,10 @@ export function offsetShape(scene: Scene, id: Id, distance: number, through: Vec
 export function extendWall(scene: Scene, id: Id, pickPoint: Vec): boolean {
   const wall = scene.walls[id];
   if (!wall) return false;
+  // **円弧壁は伸ばさない。** 端点だけを交点まで動かすと、弦が変わって
+  // 半径が勝手に変わる（膨らみは掃過角で、半径は弦から導かれるため）。
+  // 曲率を保ったまま伸ばすには、円の上を回す別の操作が要る
+  if (wall.bulge !== 0) return false;
   const [a, b] = wallEnds(scene, wall);
   const extended = extendCurve({ kind: 'segment', a, b }, cutterCurves(scene, { wallId: id }), pickPoint);
   if (!extended || extended.kind !== 'segment') return false;
@@ -573,14 +593,29 @@ export function offsetWall(scene: Scene, id: Id, distance: number, through: Vec)
   const wall = scene.walls[id];
   if (!wall || distance <= 0) return null;
   const [a, b] = wallEnds(scene, wall);
-  const side = sideOfLine(a, b, through);
-  const [na, nb] = offsetSegment(a, b, side * distance);
+  const arc = wallArc(scene, wall);
+  let na: Vec;
+  let nb: Vec;
+  if (arc) {
+    // **同心円弧になる。** 掃過角は変わらないので膨らみはそのまま使える。
+    // 中心から見てどちら側かで、半径を伸ばすか縮めるかが決まる
+    const out = dist(through, arc.center) > arc.radius ? 1 : -1;
+    const radius = arc.radius + out * distance;
+    if (radius <= 1e-6) return null;
+    const grow = (p: Vec): Vec =>
+      add(arc.center, mul(norm(sub(p, arc.center)), radius));
+    na = grow(a);
+    nb = grow(b);
+  } else {
+    const side = sideOfLine(a, b, through);
+    [na, nb] = offsetSegment(a, b, side * distance);
+  }
 
   const aId = newId('n');
   const bId = newId('n');
   scene.nodes[aId] = { id: aId, x: na.x, y: na.y, levelId: wall.levelId };
   scene.nodes[bId] = { id: bId, x: nb.x, y: nb.y, levelId: wall.levelId };
-  return addWall(scene, aId, bId, wall.thickness, wall.layerId)?.id ?? null;
+  return addWall(scene, aId, bId, wall.thickness, wall.layerId, wall.bulge)?.id ?? null;
 }
 
 /**
@@ -590,6 +625,10 @@ export function offsetWall(scene: Scene, id: Id, distance: number, through: Vec)
 export function trimWall(scene: Scene, id: Id, pickPoint: Vec): boolean {
   const wall = scene.walls[id];
   if (!wall) return false;
+  // **円弧壁は切らない。** 切る位置も「どちら側を落とすか」も弦の上の
+  // 比で決めているので、曲がった壁では見当違いのところで切れる。
+  // 分割（`splitWall`）は弧の上で割るので、そちらは使える
+  if (wall.bulge !== 0) return false;
   const [a, b] = wallEnds(scene, wall);
   const hits = cutterCurves(scene, { wallId: id }).flatMap((c) =>
     curveIntersections({ kind: 'segment', a, b }, c),
