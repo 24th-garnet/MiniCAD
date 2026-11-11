@@ -681,6 +681,50 @@ export function drawPreviewWall(
   ctx.restore();
 }
 
+/**
+ * 折れ線に沿った壁の下書き。**円弧壁を引くときに使う。**
+ *
+ * `drawPreviewWall` を 1 区間ずつ呼ぶと長さと角度の札が刻みの数だけ出て
+ * 読めなくなるので、帯は 1 つに繋いで、札は 1 枚だけ出す。
+ */
+export function drawPreviewPolyWall(
+  frame: Frame,
+  points: Vec[],
+  thickness: number,
+  label: string,
+): void {
+  const { ctx, vp } = frame;
+  if (points.length < 2) return;
+  ctx.save();
+  ctx.setLineDash([]);
+  const half = thickness / 2;
+  const side = (sign: number): Vec[] =>
+    points.map((p, i) => {
+      // 端は隣の点との向き、途中は前後の平均で法線を出す
+      const prev = points[Math.max(0, i - 1)];
+      const next = points[Math.min(points.length - 1, i + 1)];
+      const d = norm(sub(next, prev));
+      return add(p, mul(perp(d), half * sign));
+    });
+  tracePolygon(frame, [...side(1), ...side(-1).reverse()]);
+  ctx.fillStyle = "rgba(37, 99, 235, 0.25)";
+  ctx.fill();
+  ctx.strokeStyle = theme.preview;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  const c = vp.toScreen(points[Math.floor(points.length / 2)]);
+  ctx.font = fontOf(12);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const w = ctx.measureText(label).width;
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillRect(c.x - w / 2 - 5, c.y - 22, w + 10, 18);
+  ctx.fillStyle = theme.preview;
+  ctx.fillText(label, c.x, c.y - 6);
+  ctx.restore();
+}
+
 export function drawPreviewRect(
   frame: Frame,
   a: Vec,

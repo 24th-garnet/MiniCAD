@@ -1,4 +1,6 @@
 import {
+  arcPolyline,
+  closestOnArc,
   closestOnSegment,
   dist,
   pointInPolygon,
@@ -6,7 +8,7 @@ import {
   type Vec,
 } from "./geometry.ts";
 import { isSelectable } from "./entity.ts";
-import { wallEnds } from "./ops.ts";
+import { wallArc, wallEnds } from "./ops.ts";
 import { instanceOutline, instanceVertices } from "./block.ts";
 import { openingFrame } from "./shape.ts";
 import { outline, outlineSegments, specOf } from "./fixture.ts";
@@ -109,7 +111,10 @@ export function pickAt(
     const ref: EntityRef = { type: "wall", id: w.id };
     if (!ok(ref)) continue;
     const [a, b] = wallEnds(scene, w);
-    const c = closestOnSegment(p, a, b);
+    // **円弧壁は弧で測る。** 弦で測ると、壁の上を叩いても拾えず、
+    // 壁から離れた弦の上でだけ拾える——曲げた瞬間に掴めなくなる
+    const arc = wallArc(scene, w);
+    const c = arc ? closestOnArc(p, arc) : closestOnSegment(p, a, b);
     if (c.dist > Math.max(tolerance, w.thickness / 2)) continue;
     if (!bestWall || c.dist < bestWall.d) bestWall = { ref, d: c.dist };
   }
@@ -165,9 +170,14 @@ export function pickInRect(
     const ref: EntityRef = { type: "wall", id: w.id };
     if (!ok(ref)) continue;
     const [a, b] = wallEnds(scene, w);
+    // 円弧は折れ線にしてから見る。弦だけだと、枠の外へ膨らんだ壁を
+    // 囲ったつもりで拾ってしまう（逆も起きる）
+    const arc = wallArc(scene, w);
+    const pts = arc ? arcPolyline(arc.center, arc.radius, arc.from, arc.sweep) : [a, b];
     const hit = crossing
-      ? inside(a) || inside(b) || segmentCrossesRect(a, b, min, max)
-      : inside(a) && inside(b);
+      ? pts.some(inside)
+        || pts.some((q, i) => i + 1 < pts.length && segmentCrossesRect(q, pts[i + 1], min, max))
+      : pts.every(inside);
     if (hit) refs.push(ref);
   }
   for (const inst of Object.values(scene.instances)) {

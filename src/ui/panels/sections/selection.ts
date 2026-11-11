@@ -1,5 +1,5 @@
 import { toDeg, toRad, type Vec } from "../../../core/geometry.ts";
-import { wallLength } from "../../../core/ops.ts";
+import { setWallRadius, wallArc, wallLength } from "../../../core/ops.ts";
 import {
   isOpeningKind,
   OPENING_KINDS,
@@ -147,9 +147,34 @@ function fieldsFor(ctx: PanelContext, ref: EntityRef): (HTMLElement | null)[] {
     case "wall": {
       const wall = scene.walls[ref.id];
       if (!wall) return [];
+      const arc = wallArc(scene, wall);
       return [
-        readonlyField("種類", "壁"),
-        readonlyField("長さ", `${Math.round(wallLength(scene, wall))} mm`),
+        readonlyField("種類", arc ? "壁（円弧）" : "壁"),
+        readonlyField(
+          arc ? "弧長" : "長さ",
+          `${Math.round(wallLength(scene, wall))} mm`,
+        ),
+        // **半径で直せるのは円弧壁だけ。** 直線に半径の欄を出しても、
+        // どちらへ曲げたいのかが決まらない（引き直すほうが早い）
+        arc
+          ? numberField(
+              "半径",
+              arc.radius,
+              (v) => edit(() => setWallRadius(scene, wall, v)),
+              { step: 100, min: 1, suffix: "mm" },
+            )
+          : null,
+        arc
+          ? el(
+              "button",
+              {
+                class: "wide",
+                type: "button",
+                onclick: () => edit(() => void (wall.bulge = 0)),
+              },
+              ["直線に戻す"],
+            )
+          : null,
         numberField(
           "壁厚",
           wall.thickness,

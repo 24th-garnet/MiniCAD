@@ -1,9 +1,13 @@
-import { angleOf, dist, norm, sub, toDeg, type Vec } from '../core/geometry.ts';
+import {
+  angleOf, arcFromBulge, arcPolyline, bulgeFromThree, dist, norm, sub, toDeg, type Vec,
+} from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer } from '../core/layer.ts';
 import { addWall, findOrCreateNode, splitWall } from '../core/ops.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import type { Id } from '../core/types.ts';
-import { drawPreviewWall, drawSnapMarker, type Frame } from '../render/renderer.ts';
+import {
+  drawPreviewPolyWall, drawPreviewWall, drawSnapMarker, type Frame,
+} from '../render/renderer.ts';
 import type { Editor } from '../ui/editor.ts';
 import type { NumericEntry, OptionField, PointerInfo, Tool } from './tool.ts';
 
@@ -20,16 +24,23 @@ export class WallTool implements Tool {
   readonly group = 'draw' as const;
 
   private anchor: Vec | null = null;
+  /**
+   * 円弧の終点。**3 クリック目が「通る点」になる。**
+   *
+   * 中心と半径を聞かないのは、`Wall` が中心を持たないから（端点を動かした
+   * 瞬間に矛盾する）。2 端点と通る点なら、どこを動かしても筋が通る。
+   */
+  private arcEnd: Vec | null = null;
+  /** 直線を引くか、円弧を引くか */
+  kind: 'line' | 'arc' = 'line';
 
   onActivate(editor: Editor): void {
     editor.store.clearSelection();
-    this.anchor = null;
-    editor.snapContext = {};
+    this.reset(editor);
   }
 
   onDeactivate(editor: Editor): void {
-    this.anchor = null;
-    editor.snapContext = {};
+    this.reset(editor);
   }
 
   isActive(): boolean {
@@ -37,9 +48,14 @@ export class WallTool implements Tool {
   }
 
   cancel(editor: Editor): void {
-    this.anchor = null;
-    editor.snapContext = {};
+    this.reset(editor);
     editor.requestRender();
+  }
+
+  private reset(editor: Editor): void {
+    this.anchor = null;
+    this.arcEnd = null;
+    editor.snapContext = {};
   }
 
   onPointerDown(editor: Editor, p: PointerInfo): void {
@@ -47,6 +63,14 @@ export class WallTool implements Tool {
     if (!this.anchor) {
       this.anchor = p.world;
       editor.snapContext = { from: this.anchor };
+      return;
+    }
+    if (this.kind === 'arc' && !this.arcEnd) {
+      // 2 クリック目は終点。**まだ置かない**——3 点目で膨らみが決まる
+      if (dist(this.anchor, p.world) < 1) return;
+      this.arcEnd = p.world;
+      // 通る点は終点から測るほうが掴みやすい
+      editor.snapContext = { from: this.arcEnd };
       return;
     }
     this.placeSegment(editor, p.world);
@@ -64,11 +88,18 @@ export class WallTool implements Tool {
     return false;
   }
 
-  /** 1本の壁を確定し、終点を次の起点にして連続作図を続ける */
-  private placeSegment(editor: Editor, end: Vec): void {
+  /**
+   * 1本の壁を確定し、終点を次の起点にして連続作図を続ける。
+   *
+   * 円弧では `last` が**通る点**で、終点は `arcEnd` が持っている。
+   */
+  private placeSegment(editor: Editor, last: Vec): void {
     const start = this.anchor;
     if (!start) return;
+    const end = this.arcEnd ?? last;
     if (dist(start, end) < 1) return;
+    // 通る点が弦の上なら膨らみは 0。曲げるつもりで直線になるのは正しい
+    const bulge = this.arcEnd ? bulgeFromThree(start, last, this.arcEnd) : 0;
 
     const store = editor.store;
     store.commit(() => {
@@ -77,11 +108,16 @@ export class WallTool implements Tool {
       const a = resolveNode(editor, start, tolerance);
       const b = resolveNode(editor, end, tolerance);
       if (a === b) return false;
-      addWall(scene, a, b, store.settings.wallThickness, resolveNewLayer(scene.layers, store.settings.currentLayerId, LAYER_IDS.wall));
+      addWall(
+        scene, a, b, store.settings.wallThickness,
+        resolveNewLayer(scene.layers, store.settings.currentLayerId, LAYER_IDS.wall),
+        bulge,
+      );
       return true;
     });
 
     this.anchor = end;
+    this.arcEnd = null;
     editor.snapContext = { from: this.anchor };
   }
 
@@ -110,8 +146,15 @@ export class WallTool implements Tool {
 
   drawOverlay(editor: Editor, frame: Frame): void {
     const snap = editor.lastSnap;
+    const thickness = editor.store.settings.wallThickness;
     if (this.anchor && snap) {
-      drawPreviewWall(frame, this.anchor, snap.point, editor.store.settings.wallThickness);
+      if (this.arcEnd) {
+        // 3 点目を動かすと弧が追ってくる。**折れ線で下書きする**——
+        // 本物も `wallPolyline` で折るので、見えているものと出来るものが同じ
+        drawPreviewArc(frame, this.anchor, snap.point, this.arcEnd, thickness);
+      } else {
+        drawPreviewWall(frame, this.anchor, snap.point, thickness);
+      }
     }
     if (snap && snap.kind !== 'free') drawSnapMarker(frame, snap.point, snap.label);
   }
@@ -119,6 +162,19 @@ export class WallTool implements Tool {
   options(editor: Editor): OptionField[] {
     const settings = editor.store.settings;
     return [
+      {
+        kind: 'select',
+        label: '種類',
+        value: this.kind,
+        options: [
+          { value: 'line', label: '直線' },
+          { value: 'arc', label: '円弧' },
+        ],
+        onChange: (v) => {
+          this.kind = v === 'arc' ? 'arc' : 'line';
+          this.arcEnd = null;
+        },
+      },
       {
         kind: 'number',
         label: '壁厚 (mm)',
@@ -131,9 +187,13 @@ export class WallTool implements Tool {
   }
 
   status(): string {
-    return this.anchor
-      ? 'クリックで次の点 / 数値を打ち込んで Enter / Esc・右クリック・ダブルクリックで終了'
-      : 'クリックで壁の始点を指定';
+    if (this.arcEnd) return 'クリックで円弧の通る点を指定（弦の上なら直線になります）';
+    if (this.anchor) {
+      return this.kind === 'arc'
+        ? 'クリックで円弧の終点 / Esc・右クリックで終了'
+        : 'クリックで次の点 / 数値を打ち込んで Enter / Esc・右クリック・ダブルクリックで終了';
+    }
+    return this.kind === 'arc' ? 'クリックで円弧の始点を指定' : 'クリックで壁の始点を指定';
   }
 }
 
@@ -157,4 +217,20 @@ export function pointerAngleFrom(editor: Editor, from: Vec | null): number | nul
   const pointer = editor.snapAt(editor.pointerWorld()).point;
   if (dist(from, pointer) < 1e-6) return null;
   return toDeg(angleOf(norm(sub(pointer, from))));
+}
+
+/** 円弧の下書き。本物と同じ刻みで折る。札は半径と弧長 */
+function drawPreviewArc(frame: Frame, a: Vec, via: Vec, b: Vec, thickness: number): void {
+  const arc = arcFromBulge(a, b, bulgeFromThree(a, via, b));
+  // 通る点が弦の上なら円弧にならない。そのまま直線の下書きを出す
+  if (!arc) {
+    drawPreviewWall(frame, a, b, thickness);
+    return;
+  }
+  const pts = arcPolyline(arc.center, arc.radius, arc.from, arc.sweep);
+  const length = arc.radius * Math.abs(arc.sweep);
+  drawPreviewPolyWall(
+    frame, pts, thickness,
+    `R ${Math.round(arc.radius)} mm  弧長 ${Math.round(length)} mm`,
+  );
 }

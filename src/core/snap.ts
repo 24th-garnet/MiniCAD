@@ -10,9 +10,11 @@ import {
   sub,
   vec,
   type Vec,
+  closestOnArc,
+  pointOnBulgeArc,
 } from './geometry.ts';
 import { isSnappable } from './entity.ts';
-import { wallEnds } from './ops.ts';
+import { wallArc, wallEnds } from './ops.ts';
 import { shapeSnapPoints } from './shapes.ts';
 import type { Id, Scene } from './types.ts';
 import type { Settings } from './store.ts';
@@ -96,7 +98,9 @@ export function snapPoint(scene: Scene, settings: Settings, p: Vec, opts: SnapOp
   if (settings.snapWall) {
     for (const w of walls) {
       const [a, b] = wallEnds(scene, w);
-      consider(mid(a, b), 'midpoint', 1, { wallId: w.id });
+      // **円弧の中点は弧の真ん中。** 弦の中点は壁の上に無い
+      const arc = wallArc(scene, w);
+      consider(arc ? pointOnBulgeArc(arc, 0.5) : mid(a, b), 'midpoint', 1, { wallId: w.id });
     }
     for (let i = 0; i < walls.length; i++) {
       const [a1, b1] = wallEnds(scene, walls[i]);
@@ -108,7 +112,8 @@ export function snapPoint(scene: Scene, settings: Settings, p: Vec, opts: SnapOp
     }
     for (const w of walls) {
       const [a, b] = wallEnds(scene, w);
-      const c = closestOnSegment(p, a, b);
+      const arc = wallArc(scene, w);
+      const c = arc ? closestOnArc(p, arc) : closestOnSegment(p, a, b);
       consider(c.point, 'wall', 3, { wallId: w.id });
     }
   }

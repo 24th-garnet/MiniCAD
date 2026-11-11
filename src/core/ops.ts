@@ -174,6 +174,32 @@ export function splitWall(scene: Scene, wallId: Id, p: Vec, tolerance = 20): Id 
   return midId;
 }
 
+/**
+ * 円弧壁の半径を変える。**端点は動かさない。**
+ *
+ * 弦は決まっているので、半径から掃過角が出る（`sin(掃過角/2) = 弦/(2R)`）。
+ * **半径は弦の半分より小さくできない。** それより小さい円は 2 つの端点を
+ * 通れない。`asin` の中身を 1 で止めると、ちょうど半円（半径＝弦の半分）に
+ * 落ち着く——別に下限を書くと、同じことを二重に守って食い違う余地ができる。
+ *
+ * **優弧か劣弧かは変えない。** いまの掃過角が π を超えていれば向こう回りの
+ * まま、そうでなければ手前回りのまま。半径を触っただけで壁が裏返ると、
+ * 何をしたのか分からなくなる。
+ */
+export function setWallRadius(scene: Scene, wall: Wall, radius: number): boolean {
+  const arc = wallArc(scene, wall);
+  if (!arc) return false;
+  const [a, b] = wallEnds(scene, wall);
+  const chord = dist(a, b);
+  const r = radius;
+  if (!(r > 0) || chord < 1e-9) return false;
+  const half = Math.asin(Math.min(1, chord / (2 * r)));
+  const major = Math.abs(arc.sweep) > Math.PI;
+  const sweep = (major ? Math.PI * 2 - 2 * half : 2 * half) * Math.sign(arc.sweep);
+  wall.bulge = Math.tan(sweep / 4);
+  return true;
+}
+
 /** どの壁からも参照されなくなったノードを掃除する */
 export function pruneOrphanNodes(scene: Scene): void {
   const used = new Set<Id>();
