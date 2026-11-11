@@ -1,6 +1,9 @@
 import { angleOf, sub } from './geometry.ts';
 import type { Primitive } from './primitive.ts';
-import { doorSwing, openingAt, openingFrame, subFrame, type OpeningFrame, type Segment } from './shape.ts';
+import {
+  doorSwing, openingAt, openingFrame, openingLine, subFrame,
+  type OpeningFrame, type Segment,
+} from './shape.ts';
 import { nonNegativeOr, positiveOr, type Level } from './level.ts';
 import type { Opening, OpeningKind, Scene } from './types.ts';
 import { OPENING_KINDS } from './types.ts';
@@ -122,10 +125,9 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     usesLeaves: true,
     defaultLeaves: 2,
     primitives: (f, op) => {
-      const at = openingAt(f);
       return [{
         kind: 'segments',
-        segments: [{ a: at(-f.width / 2, 0), b: at(f.width / 2, 0) }, ...meetTicks(f, op.leaves)],
+        segments: [...openingLine(f, -f.width / 2, f.width / 2, 0), ...meetTicks(f, op.leaves)],
       }];
     },
   },
@@ -140,7 +142,6 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
     usesLeaves: true,
     defaultLeaves: 1,
     primitives: (f, op) => {
-      const at = openingAt(f);
       const s = op.flipX ? -1 : 1;
       const edge = (s * f.width) / 2;
       // 中央の印は**戸の閉まる側の端**で、枚数とは関係なく常に要る。
@@ -148,9 +149,9 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
       return [
         {
           kind: 'segments',
-          segments: [{ a: at(0, 0), b: at(edge, 0) }, meetTick(f), ...meetTicks(subFrame(f, 0, edge), op.leaves)],
+          segments: [...openingLine(f, 0, edge, 0), meetTick(f), ...meetTicks(subFrame(f, 0, edge), op.leaves)],
         },
-        { kind: 'segments', segments: [{ a: at(-edge, 0), b: at(0, 0) }], lineType: 'hidden' },
+        { kind: 'segments', segments: openingLine(f, -edge, 0, 0), lineType: 'hidden' },
       ];
     },
   },
@@ -173,15 +174,15 @@ export const OPENING_SYMBOLS: Record<OpeningKind, OpeningSymbol> = {
         {
           kind: 'segments',
           segments: [
-            { a: at(-edge, 0), b: at(0, 0) },
+            ...openingLine(f, -edge, 0, 0),
             // 戸袋に引き込まれた戸の分かれ目。1 枚なら 1 本も出ない
             ...meetTicks(subFrame(f, 0, edge), op.leaves),
-            { a: at(0, p), b: at(edge, p) },
-            { a: at(0, -p), b: at(edge, -p) },
+            ...openingLine(f, 0, edge, p),
+            ...openingLine(f, 0, edge, -p),
             { a: at(edge, p), b: at(edge, -p) },
           ],
         },
-        { kind: 'segments', segments: [{ a: at(0, 0), b: at(edge, 0) }], lineType: 'hidden' },
+        { kind: 'segments', segments: openingLine(f, 0, edge, 0), lineType: 'hidden' },
       ];
     },
   },
@@ -378,13 +379,9 @@ function meetTick(frame: OpeningFrame): Segment {
 
 /** 窓の障子線。壁厚の中に 2 本 */
 function sashes(frame: OpeningFrame): Segment[] {
-  const at = openingAt(frame);
   const t = frame.thickness * LANE;
   const half = frame.width / 2;
-  return [
-    { a: at(-half, t), b: at(half, t) },
-    { a: at(-half, -t), b: at(half, -t) },
-  ];
+  return [...openingLine(frame, -half, half, t), ...openingLine(frame, -half, half, -t)];
 }
 
 /**

@@ -116,6 +116,8 @@ function wallFingerprint(scene: Scene, id: Id): string {
   const parts: (string | number | null | undefined)[] = [
     a?.x, a?.y, b?.x, b?.y,
     w.thickness, w.height,
+    // **膨らみを入れる。** 入れないと、曲げても 3D が作り直されない
+    w.bulge,
     level.floorZ, level.wallHeight,
     isOnVisibleLayer(scene, { type: 'wall', id }) ? 1 : 0,
   ];

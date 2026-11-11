@@ -2,7 +2,7 @@ import { signedArea, vec, type Vec } from '../core/geometry.ts';
 import { instanceFootprint } from '../core/block.ts';
 import { levelOf, wallHeightOf, type Level } from '../core/level.ts';
 import { OPENING_SYMBOLS, openingVertical } from '../core/opening.ts';
-import { doorSwing, openingFrame, wallPointAt, wallSpans } from '../core/shape.ts';
+import { doorSwing, openingFrame, wallPointAt, wallPolyline, wallSpans } from '../core/shape.ts';
 import { bayOutline, hasBay } from '../core/bay.ts';
 import { BLOCK_HEIGHTS, DEFAULT_BLOCK_HEIGHT } from '../core/blockPresets.ts';
 import { blockOf } from '../core/block.ts';
@@ -171,9 +171,16 @@ function extrudeWall(scene: Scene, wallId: string, level: Level, out: Face3[]): 
   const at = (along: number, side: number): Vec => wallPointAt(ws, along, side);
   // 壁ぶんの出どころは 1 つ作って、この壁から出る面すべてで共有する
   const wallSrc: FaceSource = { ref: { type: 'wall', id: wall.id }, levelId: wall.levelId };
+  // **円弧壁は刻んで積む。** 1 つの角柱にすると、弦のまっすぐな箱になって
+  // 平面の曲がりと 3D が食い違う。刻み方は平面の折れ線と同じ `wallPolyline`
   const box = (lo: number, hi: number, bottom: number, top: number, src: FaceSource) => {
     if (hi - lo < 1e-6 || top - bottom < 1e-6) return;
-    extrudePrism([at(lo, -1), at(hi, -1), at(hi, 1), at(lo, 1)], bottom, top, theme.wall3d, 'wall', src, out);
+    const cuts = wallPolyline(ws, lo, hi, 0).length - 1;
+    for (let i = 0; i < cuts; i++) {
+      const p = lo + ((hi - lo) * i) / cuts;
+      const q = lo + ((hi - lo) * (i + 1)) / cuts;
+      extrudePrism([at(p, -1), at(q, -1), at(q, 1), at(p, 1)], bottom, top, theme.wall3d, 'wall', src, out);
+    }
   };
 
   // 開口に食われていない区間
