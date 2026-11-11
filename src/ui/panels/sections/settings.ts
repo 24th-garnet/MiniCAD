@@ -38,6 +38,7 @@ export class SettingsSection implements Section {
       checkboxField('拘束の記号を表示', settings.showConstraints, (v) =>
         set(() => void (settings.showConstraints = v)),
       ),
+      checkboxField('下の階を薄く敷く', settings.showUnderlay, (v) => set(() => void (settings.showUnderlay = v))),
     ];
   }
 }

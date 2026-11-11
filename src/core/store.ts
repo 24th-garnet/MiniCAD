@@ -25,6 +25,8 @@ export interface Settings {
   dxfTrueDimension: boolean;
   /** 幾何拘束の記号を画面に出す */
   showConstraints: boolean;
+  /** 下の階を薄く敷く。2 階の壁を 1 階に合わせるために要る */
+  showUnderlay: boolean;
   /** 新しく作るものを置く画層。null なら種別ごとの既定 */
   currentLayerId: string | null;
 }
@@ -43,6 +45,7 @@ export function defaultSettings(): Settings {
     dxfShiftJis: false,
     dxfTrueDimension: true,
     showConstraints: true,
+    showUnderlay: true,
     currentLayerId: null,
   };
 }

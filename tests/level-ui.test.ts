@@ -6,10 +6,15 @@ import { vec } from '../src/core/geometry.ts';
 import { isSelectable, isSnappable, levelIdOfRef, ENTITY_KINDS } from '../src/core/entity.ts';
 import { pickAt } from '../src/core/pick.ts';
 import { snapPoint } from '../src/core/snap.ts';
-import { defaultSettings } from '../src/core/store.ts';
+import { defaultSettings, type Settings } from '../src/core/store.ts';
 import { DEFAULT_LEVEL_ID } from '../src/core/level.ts';
 import { buildMesh, type Face3 } from '../src/render3d/mesh.ts';
 import { detectRooms } from '../src/core/rooms.ts';
+import { render } from '../src/render/renderer.ts';
+import { Viewport } from '../src/render/viewport.ts';
+import { point3, type CommentAnchor } from '../src/core/annotation.ts';
+import { pickComment } from '../src/tools/comment.ts';
+import type { Editor } from '../src/ui/editor.ts';
 
 /**
  * 階ごとの 2D。**同じ座標に 1 階と 2 階の壁を置いて**、作業中の階の
@@ -137,4 +142,155 @@ test('3D は作業中の階だけでなく、全部の階を積む', () => {
     const levels = [...new Set(meshOf(scene).map((f: Face3) => f.levelId))].sort();
     assert.deepEqual(levels, ['lv-1', 'lv-2'], `${active} にいるとき 3D が全階を積んでいない`);
   }
+});
+
+// --- 2D の描画 ---
+
+/** 線を引いた点を**ワールド座標で**集める。描く・描かないを座標で確かめる */
+function drawnWorldY(scene: Scene, settings: Settings, comments?: CommentAnchor[]): number[] {
+  const vp = new Viewport();
+  vp.resize(1000, 1000);
+  vp.fit({ min: vec(-1000, -1000), max: vec(5000, 10000) });
+
+  const ys: number[] = [];
+  const ctx: Record<string, unknown> = {
+    measureText: (t: string) => ({ width: t.length * 6 }),
+  };
+  for (const name of [
+    'save', 'restore', 'beginPath', 'closePath', 'rect', 'ellipse',
+    'fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'translate',
+    'rotate', 'setLineDash',
+  ]) {
+    ctx[name] = () => {};
+  }
+  const record = (x: number, y: number) => void ys.push(vp.toWorld(vec(x, y)).y);
+  ctx.moveTo = record;
+  ctx.lineTo = record;
+  // コメントのバッジは円。中心を拾う
+  ctx.arc = record;
+
+  render({
+    ctx: ctx as unknown as CanvasRenderingContext2D,
+    vp,
+    scene,
+    rooms: detectRooms(scene),
+    settings,
+    selected: new Set(),
+    hover: null,
+    comments,
+  });
+  return ys;
+}
+
+/** 1 階は y=0、2 階は y=9000。**座標で階が見分けられる**ように離す */
+function twoFloorsApart(): Scene {
+  const scene = emptyScene();
+  scene.sheet.show = false;
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 3000, wallHeight: 2400 };
+
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+  addWall(scene, findOrCreateNode(scene, vec(0, 0)), findOrCreateNode(scene, vec(4000, 0)), 120);
+
+  scene.activeLevelId = 'lv-2';
+  addWall(scene, findOrCreateNode(scene, vec(0, 9000)), findOrCreateNode(scene, vec(4000, 9000)), 120);
+  return scene;
+}
+
+/** 格子と下敷きを切った設定。**格子は全面に線を引く**ので、切らないと階が見えない */
+const plain = (): Settings => ({ ...defaultSettings(), showGrid: false, showUnderlay: false });
+
+const near = (ys: number[], y: number): boolean => ys.some((v) => Math.abs(v - y) < 200);
+
+test('2D は作業中の階だけを描く', () => {
+  const scene = twoFloorsApart();
+
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+  const first = drawnWorldY(scene, plain());
+  assert.ok(near(first, 0), '1 階にいるのに 1 階の壁が描かれていない');
+  assert.ok(!near(first, 9000), '1 階にいるのに 2 階の壁が描かれている');
+
+  scene.activeLevelId = 'lv-2';
+  const second = drawnWorldY(scene, plain());
+  assert.ok(near(second, 9000), '2 階にいるのに 2 階の壁が描かれていない');
+  assert.ok(!near(second, 0), '2 階にいるのに 1 階の壁が重なって描かれている');
+});
+
+test('下の階を薄く敷く（上階を下階に合わせるため）', () => {
+  const scene = twoFloorsApart();
+  scene.activeLevelId = 'lv-2';
+
+  const withUnderlay = drawnWorldY(scene, { ...plain(), showUnderlay: true });
+  assert.ok(near(withUnderlay, 9000), '作業中の階が消えている');
+  assert.ok(near(withUnderlay, 0), '下の階が敷かれていない');
+
+  assert.ok(!near(drawnWorldY(scene, plain()), 0), '設定を切っても下の階が出ている');
+});
+
+test('いちばん下の階には下敷きを出さない（上の階は敷かない）', () => {
+  const scene = twoFloorsApart();
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+  const ys = drawnWorldY(scene, { ...plain(), showUnderlay: true });
+  assert.ok(near(ys, 0), '作業中の階が消えている');
+  assert.ok(!near(ys, 9000), '上の階が下敷きとして出ている');
+});
+
+test('下敷きの相手は id の順ではなく床の高さで決まる', () => {
+  // **後から足した地下**が、2 階の下敷きになってはいけない
+  const scene = twoFloorsApart();
+  scene.levels['lv-b1'] = { id: 'lv-b1', name: 'B1', floorZ: -3000, wallHeight: 2400 };
+  scene.activeLevelId = 'lv-b1';
+  addWall(scene, findOrCreateNode(scene, vec(0, 5000)), findOrCreateNode(scene, vec(4000, 5000)), 120);
+
+  scene.activeLevelId = 'lv-2';
+  const ys = drawnWorldY(scene, { ...plain(), showUnderlay: true });
+  assert.ok(near(ys, 0), '2 階の下敷きが 1 階になっていない');
+  assert.ok(!near(ys, 5000), '2 階の下敷きに地下が出ている');
+
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+  const low = drawnWorldY(scene, { ...plain(), showUnderlay: true });
+  assert.ok(near(low, 5000), '1 階の下敷きが地下になっていない');
+});
+
+test('他の階のコメントはバッジを出さない', () => {
+  // **壁と重ならない高さに置く。** 壁の線を拾ってしまうと、
+  // バッジが出ているのか壁が出ているのか見分けられない
+  const scene = twoFloorsApart();
+  const comments: CommentAnchor[] = [
+    { id: 'cm-1', at: point3(2000, 2000, 0), ref: null, levelId: DEFAULT_LEVEL_ID, badge: null },
+    { id: 'cm-2', at: point3(2000, 7000, 0), ref: null, levelId: 'lv-2', badge: null },
+  ];
+
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+  const first = drawnWorldY(scene, plain(), comments);
+  assert.ok(near(first, 2000), '1 階のコメントが出ていない');
+  assert.ok(!near(first, 7000), '1 階にいるのに 2 階のコメントが出ている');
+
+  scene.activeLevelId = 'lv-2';
+  const second = drawnWorldY(scene, plain(), comments);
+  assert.ok(near(second, 7000), '2 階のコメントが出ていない');
+  assert.ok(!near(second, 2000), '2 階にいるのに 1 階のコメントが出ている');
+});
+
+test('描いていないバッジは掴めない', () => {
+  // **描くほうと叩くほうがずれると、見えないものを掴む。**
+  // `pickComment` が要るのは comments と viewport と作業中の階だけ
+  const scene = twoFloorsApart();
+  const vp = new Viewport();
+  vp.resize(1000, 1000);
+  vp.fit({ min: vec(-1000, -1000), max: vec(5000, 10000) });
+
+  const comments: CommentAnchor[] = [
+    { id: 'cm-1', at: point3(2000, 2000, 0), ref: null, levelId: DEFAULT_LEVEL_ID, badge: null },
+    { id: 'cm-2', at: point3(2000, 7000, 0), ref: null, levelId: 'lv-2', badge: null },
+  ];
+  const editor = { comments, viewport: vp, store: { scene } } as unknown as Editor;
+  const at = (c: CommentAnchor) => vp.toScreen(vec(c.at.x, c.at.y));
+
+  scene.activeLevelId = DEFAULT_LEVEL_ID;
+  assert.equal(pickComment(editor, at(comments[0]))?.id, 'cm-1');
+  assert.equal(pickComment(editor, at(comments[1])), null, '1 階で 2 階のバッジを掴めてしまう');
+
+  scene.activeLevelId = 'lv-2';
+  assert.equal(pickComment(editor, at(comments[1]))?.id, 'cm-2');
+  assert.equal(pickComment(editor, at(comments[0])), null, '2 階で 1 階のバッジを掴めてしまう');
 });

@@ -61,6 +61,19 @@ export function levelsInOrder(scene: Scene): Level[] {
 }
 
 /**
+ * 作業中の階のすぐ下の階。いちばん下なら null。
+ *
+ * **「1 つ下」は floorZ の順で決める。** 階の id にも名前にも順序は無く、
+ * 床高だけが建物の上下を表す。`levelsInOrder` と同じ並びを使うので、
+ * 階を増やしても下敷きの相手がずれない。
+ */
+export function levelBelow(scene: Scene): Level | null {
+  const order = levelsInOrder(scene);
+  const i = order.findIndex((l) => l.id === scene.activeLevelId);
+  return i > 0 ? order[i - 1] : null;
+}
+
+/**
  * 壁の立ち上がり (mm)。**下端から上へ**の寸法。
  *
  * 高さの上書きが無いときは**天井まで届く**。下端が 1900 の垂れ壁なら

@@ -84,6 +84,15 @@ export interface CommentAnchor {
   badge: unknown;
 }
 
+/**
+ * 2D の平面図に出すコメントか。
+ *
+ * **描くほうと叩くほうが同じ規則を見るために、ここに 1 つだけ置く。**
+ * 片方だけ階で絞ると、見えないバッジを掴めてしまう。
+ * **3D は使わない** — 3D は全部の階を積むので、コメントも全部出す。
+ */
+export const commentOnLevel = (c: CommentAnchor, levelId: Id): boolean => c.levelId === levelId;
+
 export const point3 = (x: number, y: number, z = 0): Point3 => ({ x, y, z });
 
 /** 読み込みで点を整える。壊れていれば null */

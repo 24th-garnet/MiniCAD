@@ -1,4 +1,4 @@
-import { point3, type CommentAnchor } from '../core/annotation.ts';
+import { commentOnLevel, point3, type CommentAnchor } from '../core/annotation.ts';
 import { newId } from '../core/types.ts';
 import { COMMENT_BADGE_R, type Frame } from '../render/renderer.ts';
 import { theme } from '../render/theme.ts';
@@ -79,6 +79,8 @@ export function pickComment(editor: Editor, screen: { x: number; y: number }): C
   // 後から置いたものが上に来るので逆順に見る
   for (let i = editor.comments.length - 1; i >= 0; i--) {
     const c = editor.comments[i];
+    // **描いていないバッジは掴ませない。** renderer と同じ規則を見る
+    if (!commentOnLevel(c, editor.store.scene.activeLevelId)) continue;
     const p = editor.viewport.toScreen({ x: c.at.x, y: c.at.y });
     if (Math.hypot(p.x - screen.x, p.y - screen.y) <= COMMENT_BADGE_R) return c;
   }

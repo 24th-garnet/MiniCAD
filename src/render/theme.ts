@@ -30,6 +30,8 @@ export const theme = {
   selectionRectStroke: '#2563eb',
   crossingRect: 'rgba(22, 163, 74, 0.12)',
   crossingRectStroke: '#16a34a',
+  /** 下の階の下敷き。**合わせるための目印**なので、読むためではなく見失わない濃さ */
+  underlay: 'rgba(63, 63, 70, 0.22)',
   constraint: '#7c3aed',
   constraintConflict: '#dc2626',
   // 3D。画層は増やさず、ここに色を持つ

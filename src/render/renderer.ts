@@ -11,7 +11,7 @@ import {
   vec,
   type Vec,
 } from "../core/geometry.ts";
-import { isSnappable } from "../core/entity.ts";
+import { isOnActiveLevel, isSnappable } from "../core/entity.ts";
 import { colorOf } from "../core/material.ts";
 import { wallEnds } from "../core/ops.ts";
 import { CONSTRAINT_SPECS } from "../core/constraints.ts";
@@ -35,9 +35,9 @@ import {
   labelFits,
 } from "../core/block.ts";
 import { bayPrimitives, hasBay } from "../core/bay.ts";
-import { distanceOf, planMid } from "../core/annotation.ts";
+import { commentOnLevel, distanceOf, planMid } from "../core/annotation.ts";
 import { fixturePrimitives } from "../core/fixture.ts";
-import { levelOf } from "../core/level.ts";
+import { levelBelow, levelOf } from "../core/level.ts";
 import { shapePrimitives } from "../core/shapes.ts";
 import { sheetPrimitives } from "../core/sheet.ts";
 import { fontOf, theme } from "./theme.ts";
@@ -62,6 +62,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   ctx.fillRect(0, 0, vp.width, vp.height);
 
   if (frame.settings.showGrid) drawGrid(frame);
+  drawUnderlay(frame);
   drawSheet(frame);
   drawRooms(frame);
   drawWalls(frame);
@@ -135,6 +136,49 @@ function drawGrid(frame: Frame): void {
   line(vec(0, bounds.min.y), vec(0, bounds.max.y), theme.axis, 1.5);
 }
 
+// --- 階 ---
+
+/**
+ * **2D の走査はすべて作業中の階で絞る。**
+ *
+ * 平面図は紙 1 枚なので、絞らないと 1 階と 2 階の壁が同じ場所に重なり、
+ * どちらを見ているのか分からなくなる。**3D は絞らない** —— 3D は階を
+ * `floorZ` で積むのが仕事なので、全部の階を組む（`isOnVisibleLayer`）。
+ *
+ * 自分で `levelId` を持つものは直に比べ、建具のように**親に訊く**ものだけ
+ * `isOnActiveLevel` を通す。
+ */
+
+/**
+ * 下の階を薄く敷く。
+ *
+ * **2 階の壁を 1 階の壁に合わせるために要る。** 下敷きが無いと、上階を
+ * 描くときに下階の通り芯が見えず、壁がずれても気づけない。
+ *
+ * **出すのは壁の輪郭だけ。** 家具も寸法も室名も敷くと、どれが作業中の階の
+ * ものか読めなくなる。合わせる相手は壁なので、壁だけで足りる。
+ * 画層の色も線種も使わず一律の薄墨で描く —— 下敷きは図面ではなく目印で、
+ * 作業中の階と同じ見た目にすると取り違える。
+ */
+function drawUnderlay(frame: Frame): void {
+  const { ctx, scene, settings } = frame;
+  if (!settings.showUnderlay) return;
+  const below = levelBelow(scene);
+  if (!below) return;
+
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = theme.underlay;
+  ctx.lineWidth = 1;
+  for (const wall of Object.values(scene.walls)) {
+    if (wall.levelId !== below.id) continue;
+    if (!layerFor(frame, wall.layerId, LAYER_IDS.wall).visible) continue;
+    strokeSegments(frame, wallOutline(scene, wall));
+  }
+  ctx.restore();
+}
+
 // --- 用紙枠と表題欄 ---
 
 function drawSheet(frame: Frame): void {
@@ -151,6 +195,7 @@ function drawRooms(frame: Frame): void {
   const { ctx, rooms } = frame;
   ctx.setLineDash([]);
   for (const room of rooms) {
+    if (room.levelId !== frame.scene.activeLevelId) continue;
     const poly =
       room.innerPolygon.length >= 3 ? room.innerPolygon : room.polygon;
     tracePolygon(frame, poly);
@@ -180,6 +225,7 @@ function drawRoomLabels(frame: Frame): void {
   ctx.setLineDash([]);
 
   for (const room of rooms) {
+    if (room.levelId !== scene.activeLevelId) continue;
     const c = vp.toScreen(room.center);
     const area = settings.innerArea ? room.innerArea : room.area;
     if (vp.toScreenLength(Math.sqrt(area * 1e6)) < 44) continue;
@@ -218,6 +264,7 @@ function drawWalls(frame: Frame): void {
 
   ctx.setLineDash([]);
   for (const wall of Object.values(scene.walls)) {
+    if (wall.levelId !== scene.activeLevelId) continue;
     const layer = layerFor(frame, wall.layerId, LAYER_IDS.wall);
     if (!layer.visible) continue;
     const accent = selected.has(`wall:${wall.id}`)
@@ -243,6 +290,7 @@ function drawWalls(frame: Frame): void {
 
   // 開口部を紙の色で抜く
   for (const op of Object.values(scene.openings)) {
+    if (!isOnActiveLevel(scene, { type: "opening", id: op.id })) continue;
     const f = openingFrame(scene, op);
     if (!f) continue;
     fillQuad(openingQuad(f), theme.paper);
@@ -252,6 +300,7 @@ function drawWalls(frame: Frame): void {
   // **床に着かない壁は塗りの設定に関わらず輪郭で描く。** 切断面より上の
   // ものを破線で表すのは製図の作法で、JIS の平面でも同じ
   for (const wall of Object.values(scene.walls)) {
+    if (wall.levelId !== scene.activeLevelId) continue;
     if (fill && wall.base === 0) continue;
     const layer = layerFor(frame, wall.layerId, LAYER_IDS.wall);
     if (!layer.visible) continue;
@@ -271,6 +320,7 @@ function drawWalls(frame: Frame): void {
 function drawOpenings(frame: Frame): void {
   const { scene, selected, hover } = frame;
   for (const op of Object.values(scene.openings)) {
+    if (!isOnActiveLevel(scene, { type: "opening", id: op.id })) continue;
     const layer = layerFor(frame, op.layerId, LAYER_IDS.opening);
     if (!layer.visible) continue;
     const f = openingFrame(scene, op);
@@ -304,6 +354,7 @@ function drawInstances(frame: Frame): void {
   const std = scene.standard;
 
   for (const inst of Object.values(scene.instances)) {
+    if (inst.levelId !== scene.activeLevelId) continue;
     const layer = layerFor(frame, inst.layerId, LAYER_IDS.furniture);
     if (!layer.visible) continue;
     const def = blockOf(scene, inst);
@@ -355,6 +406,7 @@ function drawInstances(frame: Frame): void {
 function drawFixtures(frame: Frame): void {
   const { scene, selected, hover } = frame;
   for (const f of Object.values(scene.fixtures)) {
+    if (f.levelId !== scene.activeLevelId) continue;
     const layer = layerFor(frame, f.layerId, LAYER_IDS.wall);
     if (!layer.visible) continue;
     const accent = selected.has(`fixture:${f.id}`)
@@ -378,6 +430,7 @@ function drawFixtures(frame: Frame): void {
 function drawShapes(frame: Frame): void {
   const { scene, selected, hover } = frame;
   for (const s of Object.values(scene.shapes)) {
+    if (s.levelId !== scene.activeLevelId) continue;
     const layer = layerFor(frame, s.layerId, LAYER_IDS.shape);
     if (!layer.visible) continue;
     const accent = selected.has(`shape:${s.id}`)
@@ -407,6 +460,7 @@ function drawMeasurements(frame: Frame): void {
 
   ctx.save();
   for (const m of list) {
+    if (m.levelId !== scene.activeLevelId) continue;
     const layer = layerFor(frame, m.layerId, LAYER_IDS.draft);
     if (!layer.visible) continue;
     const accent = selected.has(`measurement:${m.id}`)
@@ -466,7 +520,7 @@ export const COMMENT_BADGE_R = 11;
  * 中身はホストが自分のポップアップで出す。
  */
 function drawComments(frame: Frame): void {
-  const { ctx, vp, comments } = frame;
+  const { ctx, vp, scene, comments } = frame;
   if (!comments || comments.length === 0) return;
 
   ctx.save();
@@ -474,6 +528,9 @@ function drawComments(frame: Frame): void {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   comments.forEach((c, i) => {
+    // **番号は全件の通し番号のまま。** 階で振り直すと、同じコメントの
+    // 番号が階を移るたびに変わり、「3 番の件」が通じなくなる
+    if (!commentOnLevel(c, scene.activeLevelId)) return;
     const p = vp.toScreen(vec(c.at.x, c.at.y));
     ctx.beginPath();
     ctx.arc(p.x, p.y, COMMENT_BADGE_R, 0, Math.PI * 2);
@@ -547,6 +604,7 @@ function drawConstraints(frame: Frame): void {
     for (const wallId of c.walls) {
       const wall = scene.walls[wallId];
       if (!wall) continue;
+      if (wall.levelId !== scene.activeLevelId) continue;
       const [a, b] = wallEnds(scene, wall);
       const d = norm(sub(b, a));
       if (d.x === 0 && d.y === 0) continue;
