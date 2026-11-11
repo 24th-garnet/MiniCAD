@@ -109,13 +109,15 @@ export function addWall(
   const na = scene.nodes[a];
   const nb = scene.nodes[b];
   if (!na || !nb || na.levelId !== nb.levelId) return null;
-  // **膨らみが違えば別の壁。** 同じ 2 ノードの間に直線と円弧、あるいは
-  // 逆向きに曲がる 2 本を置けないと、レンズ形の部屋が作れない
-  const existing = Object.values(scene.walls).find(
-    (w) =>
-      ((w.a === a && w.b === b) || (w.a === b && w.b === a)) &&
-      Math.abs(w.bulge) === Math.abs(bulge),
-  );
+  // **同じ曲線かどうかで見る。** 膨らみの絶対値で比べると、同じ 2 ノードを
+  // 結ぶ「下へ膨らむ弧」と「上へ膨らむ弧」が同じ壁に見えて、レンズ形の部屋や
+  // 真円の部屋が作れない。逆向きに書いた同じ弧は膨らみの符号が裏返るので、
+  // 向きを揃えてから比べる
+  const existing = Object.values(scene.walls).find((w) => {
+    if (w.a === a && w.b === b) return w.bulge === bulge;
+    if (w.a === b && w.b === a) return w.bulge === -bulge;
+    return false;
+  });
   if (existing) return existing;
   const id = newId('w');
   const wall: Wall = {

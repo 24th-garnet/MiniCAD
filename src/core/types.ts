@@ -315,6 +315,14 @@ export interface Room {
   voidArea: number;
   /** 床の面積 (m^2)。内法面積から吹抜を引いたもの */
   floorArea: number;
+  /**
+   * 内法の周長 (mm)。巾木・回り縁の長さの素。
+   *
+   * **`innerPolygon` から測り直さない。** 円弧壁の内法は同心円弧で、
+   * 折れ線に潰してから足すと刻みの分だけ必ず短く出る。ここは閉じた式で
+   * 出した値を持つ（`boundaryPerimeter`）。
+   */
+  perimeter: number;
   center: Vec;
   wallIds: Id[];
   /**

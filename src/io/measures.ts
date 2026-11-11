@@ -2,7 +2,7 @@ import { blockOf, instanceLabel } from '../core/block.ts';
 import { levelOf, wallHeightOf, type Level } from '../core/level.ts';
 import { openingVertical } from '../core/opening.ts';
 import { openingsOnWall } from '../core/ops.ts';
-import { nestingOf, perimeterOf, roomAt } from '../core/rooms.ts';
+import { nestingOf, roomAt } from '../core/rooms.ts';
 import { wallSpans } from '../core/shape.ts';
 import { vec } from '../core/geometry.ts';
 import type { Opening, Room, Scene } from '../core/types.ts';
@@ -229,15 +229,14 @@ export function sceneToMeasures(
     // 入れ子（柱型・PS）を引く。引かないと床も天井も仕上げが多すぎる数になる
     const inner = nesting.get(index) ?? [];
     const holeArea = inner.reduce((sum, i) => sum + rooms[i].innerArea, 0);
-    const holePerimeter = inner.reduce(
-      (sum, i) => sum + perimeterOf(rooms[i].innerPolygon),
-      0,
-    );
+    const holePerimeter = inner.reduce((sum, i) => sum + rooms[i].perimeter, 0);
     // 吹抜・PS・煙道は床が無い。**仕上げも積まない**
     const floor = Math.max(room.innerArea - holeArea - room.voidArea, 0);
 
     // 巾木・回り縁は柱型の周りを回るので、**周長には足す**
-    const perimeter = perimeterOf(room.innerPolygon) + holePerimeter;
+    // **部屋が持っている値を使う。** 内法の折れ線から測り直すと、
+    // 円弧壁の分だけ短く出る（`Room.perimeter` は閉じた式で出してある）
+    const perimeter = room.perimeter + holePerimeter;
 
     // 壁の高さは壁ごとに違いうるので、面積は壁ごとに積む
     const seen = new Set<string>();

@@ -1,19 +1,25 @@
 import {
   add,
-  angleOf,
+  arcFromBulge,
   centroid,
-  cross,
   dist,
   mul,
-  norm,
-  perp,
   pointInPolygon,
   signedArea,
   sub,
   vec,
+  type BulgeArc,
   type Vec,
 } from "./geometry.ts";
 import { nodePos } from "./ops.ts";
+import {
+  boundaryArea,
+  boundaryPerimeter,
+  departure,
+  offsetInward,
+  toPolyline,
+  type BoundaryEdge,
+} from "./roomBoundary.ts";
 import { FIXTURE_SPECS, outline } from "./fixture.ts";
 import { levelOf } from "./level.ts";
 import type { ExteriorArea, Id, Room, Scene } from "./types.ts";
@@ -23,10 +29,22 @@ interface HalfEdge {
   from: Id;
   to: Id;
   wallId: Id;
+  /** 節点から出てゆく向き。**円弧ではその点の接線** */
   angle: number;
+  /** 曲がり方（符号つき曲率）。接線が同じ辺を並べ分けるのに使う */
+  turn: number;
+  /** 進む向きの円弧。直線なら null */
+  arc: BulgeArc | null;
 }
 
-const heKey = (from: Id, to: Id): string => `${from}>${to}`;
+/**
+ * 半辺の鍵。**どの壁かまで入れる。**
+ *
+ * 節点の対だけだと、**同じ 2 つの節点を結ぶ壁が 2 本あるとき**（円弧 2 本の
+ * レンズ形、円弧と直線）に鍵がぶつかり、片方が Map から消える。消えた側は
+ * 面の辿りで見つからないので、部屋が 1 つも出てこない。
+ */
+const heKey = (from: Id, to: Id, wallId: Id): string => `${from}>${to}#${wallId}`;
 
 /**
  * 壁グラフの平面フェイスを辿って部屋を検出する。**全ての階を返す。**
@@ -54,19 +72,29 @@ export function detectRooms(scene: Scene): Room[] {
     const pa = nodePos(scene, wall.a);
     const pb = nodePos(scene, wall.b);
     if (dist(pa, pb) < 1e-6) continue;
+    // **進む向きの円弧。** 逆向きは膨らみの符号を裏返す——
+    // 同じ弧を反対から辿るので、曲がる向きも反対になる
+    const ahead = arcFromBulge(pa, pb, wall.bulge);
+    const back = arcFromBulge(pb, pa, -wall.bulge);
+    const out = departure(pa, pb, ahead);
+    const home = departure(pb, pa, back);
     const forward: HalfEdge = {
-      key: heKey(wall.a, wall.b),
+      key: heKey(wall.a, wall.b, wall.id),
       from: wall.a,
       to: wall.b,
       wallId: wall.id,
-      angle: angleOf(sub(pb, pa)),
+      angle: out.angle,
+      turn: out.turn,
+      arc: ahead,
     };
     const backward: HalfEdge = {
-      key: heKey(wall.b, wall.a),
+      key: heKey(wall.b, wall.a, wall.id),
       from: wall.b,
       to: wall.a,
       wallId: wall.id,
-      angle: angleOf(sub(pa, pb)),
+      angle: home.angle,
+      turn: home.turn,
+      arc: back,
     };
     for (const he of [forward, backward]) {
       halfEdges.set(he.key, he);
@@ -77,7 +105,10 @@ export function detectRooms(scene: Scene): Room[] {
   }
 
   for (const list of outgoing.values()) {
-    list.sort((p, q) => p.angle - q.angle);
+    // **接線が同じなら曲がり方で分ける。** 円弧に接する直線が節点から
+    // 出ていると、向きだけでは並び順が決まらない。左へ曲がるほうが
+    // 反時計回りの並びでは後に来る
+    list.sort((p, q) => p.angle - q.angle || p.turn - q.turn);
   }
 
   const indexInRing = new Map<string, number>();
@@ -88,7 +119,8 @@ export function detectRooms(scene: Scene): Room[] {
   const nextHalfEdge = (he: HalfEdge): HalfEdge | null => {
     const ring = outgoing.get(he.to);
     if (!ring || ring.length === 0) return null;
-    const reverseIdx = indexInRing.get(heKey(he.to, he.from));
+    // **同じ壁の逆向きの辺。** 別の壁の逆辺を掴むと、面が隣へ飛ぶ
+    const reverseIdx = indexInRing.get(heKey(he.to, he.from, he.wallId));
     if (reverseIdx === undefined) return null;
     const next = ring[(reverseIdx - 1 + ring.length) % ring.length];
     return next ?? null;
@@ -109,10 +141,20 @@ export function detectRooms(scene: Scene): Room[] {
       current = nextHalfEdge(current);
       if (current && current.key === start.key) break;
     }
-    if (cycle.length < 3) continue;
+    // **円弧なら 2 本でも部屋になる。** 同じ 2 つの節点を結ぶ円弧 2 本で
+    // レンズ形の部屋ができる。直線だけの 2 本は面積が 0 になるので、
+    // ここで弾かなくても下の面積の判定が落とす
+    if (cycle.length < 2) continue;
+    if (cycle.length === 2 && cycle.every((he) => he.arc === null)) continue;
 
-    const polygon = cycle.map((he) => nodePos(scene, he.from));
-    const area = signedArea(polygon);
+    const edges: BoundaryEdge[] = cycle.map((he, i) => {
+      const a = nodePos(scene, he.from);
+      const b = nodePos(scene, cycle[(i + 1) % cycle.length].from);
+      return he.arc ? { kind: "arc", a, b, arc: he.arc } : { kind: "line", a, b };
+    });
+
+    // **閉じた式で測る。** 折れ線に潰してから測ると、円弧の分だけ必ず小さく出る
+    const area = boundaryArea(edges);
     // 負=外周フェイス、ほぼ0=行き止まり壁の往復
     if (area <= 1e-3) continue;
 
@@ -120,8 +162,10 @@ export function detectRooms(scene: Scene): Room[] {
     const thicknesses = cycle.map(
       (he) => scene.walls[he.wallId]?.thickness ?? 0,
     );
-    const innerPolygon = offsetInward(polygon, thicknesses);
-    const innerArea = Math.abs(signedArea(innerPolygon));
+    const innerEdges = offsetInward(edges, thicknesses);
+    const polygon = toPolyline(edges);
+    const innerPolygon = toPolyline(innerEdges);
+    const innerArea = Math.abs(boundaryArea(innerEdges));
     const levelId = scene.walls[wallIds[0]]?.levelId ?? scene.activeLevelId;
     const voidArea = voidAreaIn(scene, innerPolygon, levelId);
 
@@ -132,6 +176,7 @@ export function detectRooms(scene: Scene): Room[] {
       innerArea: innerArea / 1e6,
       voidArea: voidArea / 1e6,
       floorArea: Math.max(0, innerArea - voidArea) / 1e6,
+      perimeter: boundaryPerimeter(innerEdges),
       center: centroid(innerPolygon.length >= 3 ? innerPolygon : polygon),
       wallIds,
       levelId,
@@ -169,6 +214,8 @@ function exteriorRoom(scene: Scene, area: ExteriorArea): Room {
     innerPolygon: polygon,
     area: raw / 1e6,
     innerArea: raw / 1e6,
+    // 外部領域は壁を持たないので、輪郭そのものが周長
+    perimeter: perimeterOf(polygon),
     voidArea: voidArea / 1e6,
     floorArea: Math.max(0, raw - voidArea) / 1e6,
     center: centroid(polygon),
@@ -206,36 +253,6 @@ function voidAreaIn(scene: Scene, innerPolygon: Vec[], levelId: Id): number {
     total += Math.abs(signedArea(outline(f, levelOf(scene, f.levelId))));
   }
   return total;
-}
-
-/**
- * 反時計回りポリゴンの各辺を内側（進行方向の左）へ壁厚の半分だけ寄せ、
- * 隣り合う辺の直線交点を新しい角とする。平行な辺はオフセット点をそのまま使う。
- */
-function offsetInward(polygon: Vec[], thicknesses: number[]): Vec[] {
-  const n = polygon.length;
-  if (n < 3) return polygon.map((p) => ({ ...p }));
-
-  const lines = polygon.map((p, i) => {
-    const q = polygon[(i + 1) % n];
-    const d = norm(sub(q, p));
-    const inward = mul(perp(d), (thicknesses[i] ?? 0) / 2);
-    return { point: add(p, inward), dir: d };
-  });
-
-  const result: Vec[] = [];
-  for (let i = 0; i < n; i++) {
-    const prev = lines[(i - 1 + n) % n];
-    const curr = lines[i];
-    const denom = cross(prev.dir, curr.dir);
-    if (Math.abs(denom) < 1e-9) {
-      result.push({ ...curr.point });
-      continue;
-    }
-    const t = cross(sub(curr.point, prev.point), curr.dir) / denom;
-    result.push(add(prev.point, mul(prev.dir, t)));
-  }
-  return result;
 }
 
 function attachLabels(scene: Scene, rooms: Room[]): void {
