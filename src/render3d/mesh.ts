@@ -6,7 +6,7 @@ import { doorSwing, openingFrame, wallPointAt, wallSpans } from '../core/shape.t
 import { bayOutline, hasBay } from '../core/bay.ts';
 import { BLOCK_HEIGHTS, DEFAULT_BLOCK_HEIGHT } from '../core/blockPresets.ts';
 import { blockOf } from '../core/block.ts';
-import { isSnappable } from '../core/entity.ts';
+import { isOnVisibleLayer } from '../core/entity.ts';
 import { buildFixtureFaces } from './fixture3d.ts';
 import { theme } from '../render/theme.ts';
 import type { EntityRef, Id, Opening, Room, Scene } from '../core/types.ts';
@@ -143,7 +143,7 @@ export function buildFloorFaces(scene: Scene, rooms: Room[], out: Face3[]): void
 export function buildWallFaces(scene: Scene, wallId: Id, out: Face3[]): void {
   const wall = scene.walls[wallId];
   if (!wall) return;
-  if (!isSnappable(scene, { type: 'wall', id: wallId })) return;
+  if (!isOnVisibleLayer(scene, { type: 'wall', id: wallId })) return;
   extrudeWall(scene, wallId, levelOf(scene, wall.levelId), out);
 }
 
@@ -151,7 +151,7 @@ export function buildWallFaces(scene: Scene, wallId: Id, out: Face3[]): void {
 export function buildInstanceFaces(scene: Scene, instId: Id, out: Face3[]): void {
   const inst = scene.instances[instId];
   if (!inst) return;
-  if (!isSnappable(scene, { type: 'blockInstance', id: instId })) return;
+  if (!isOnVisibleLayer(scene, { type: 'blockInstance', id: instId })) return;
   const def = blockOf(scene, inst);
   if (!def) return;
   const height = BLOCK_HEIGHTS[def.id] ?? DEFAULT_BLOCK_HEIGHT;

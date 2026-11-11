@@ -38,6 +38,13 @@ export interface EntityKind {
   remove(scene: Scene, id: Id): boolean;
   /** 図面範囲に寄与する点 */
   points(scene: Scene, id: Id): Vec[];
+  /**
+   * 乗っている階。**階を持たないものは null**（どの階でも見える）。
+   *
+   * 建具は壁に取り付くので、自分では持たず壁に訊く。ノードも壁に訊く
+   * ——どちらも「自分の階」を二重に持たせると壁と食い違う。
+   */
+  levelIdOf(scene: Scene, id: Id): Id | null;
 }
 
 export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
@@ -55,6 +62,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       return true;
     },
     points: (scene, id) => (scene.nodes[id] ? [nodePos(scene, id)] : []),
+    levelIdOf: (scene, id) => scene.nodes[id]?.levelId ?? null,
   },
 
   wall: {
@@ -77,6 +85,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       const w = scene.walls[id];
       return w ? wallEnds(scene, w) : [];
     },
+    levelIdOf: (scene, id) => scene.walls[id]?.levelId ?? null,
   },
 
   opening: {
@@ -99,6 +108,11 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       const f = o ? openingFrame(scene, o) : null;
       return f ? [f.start, f.end] : [];
     },
+    // **壁に訊く。** 建具は壁に取り付くので自分では持たない
+    levelIdOf: (scene, id) => {
+      const o = scene.openings[id];
+      return o ? (scene.walls[o.wallId]?.levelId ?? null) : null;
+    },
   },
 
   blockInstance: {
@@ -120,6 +134,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       const inst = scene.instances[id];
       return inst ? instanceVertices(scene, inst) : [];
     },
+    levelIdOf: (scene, id) => scene.instances[id]?.levelId ?? null,
   },
 
   shape: {
@@ -141,6 +156,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       const s = scene.shapes[id];
       return s ? shapeVertices(scene, s) : [];
     },
+    levelIdOf: (scene, id) => scene.shapes[id]?.levelId ?? null,
   },
 
   fixture: {
@@ -162,6 +178,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       const f = scene.fixtures[id];
       return f ? outline(f, levelOf(scene, f.levelId)) : [];
     },
+    levelIdOf: (scene, id) => scene.fixtures[id]?.levelId ?? null,
   },
 
   measurement: {
@@ -182,6 +199,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
     // **図面範囲には入れない。** 打ち合わせの道具なので、これで
     // 全体表示の倍率が変わると邪魔になる
     points: () => [],
+    levelIdOf: (scene, id) => scene.measurements[id]?.levelId ?? null,
   },
 
   area: {
@@ -200,6 +218,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       return true;
     },
     points: (scene, id) => scene.areas[id]?.outline.map((p) => vec(p.x, p.y)) ?? [],
+    levelIdOf: (scene, id) => scene.areas[id]?.levelId ?? null,
   },
   roomLabel: {
     label: "室名",
@@ -220,6 +239,7 @@ export const ENTITY_KINDS: Record<EntityType, EntityKind> = {
       const l = scene.roomLabels[id];
       return l ? [vec(l.x, l.y)] : [];
     },
+    levelIdOf: (scene, id) => scene.roomLabels[id]?.levelId ?? null,
   },
 };
 
@@ -241,7 +261,28 @@ export function layerOfRef(scene: Scene, ref: EntityRef): Layer | null {
  * 選択できるか。画層が表示されていて、かつロックされていないこと。
  * ノードは「接続する壁のどれかが選択可能なら可」とする（ノード自身は画層を持たない）。
  */
+/**
+ * その実体が乗っている階。**階を持たないものは null**。
+ */
+export function levelIdOfRef(scene: Scene, ref: EntityRef): Id | null {
+  return ENTITY_KINDS[ref.type].levelIdOf(scene, ref.id);
+}
+
+/**
+ * いま作業している階に乗っているか。
+ *
+ * **ここを `isSelectable` と `isSnappable` に畳み込む。** 2D は 1 枚の紙
+ * なので、階を分けずに描くと 1 階と 2 階の壁が同じ場所に重なる。見えて
+ * いないものを掴んだり、見えていない角にスナップしたりするのは、
+ * 「思ったとおりに動かない」のうちでも特に原因の分かりにくい壊れ方。
+ */
+export function isOnActiveLevel(scene: Scene, ref: EntityRef): boolean {
+  const lv = levelIdOfRef(scene, ref);
+  return lv === null || lv === scene.activeLevelId;
+}
+
 export function isSelectable(scene: Scene, ref: EntityRef): boolean {
+  if (!isOnActiveLevel(scene, ref)) return false;
   if (ref.type === "node") {
     const walls = wallsAtNode(scene, ref.id);
     if (walls.length === 0) return true;
@@ -252,10 +293,31 @@ export function isSelectable(scene: Scene, ref: EntityRef): boolean {
 }
 
 /**
+ * **画層として見えているか。階は問わない。**
+ *
+ * 2D と 3D で問いが違う。2D は 1 枚の紙なので作業中の階だけを描くが、
+ * **3D は全部の階を積んで見せる**（`mesh.ts` が `floorZ` で重ねる）。
+ * ここを `isSnappable` で兼ねていたため、階の関所を足したときに
+ * 3D が作業中の階しか組まなくなった。問いを分ける。
+ */
+export function isOnVisibleLayer(scene: Scene, ref: EntityRef): boolean {
+  if (ref.type === "node") {
+    const walls = wallsAtNode(scene, ref.id);
+    if (walls.length === 0) return true;
+    return walls.some((w) => isOnVisibleLayer(scene, { type: "wall", id: w.id }));
+  }
+  const layer = layerOfRef(scene, ref);
+  return layer ? layer.visible : true;
+}
+
+/**
  * スナップの対象にできるか。表示されていれば十分で、ロックは問わない。
  * 「ロックした図面にスナップして新しい線を引く」のは CAD の普通の使い方。
+ *
+ * **2D の問い。** 階を見る。
  */
 export function isSnappable(scene: Scene, ref: EntityRef): boolean {
+  if (!isOnActiveLevel(scene, ref)) return false;
   if (ref.type === "node") {
     const walls = wallsAtNode(scene, ref.id);
     if (walls.length === 0) return true;

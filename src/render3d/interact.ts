@@ -1,4 +1,4 @@
-import { isSelectable } from '../core/entity.ts';
+import { isOnVisibleLayer } from '../core/entity.ts';
 import { attrsOf } from '../core/material.ts';
 import { vec, type Vec } from '../core/geometry.ts';
 import { mergeNodesAt } from '../core/ops.ts';
@@ -365,7 +365,7 @@ function sizeOf(scene: Scene, t: PushTarget): number {
 /** 選べるものだけを拾う。ロックした画層のものは奥へ素通りする */
 export function pickEntity(editor: Editor, ray: Ray3, mesh: Face3[], near: number): RayHit | null {
   const scene = editor.store.scene;
-  return pickRay(ray, mesh, near, (ref) => ref !== null && isSelectable(scene, ref));
+  return pickRay(ray, mesh, near, (ref) => ref !== null && isOnVisibleLayer(scene, ref));
 }
 
 /**
