@@ -122,7 +122,8 @@ export function detectRooms(scene: Scene): Room[] {
     );
     const innerPolygon = offsetInward(polygon, thicknesses);
     const innerArea = Math.abs(signedArea(innerPolygon));
-    const voidArea = voidAreaIn(scene, innerPolygon);
+    const levelId = scene.walls[wallIds[0]]?.levelId ?? scene.activeLevelId;
+    const voidArea = voidAreaIn(scene, innerPolygon, levelId);
 
     rooms.push({
       polygon,
@@ -133,7 +134,7 @@ export function detectRooms(scene: Scene): Room[] {
       floorArea: Math.max(0, innerArea - voidArea) / 1e6,
       center: centroid(innerPolygon.length >= 3 ? innerPolygon : polygon),
       wallIds,
-      levelId: scene.walls[wallIds[0]]?.levelId ?? scene.activeLevelId,
+      levelId,
       outdoor: false,
       name: null,
       labelId: null,
@@ -162,7 +163,7 @@ function exteriorRoom(scene: Scene, area: ExteriorArea): Room {
   const polygon =
     signedArea(area.outline) < 0 ? [...area.outline].reverse() : [...area.outline];
   const raw = Math.abs(signedArea(polygon));
-  const voidArea = voidAreaIn(scene, polygon);
+  const voidArea = voidAreaIn(scene, polygon, area.levelId);
   return {
     polygon,
     innerPolygon: polygon,
@@ -189,10 +190,17 @@ function exteriorRoom(scene: Scene, area: ExteriorArea): Room {
  * 交差が要る。はみ出した吹抜は作図の誤りなので、厳密に扱う価値がない。
  * 入っているなら全部、入っていないなら 0 とはっきりさせる。
  */
-function voidAreaIn(scene: Scene, innerPolygon: Vec[]): number {
+/**
+ * 床に空いている穴の面積。**その階の吹抜だけを抜く。**
+ *
+ * 階を見ないと、2 階の吹抜が真下の 1 階の床から引かれる。平面では同じ
+ * 場所に重なるので、1 階の床が吹抜のぶんだけ黙って足りなくなる。
+ */
+function voidAreaIn(scene: Scene, innerPolygon: Vec[], levelId: Id): number {
   if (innerPolygon.length < 3) return 0;
   let total = 0;
   for (const f of Object.values(scene.fixtures)) {
+    if (f.levelId !== levelId) continue;
     if (!FIXTURE_SPECS[f.kind].floorHole) continue; // 天窓は立体にならないが、抜くのは屋根
     if (!pointInPolygon(vec(f.x, f.y), innerPolygon)) continue;
     total += Math.abs(signedArea(outline(f, levelOf(scene, f.levelId))));
@@ -265,9 +273,15 @@ export function dimensionSide(
 }
 
 /** 点を含む部屋のうち最も小さいもの */
-export function roomAt(rooms: Room[], p: Vec): Room | null {
+/**
+ * 点を含む部屋。**階を渡せばその階だけを見る。**
+ *
+ * 階を渡さないと、2 階の部屋が真下の 1 階の点を拾う。平面では同じ場所に
+ * 重なるので、どちらが当たるかは面積の大小で決まってしまう。
+ */
+export function roomAt(rooms: Room[], p: Vec, levelId?: Id): Room | null {
   const hits = rooms
-    .filter((r) => pointInPolygon(p, r.polygon))
+    .filter((r) => (levelId === undefined || r.levelId === levelId) && pointInPolygon(p, r.polygon))
     .sort((a, b) => a.area - b.area);
   return hits[0] ?? null;
 }
@@ -310,6 +324,9 @@ export function nestingOf(rooms: Room[]): Map<number, number[]> {
     let bestArea = Infinity;
     for (let outer = 0; outer < rooms.length; outer++) {
       if (outer === inner) continue;
+      // **入れ子は同じ階の中だけ。** 階が違えば、平面で重なっていても
+      // 上の部屋が下の部屋の中にあるわけではない
+      if (rooms[outer].levelId !== rooms[inner].levelId) continue;
       if (rooms[outer].area <= rooms[inner].area) continue;
       if (!pointInPolygon(p, rooms[outer].polygon)) continue;
       // 何重にも入れ子なら、**一番内側の親**に付ける

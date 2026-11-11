@@ -1,5 +1,6 @@
 import { add, toDeg, vec, type Vec } from '../core/geometry.ts';
-import { sceneBounds } from '../core/entity.ts';
+import { isOnActiveLevel, sceneBounds } from '../core/entity.ts';
+import { levelOf } from '../core/level.ts';
 import { sheetGeometry, sheetPrimitives } from '../core/sheet.ts';
 import { getLayer, LAYER_IDS, type Layer } from '../core/layer.ts';
 import { toTatami } from '../core/rooms.ts';
@@ -135,8 +136,15 @@ function countTinted(scene: Scene): number {
   return n;
 }
 
+/**
+ * **作業中の階だけを出す。** DXF に「階」は無いので、全部の階を 1 つの
+ * 図面に入れると、上下の階の壁が同じ座標で重なった読めないものになる。
+ * SVG と同じ扱い。出していない階は `exportLossReport` が言う。
+ */
 export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, options: DxfOptions): string {
   const std = scene.standard;
+  const here = scene.activeLevelId;
+  rooms = rooms.filter((r) => r.levelId === here);
   const out: string[] = [];
   const g = (code: number, value: string | number) => {
     out.push(String(code));
@@ -163,6 +171,7 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
 
   // 壁
   for (const wall of Object.values(scene.walls)) {
+    if (wall.levelId !== here) continue;
     const layer = layerOf(wall.layerId, LAYER_IDS.wall);
     if (!printable(layer)) continue;
     pushSegments(wallOutline(scene, wall), layer, aciOf(scene, { type: 'wall', id: wall.id }));
@@ -170,6 +179,7 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
 
   // 建具。小口（ジャム）は wallOutline が壁側で出しているので、ここで足すと二重線になる
   for (const op of Object.values(scene.openings)) {
+    if (!isOnActiveLevel(scene, { type: 'opening', id: op.id })) continue;
     const layer = layerOf(op.layerId, LAYER_IDS.opening);
     if (!printable(layer)) continue;
     entities.push(...dxfPrimitives(
@@ -181,6 +191,7 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   const usedBlocks = new Map<string, string[]>();
   const furnitureSize = paperToWorld(std.textHeight.furniture, std);
   for (const inst of Object.values(scene.instances)) {
+    if (inst.levelId !== here) continue;
     const layer = layerOf(inst.layerId, LAYER_IDS.furniture);
     if (!printable(layer)) continue;
     const def = blockOf(scene, inst);
@@ -214,6 +225,7 @@ export function sceneToDxf(scene: Scene, rooms: Room[], settings: Settings, opti
   // 汎用図形。寸法だけは本物の DIMENSION エンティティとして別経路で出す
   let dimSeq = 0;
   for (const shape of Object.values(scene.shapes)) {
+    if (shape.levelId !== here) continue;
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
     if (!printable(layer)) continue;
 
@@ -428,6 +440,16 @@ export function exportLossReport(scene: Scene): string[] {
     out.push(
       `透過を落としました（DXF R12 にも SVG の書き出しにも乗せていません）: `
       + faded.map((l) => `${l.name} ${Math.round(l.opacity * 100)}%`).join(' / '),
+    );
+  }
+  // **出していない階があることを言う。** 2 階建ての図面を書き出して
+  // 1 階しか入っていないことに後で気づくのがいちばん困る
+  const levels = Object.keys(scene.levels).length;
+  if (levels > 1) {
+    out.push(
+      `階は ${levels} 階ありますが、書き出したのは作業中の`
+      + `「${levelOf(scene, scene.activeLevelId).name}」だけです。`
+      + `他の階は、その階に切り替えてからもう一度書き出してください。`,
     );
   }
   if (Object.keys(scene.views).length > 1) {

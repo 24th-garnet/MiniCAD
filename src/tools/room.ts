@@ -29,7 +29,7 @@ export class RoomTool implements Tool {
 
   onPointerDown(editor: Editor, p: PointerInfo): void {
     if (p.button !== 0) return;
-    const room = roomAt(editor.rooms, p.raw);
+    const room = roomAt(editor.rooms, p.raw, editor.store.scene.activeLevelId);
     if (!room) return;
     const store = editor.store;
     const label = this.name.trim();
@@ -62,7 +62,7 @@ export class RoomTool implements Tool {
   }
 
   drawOverlay(editor: Editor, frame: Frame): void {
-    const room = roomAt(editor.rooms, editor.pointerWorld());
+    const room = roomAt(editor.rooms, editor.pointerWorld(), editor.store.scene.activeLevelId);
     if (!room) return;
     const { ctx, vp } = frame;
     ctx.save();

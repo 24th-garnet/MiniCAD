@@ -10,7 +10,7 @@ import {
   type Fixture,
   type FixtureKind,
 } from "../core/fixture.ts";
-import { isSnappable } from "../core/entity.ts";
+import { isOnVisibleLayer } from "../core/entity.ts";
 import { levelOf, type Level } from "../core/level.ts";
 import { combineFingerprint } from "../core/combine.ts";
 import {
@@ -420,7 +420,10 @@ export function buildFixtureFaces(
 ): void {
   const f = scene.fixtures[fixtureId];
   if (!f) return;
-  if (!isSnappable(scene, { type: "fixture", id: fixtureId })) return;
+  // **画層だけを見る。階は見ない。** 3D は全部の階を積むのが仕事で、
+  // `isSnappable` は 2D の問い（作業中の階か）。ここで使うと、
+  // 作業中でない階の柱・梁・階段が 3D から消える
+  if (!isOnVisibleLayer(scene, { type: "fixture", id: fixtureId })) return;
   if (!FIXTURE_SPECS[f.kind].solid) return;
   const src: FaceSource = {
     ref: { type: "fixture", id: fixtureId },
@@ -499,6 +502,6 @@ export function fixtureFingerprint(scene: Scene, id: Id): string {
     f.outline ? f.outline.map((p) => `${p.x}:${p.y}`).join(" ") : "-",
     level.floorZ,
     level.wallHeight,
-    isSnappable(scene, { type: "fixture", id }) ? 1 : 0,
+    isOnVisibleLayer(scene, { type: "fixture", id }) ? 1 : 0,
   ].join(",");
 }

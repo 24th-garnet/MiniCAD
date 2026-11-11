@@ -1,5 +1,5 @@
 import { add, toDeg, vec } from '../core/geometry.ts';
-import { sceneBounds } from '../core/entity.ts';
+import { isOnActiveLevel, sceneBounds } from '../core/entity.ts';
 import { paperDimensions, sheetPrimitives } from '../core/sheet.ts';
 import {
   blockOf,
@@ -30,8 +30,20 @@ const MARGIN = 400; // mm
  * 尺度の分母を掛けて世界座標に直す（1:100 なら 0.5mm の線は 50mm 幅になる）。
  * こうしておくと、SVG を尺度どおりに印刷したとき線が JIS の太さになる。
  */
+/**
+ * **平面図は作業中の階だけを出す。** 1 枚の紙に全部の階を重ねたものは
+ * 平面図ではない。下敷き（画面で下の階を薄く敷くもの）も出さない——
+ * あれは描くための目印で、図面に載る線ではない。
+ *
+ * 範囲（`sceneBounds`）は建物全体のまま。階ごとに切り詰めると、1 階と
+ * 2 階の紙が別の原点になり、重ねて見られなくなる。
+ *
+ * 出していない階があることは `exportLossReport` が言う。
+ */
 export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): string {
   const std = scene.standard;
+  const here = scene.activeLevelId;
+  rooms = rooms.filter((r) => r.levelId === here);
   const sheet = scene.sheet;
   const b = sceneBounds(scene);
   if (!b && !sheet.show) return emptySvg();
@@ -88,6 +100,7 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
 
   // --- 壁 ---
   for (const wall of Object.values(scene.walls)) {
+    if (wall.levelId !== here) continue;
     const layer = layerOf(wall.layerId, LAYER_IDS.wall);
     if (!visible(layer)) continue;
     const color = colorOf(scene, { type: 'wall', id: wall.id }) ?? layer.color;
@@ -95,12 +108,14 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
     out.push(`<polygon points="${pointsAttr(wallQuad(scene, wall))}" fill="${std.wallFill ? color : theme.paper}"/>`);
   }
   for (const op of Object.values(scene.openings)) {
+    if (!isOnActiveLevel(scene, { type: 'opening', id: op.id })) continue;
     const f = openingFrame(scene, op);
     if (!f) continue;
     out.push(`<polygon points="${pointsAttr(openingQuad(f))}" fill="${theme.paper}"/>`);
   }
   if (!std.wallFill) {
     for (const wall of Object.values(scene.walls)) {
+      if (wall.levelId !== here) continue;
       const layer = layerOf(wall.layerId, LAYER_IDS.wall);
       if (!visible(layer)) continue;
       const color = colorOf(scene, { type: 'wall', id: wall.id }) ?? layer.color;
@@ -112,6 +127,7 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
 
   // --- 建具 ---
   for (const op of Object.values(scene.openings)) {
+    if (!isOnActiveLevel(scene, { type: 'opening', id: op.id })) continue;
     const layer = layerOf(op.layerId, LAYER_IDS.opening);
     if (!visible(layer)) continue;
     const f = openingFrame(scene, op);
@@ -125,6 +141,7 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
 
   // --- ブロックの挿入 ---
   for (const inst of Object.values(scene.instances)) {
+    if (inst.levelId !== here) continue;
     const layer = layerOf(inst.layerId, LAYER_IDS.furniture);
     if (!visible(layer)) continue;
     const def = blockOf(scene, inst);
@@ -146,6 +163,7 @@ export function sceneToSvg(scene: Scene, rooms: Room[], settings: Settings): str
 
   // --- 汎用図形 ---
   for (const shape of Object.values(scene.shapes)) {
+    if (shape.levelId !== here) continue;
     const layer = layerOf(shape.layerId, LAYER_IDS.shape);
     if (!visible(layer)) continue;
     out.push(...svgPrimitives(

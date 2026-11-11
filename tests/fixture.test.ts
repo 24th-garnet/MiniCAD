@@ -9,37 +9,17 @@ import {
   baseOf,
   localRange,
   type Fixture,
-  type FixtureKind,
 } from '../src/core/fixture.ts';
 import { defaultAttrs } from '../src/core/attrs.ts';
-import { activeLevel, DEFAULT_LEVEL_ID, type Level } from '../src/core/level.ts';
+import { makeFixture } from './make.ts';
+import { activeLevel, type Level } from '../src/core/level.ts';
 import { emptyScene } from '../src/core/types.ts';
 import { signedArea, vec } from '../src/core/geometry.ts';
 import { addWall, findOrCreateNode } from '../src/core/ops.ts';
 import { deserialize, serialize } from '../src/io/scene.ts';
 
-function make(kind: FixtureKind, over: Partial<Fixture> = {}): Fixture {
-  const spec = FIXTURE_SPECS[kind];
-  return {
-    id: `f-${kind}`,
-    kind,
-    x: 1000,
-    y: 2000,
-    angle: 0,
-    size: { ...spec.defaultSize },
-    tilt: null,
-    outline: null,
-    combine: null,
-    edge: null,
-    base: null,
-    height: null,
-    label: spec.defaultLabel,
-    layerId: spec.defaultLayer,
-    levelId: DEFAULT_LEVEL_ID,
-    attrs: defaultAttrs(),
-    ...over,
-  };
-}
+/** `tests/make.ts` に置いてある。欄が増えたときに直すのが 1 箇所で済む */
+const make = makeFixture;
 
 
 /**

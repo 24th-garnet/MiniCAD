@@ -15,6 +15,7 @@ import { Viewport } from '../src/render/viewport.ts';
 import { point3, type CommentAnchor } from '../src/core/annotation.ts';
 import { pickComment } from '../src/tools/comment.ts';
 import type { Editor } from '../src/ui/editor.ts';
+import { makeFixture } from './make.ts';
 
 /**
  * 階ごとの 2D。**同じ座標に 1 階と 2 階の壁を置いて**、作業中の階の
@@ -293,4 +294,21 @@ test('描いていないバッジは掴めない', () => {
   scene.activeLevelId = 'lv-2';
   assert.equal(pickComment(editor, at(comments[1]))?.id, 'cm-2');
   assert.equal(pickComment(editor, at(comments[0])), null, '2 階で 1 階のバッジを掴めてしまう');
+});
+
+test('3D は他の階の構造物も立てる', () => {
+  // **`mesh.ts` と同じ取り違えが `fixture3d.ts` にも残っていた。**
+  // 「3D に出すか」を `isSnappable`（階を見る）で判定していたので、
+  // 作業中でない階の柱・梁・階段が 3D から消えていた
+  const scene = emptyScene();
+  scene.levels['lv-2'] = { id: 'lv-2', name: '2階', floorZ: 3000, wallHeight: 2400 };
+  scene.fixtures['f-up'] = makeFixture('column', { id: 'f-up', levelId: 'lv-2' });
+
+  for (const active of [DEFAULT_LEVEL_ID, 'lv-2']) {
+    scene.activeLevelId = active;
+    const faces = buildMesh(scene, detectRooms(scene)).filter(
+      (f: Face3) => f.ref?.type === 'fixture',
+    );
+    assert.ok(faces.length > 0, `${active} にいるとき 2 階の柱が 3D から消えている`);
+  }
 });

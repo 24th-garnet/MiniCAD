@@ -25,6 +25,9 @@ function sceneWithRedShape(): Scene {
   addWall(scene, findOrCreateNode(scene, vec(0, 0)), findOrCreateNode(scene, vec(4000, 0)), 120);
   scene.shapes.s = {
     id: 's', shape: 'line', a: vec(0, 1000), b: vec(3000, 1000),
+    // **階を書く。** 書き出しは作業中の階だけを出すので、
+    // 階の無いものは紙に出ない（`as never` が型検査をすり抜けている）
+    levelId: scene.activeLevelId,
     layerId: LAYER_IDS.shape, attrs: { ...defaultAttrs(), color: '#ff0000' },
   } as never;
   return scene;

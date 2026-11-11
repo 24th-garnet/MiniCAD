@@ -68,6 +68,16 @@ export interface MeasuresFile {
 export interface MeasuredRoom {
   id: string;
   name: string;
+  /**
+   * どの階か。
+   *
+   * **名前だけでは階が分からない。** 1 階にも 2 階にも「洋室」がある家は
+   * 普通で、受け取った側が見積書の行をどちらの階に積むか決められない。
+   * `floor_z` を添えるのは、名前が「1階」でなくても上下の順が分かるように。
+   *
+   * 既存の読み手は知らない欄を読み飛ばすだけなので、契約の版は上げていない。
+   */
+  level: { id: string; name: string; floor_z: number };
   floor_area: number;
   ceiling_area: number;
   perimeter: number;
@@ -141,7 +151,9 @@ function furnitureOf(scene: Scene, rooms: Room[], room: Room) {
   const counts = new Map<string, { code: string; label: string; count: number }>();
   for (const inst of Object.values(scene.instances)) {
     if (isExcluded(inst.attrs)) continue;
-    if (roomAt(rooms, vec(inst.x, inst.y)) !== room) continue;
+    // **階を見る。** でないと 2 階のソファが真下の 1 階の部屋に数えられる
+    if (inst.levelId !== room.levelId) continue;
+    if (roomAt(rooms, vec(inst.x, inst.y), room.levelId) !== room) continue;
     const def = blockOf(scene, inst);
     if (!def) continue;
     // 標準ブロックは `blockId === preset.id` の安定したスラッグ
@@ -290,6 +302,7 @@ export function sceneToMeasures(
     return {
       id: room.labelId ?? `r${index + 1}`,
       name: room.name ?? '',
+      level: { id: level.id, name: level.name, floor_z: Math.round(level.floorZ) },
       floor_area: round(floor),
       // **屋外に天井は無い。** 床と同じ数を入れると、拾う側が天井を仕上げる
       ceiling_area: room.outdoor ? 0 : round(floor),

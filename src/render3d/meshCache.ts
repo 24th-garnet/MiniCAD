@@ -1,5 +1,5 @@
 import { blockOf } from '../core/block.ts';
-import { isSnappable } from '../core/entity.ts';
+import { isOnVisibleLayer } from '../core/entity.ts';
 import { levelOf } from '../core/level.ts';
 import { openingsOnWall } from '../core/ops.ts';
 import type { Id, Room, Scene } from '../core/types.ts';
@@ -117,11 +117,11 @@ function wallFingerprint(scene: Scene, id: Id): string {
     a?.x, a?.y, b?.x, b?.y,
     w.thickness, w.height,
     level.floorZ, level.wallHeight,
-    isSnappable(scene, { type: 'wall', id }) ? 1 : 0,
+    isOnVisibleLayer(scene, { type: 'wall', id }) ? 1 : 0,
   ];
   for (const o of openingsOnWall(scene, id)) {
     parts.push(o.offset, o.width, o.kind, o.flipX ? 1 : 0, o.flipY ? 1 : 0,
-      o.sillHeight, o.height, isSnappable(scene, { type: 'opening', id: o.id }) ? 1 : 0,
+      o.sillHeight, o.height, isOnVisibleLayer(scene, { type: 'opening', id: o.id }) ? 1 : 0,
       o.bay?.shape ?? '-', o.bay?.depth ?? 0, o.bay?.side ?? 0,
       // 枚数は平面の召し合わせの数を決める。3D の戸板にも効かせるなら、
       // ここに無いと**変えても作り直されない**
@@ -140,7 +140,7 @@ function instanceFingerprint(scene: Scene, id: Id): string {
     i.x, i.y, i.angle, i.scaleX, i.scaleY, i.blockId,
     def?.size.w, def?.size.h, def ? Object.keys(def.shapes).length : 0,
     level.floorZ,
-    isSnappable(scene, { type: 'blockInstance', id }) ? 1 : 0,
+    isOnVisibleLayer(scene, { type: 'blockInstance', id }) ? 1 : 0,
   ].join(',');
 }
 

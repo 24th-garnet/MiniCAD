@@ -169,9 +169,9 @@ interface Capabilities {
 | | |
 |---|---|
 | シーン JSON | `serialize(scene)`。保存はホスト |
-| 実測 JSON | `sceneToMeasures(scene, rooms, { planId })` → `mdr-measures-1`。[QuantityTakeoff][qt] が読む |
-| DXF | `sceneToDxf(...)`。R12、mm 1:1。Jw_cad 用の Shift-JIS も |
-| SVG | `sceneToSvg(...)`。用紙枠を出していれば実寸 |
+| 実測 JSON | `sceneToMeasures(scene, rooms, { planId })` → `mdr-measures-1`。**全部の階**。部屋ごとに `level: { id, name, floor_z }` を名乗る。[QuantityTakeoff][qt] が読む |
+| DXF | `sceneToDxf(...)`。R12、mm 1:1。Jw_cad 用の Shift-JIS も。**作業中の階だけ** |
+| SVG | `sceneToSvg(...)`。用紙枠を出していれば実寸。**作業中の階だけ** |
 | 立面図 | `sceneToElevations(scene)` → SVG。画面からは「立面ビュー」1 ボタン＋選択 |
 | 印刷 | `buildPrintDocument(svg, standard)`。PDF はブラウザの「PDF として保存」 |
 | キャプチャ | canvas → PNG |
@@ -235,9 +235,12 @@ README が JWW と DWG に当てているのと同じ理屈。
 - **透過の書き出し。** 画面では効きますが、SVG にも DXF にも出せません
   （書き出すときに落としたと知らせます）
 - **複数図面の書き出し。** 書き出すのは作業中の 1 枚だけです
-- **階を切り替える画面。** データは複数階を持てますが、作業中の階を変える UI がまだありません
+- **複数階の一括書き出し。** 平面図（SVG・DXF・印刷）が出すのは**作業中の階だけ**です。
+  1 枚の紙に全部の階を重ねたものは平面図ではないので、階ごとに切り替えて書き出します
+  （出していない階があることは `exportLossReport` が知らせます）。
+  **数量 JSON は逆で、全部の階を出します**——積算は建物ぜんぶの話なので
 
-**この一覧は 5 つ短くなりました。** 「立体を 2 つに切り分けること」「縦の稜線の
+**この一覧は 6 つ短くなりました。** 「立体を 2 つに切り分けること」「縦の稜線の
 面取り・丸め」「切り欠いた形を平面に出すこと」「矩形でない立体の側面の押し引き」
 「3D で多角形を描くこと」は、**どれも実装が追い越したのに書き換え忘れていた**ものです。
 できることの一覧は画面とテストが裏を取りますが、できないことの一覧は誰も裏を
