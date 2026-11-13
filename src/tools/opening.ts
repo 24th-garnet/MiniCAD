@@ -2,9 +2,12 @@ import { defaultAttrs } from '../core/attrs.ts';
 import { closestOnSegment, dist, vec, type Vec } from '../core/geometry.ts';
 import { clampOpening, mergeOpeningSpan, wallEnds, wallLength } from '../core/ops.ts';
 import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
+import { nonNegativeOr } from '../core/level.ts';
 import type { OpeningIdentity } from '../core/opening.ts';
 import { openingFrame, openingQuad } from '../core/shape.ts';
-import { OPENING_SYMBOLS, openingKindsOf, openingPrimitives } from '../core/opening.ts';
+import {
+  OPENING_PROFILES, OPENING_SYMBOLS, openingKindsOf, openingPrimitives,
+} from '../core/opening.ts';
 import { newId, type Id, type Opening, type OpeningKind } from '../core/types.ts';
 import { theme } from '../render/theme.ts';
 import { drawPrimitives } from '../render/primitive.ts';
@@ -58,6 +61,15 @@ export class OpeningTool implements Tool {
    * 表せないから（窓 2 つ ＋ L 字の張り出し 1 つになる）。
    */
   corner = false;
+  /**
+   * パレットで選んだ品の名前。**何が効いているかを画面に出すため。**
+   *
+   * 品は窓台・高さ・符号も連れてくるが、どれもこのバーに出ていなかった。
+   * 掃き出し窓（窓台 0）を選んだあとショートカットで窓ツールに入り直すと、
+   * **床まで開いた窓が黙って置かれる**——理由が画面のどこにも無い。
+   * 欄を 3 つ増やすとバーが溢れるので、名前だけを出す。
+   */
+  partLabel = '';
   private cornerAt: Id | null = null;
   private cornerWhy: string | null = null;
 
@@ -289,6 +301,25 @@ export class OpeningTool implements Tool {
       this.symbol.usesFlipY ? 'Y で開く向き' : null,
     ].filter(Boolean);
     const fields: OptionField[] = [
+      // **「どこをクリックするか」が変わるので、必ず画面に出す。**
+      // 以前はパーツの「L型出窓」を押したときだけ立つ隠れた札で、
+      // 画面のどこにも出ず、ショートカットで窓ツールに入り直しても
+      // 立ったままだった——**壁を叩いても何も起きない理由が分からない**
+      ...(this.family === 'window'
+        ? ([{
+            kind: 'select',
+            label: '置き方',
+            value: this.corner ? 'corner' : 'wall',
+            options: [
+              { value: 'wall', label: '壁の上' },
+              { value: 'corner', label: '角（L 型出窓）' },
+            ],
+            onChange: (v: string) => {
+              this.corner = v === 'corner';
+              this.candidate = null;
+            },
+          }] as OptionField[])
+        : []),
       {
         kind: 'select',
         label: '種類',
@@ -296,6 +327,8 @@ export class OpeningTool implements Tool {
         options: openingKindsOf(this.family).map((k) => ({ value: k, label: OPENING_SYMBOLS[k].label })),
         onChange: (v: string) => {
           this.kind = v as OpeningKind;
+          // 品の既定から離れたので、品の名前は下ろす
+          this.partLabel = '';
           this.width = this.symbol.defaultWidth;
           this.leaves = this.symbol.defaultLeaves;
         },
@@ -339,6 +372,11 @@ export class OpeningTool implements Tool {
           onChange: (v: number) => void (this.bay = { ...this.bay!, depth: v }),
         },
       );
+    }
+    if (this.partLabel) {
+      const profile = OPENING_PROFILES[this.kind];
+      const sill = nonNegativeOr(this.sillHeight, profile.sillHeight);
+      fields.push({ kind: 'note', text: `${this.partLabel}（窓台 ${Math.round(sill)}mm）` });
     }
     if (flips.length > 0) fields.push({ kind: 'note', text: `${flips.join(' / ')}を反転` });
     return fields;

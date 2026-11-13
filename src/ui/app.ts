@@ -24,6 +24,7 @@ import { StatusBar } from "./status-bar.ts";
 import { ViewTabs } from "./panels/view-tabs.ts";
 import { LevelSwitch } from "./panels/level-switch.ts";
 import { Viewer3D } from "../render3d/viewer.ts";
+import type { Tool3D } from "../render3d/interact.ts";
 import { ViewState, type ViewMode } from "./view-state.ts";
 import { buildShell } from "./shell.ts";
 import { CommentTool } from "../tools/comment.ts";
@@ -88,6 +89,7 @@ export class App {
       mode: this.currentMode,
       setMode: (mode) => this.setMode(mode),
       selectTool: (id) => this.selectTool(id),
+      setTool3D: (tool) => this.setTool3D(tool),
       capture: (view) => this.capture(view),
     };
 
@@ -248,9 +250,24 @@ export class App {
    * 選ぶと、押しても何も起きない行き止まりになる。ワイヤーも通常モード・プロモードの
    * 両方で「選択時にビューが 2D に切り替わる」と書いている。
    */
+  /**
+   * 道具を選ぶ。**武装するのは一度に 1 つだけ。**
+   *
+   * 2D と 3D は入力の面が違うだけで、使う人から見れば「いま持っている道具」は
+   * 1 つ。両方武装できると、ビューを行き来するたびに別のものが効き、
+   * **どちらが効いているか画面のどこにも出ない**。
+   */
   private selectTool(id: ToolId): void {
     if (id !== "select" && !this.view.shows2d) this.view.set("2d");
+    this.viewer3d.setTool3D(null);
     this.editor.setTool(id);
+  }
+
+  /** 3D の道具を選ぶ。2D 側は選択に戻す（武装するのは 1 つだけ） */
+  private setTool3D(tool: Tool3D | null): void {
+    this.viewer3d.setTool3D(tool);
+    if (tool) this.editor.setTool("select");
+    this.refresh();
   }
 
   private deleteSelection(): void {

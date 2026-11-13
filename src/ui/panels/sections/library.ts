@@ -244,6 +244,8 @@ function openingButton(part: OpeningPart, ctx: PanelContext): HTMLElement {
         // **角に置くかどうかも戻す。** 戻さないと、L 型出窓を押した後に
         // 普通の窓を押しても角モードのままになる
         tool.corner = part.corner === true;
+        // 何を置こうとしているかを、オプションバーに出すため
+        tool.partLabel = part.label;
       }
       ctx.editor.canvas.focus();
       ctx.refresh();

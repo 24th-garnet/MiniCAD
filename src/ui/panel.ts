@@ -3,6 +3,7 @@ import type { ToolId } from '../tools/tool.ts';
 import type { Capabilities, HostCatalogs } from '../host.ts';
 import type { Mode } from './mode.ts';
 import type { ViewState } from './view-state.ts';
+import type { Tool3D } from '../render3d/interact.ts';
 
 /**
  * パネルから編集系の操作を呼ぶための窓口。
@@ -30,6 +31,14 @@ export interface PanelContext {
   setMode(mode: Mode): void;
   /** ツールを選ぶ。作図のツールなら 2D に戻してから切り替える */
   selectTool(id: ToolId): void;
+  /**
+   * 3D の道具を選ぶ。`null` で素の選択に戻る。
+   *
+   * **2D の道具と同時には武装しない。** ここを通すのは、その決まりを
+   * `App` 1 か所で守るため——`Viewer3D` を直に触ると、2D 側が武装したまま
+   * 残って、ビューを行き来するたびに違うものが効く。
+   */
+  setTool3D(tool: Tool3D | null): void;
   /** いま見えている絵を PNG にする */
   capture(view?: '2d' | '3d'): Promise<Blob | null>;
 }

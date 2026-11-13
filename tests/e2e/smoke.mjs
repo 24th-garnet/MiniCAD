@@ -3177,6 +3177,57 @@ async function run() {
   await page.keyboard.press('F3');
   await sleep(300);
   console.log('✔ 絵を PNG で出せて、カメラ引数を往復できる');
+
+  // ── 道具の持ち主は 1 つだけ
+  //
+  // **重なったモードは、画面のどこにも出ない形で壊れる。** 歩いている位置が
+  // 1 回のドラッグで消え、2D と 3D の道具が同時に武装していた。
+  {
+    const peek = () => page.evaluate(() => {
+      const app = window.minicad;
+      const v = app.viewer3d ?? Object.values(app).find((x) => x && x.camera && x.measure);
+      return {
+        tool2d: app.editorInstance.tool.id,
+        armed3d: v.tool3d !== v.select,
+        tz: Math.round(v.camera.target.z),
+        dist: Math.round(v.camera.distance),
+      };
+    });
+
+    await page.locator('#view-tabs button', { hasText: '3D' }).first().click();
+    await sleep(900);
+    await page.getByRole('button', { name: '歩く', exact: true }).click();
+    await sleep(400);
+    const walked = await peek();
+    assert.equal(walked.tz, 1500, '「歩く」で目線の高さに下りていない');
+
+    await page.getByRole('button', { name: '計測', exact: true }).click();
+    await sleep(300);
+    const armed = await peek();
+    assert.ok(armed.armed3d, '3D の計測が武装していない');
+    assert.equal(armed.tool2d, 'select', '3D の道具を持つと 2D は選択に戻るはず');
+
+    // 回すつもりでドラッグする。歩いた位置が消えてはいけない
+    const box3d = await page.locator('#canvas3d').boundingBox();
+    await page.mouse.move(box3d.x + 500, box3d.y + 400);
+    await page.mouse.down();
+    await page.mouse.move(box3d.x + 560, box3d.y + 400, { steps: 8 });
+    await page.mouse.up();
+    await sleep(300);
+    const dragged = await peek();
+    assert.equal(dragged.tz, walked.tz, '1 回のドラッグで歩いた高さが消えた');
+    assert.equal(dragged.dist, walked.dist, '1 回のドラッグで歩いた距離が消えた');
+
+    // 2D の道具を持ったら 3D の道具は外れる
+    await page.keyboard.press('w');
+    await sleep(400);
+    const after = await peek();
+    assert.equal(after.tool2d, 'wall', '2D の壁ツールに入っていない');
+    assert.ok(!after.armed3d, '2D の道具を持ったのに 3D の道具が武装したまま');
+    await page.keyboard.press('v');
+    await sleep(200);
+    console.log('✔ 道具は一度に 1 つで、歩いた視点がドラッグで消えない');
+  }
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

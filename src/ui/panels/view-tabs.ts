@@ -94,9 +94,11 @@ export class ViewTabs implements Panel {
           class: "orbit-center",
           title: "ドラッグで回すときの中心",
           onchange: (e: Event) => {
-            this.viewer.orbitCenter = (e.target as HTMLSelectElement)
-              .value as OrbitCenter;
-            this.viewer.requestRender();
+            // **選んだその場で 1 回効かせる。** 押すたびに効かせると、
+            // 人が動かしたカメラを毎回取り消すことになる
+            this.viewer.setOrbitCenter(
+              (e.target as HTMLSelectElement).value as OrbitCenter,
+            );
           },
         },
         (Object.keys(ORBIT_CENTER_LABELS) as OrbitCenter[]).map((k) =>
@@ -136,7 +138,7 @@ export class ViewTabs implements Panel {
           "aria-pressed": String(measuring),
           title: "3D の中で 2 点間の距離を測る（面の上の 2 点をクリック）",
           onclick: () => {
-            this.viewer.setTool3D(measuring ? null : this.viewer.measure);
+            ctx.setTool3D(measuring ? null : this.viewer.measure);
             ctx.refresh();
           },
         },
@@ -154,7 +156,7 @@ export class ViewTabs implements Panel {
           "aria-pressed": String(commenting),
           title: "3D の中でコメントを置く（面にカーソルを合わせてクリック）",
           onclick: () => {
-            this.viewer.setTool3D(commenting ? null : this.viewer.comment);
+            ctx.setTool3D(commenting ? null : this.viewer.comment);
             ctx.refresh();
           },
         },
@@ -174,7 +176,7 @@ export class ViewTabs implements Panel {
           "aria-pressed": String(placing),
           title: "3D の中に基本形状を置く（面にカーソルを合わせてクリック）",
           onclick: () => {
-            this.viewer.setTool3D(placing ? null : this.viewer.place);
+            ctx.setTool3D(placing ? null : this.viewer.place);
             ctx.refresh();
           },
         },
@@ -192,7 +194,7 @@ export class ViewTabs implements Panel {
           title:
             "作図面の上に多角形を描いて立体にする（1 点目か右クリックで閉じる）",
           onclick: () => {
-            this.viewer.setTool3D(drawing ? null : this.viewer.draw);
+            ctx.setTool3D(drawing ? null : this.viewer.draw);
             ctx.refresh();
           },
         },

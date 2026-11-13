@@ -185,6 +185,31 @@ export function lookAt(cam: Camera3D, target: Vec3): void {
 }
 
 /**
+ * 回る中心だけを移し、**目の位置は動かさない。**
+ *
+ * `lookAt` は注視点を置き換えるだけなので、目の位置は注視点から
+ * `distance`・`yaw`・`pitch` で導かれる——**注視点を動かすと目も同じだけ飛ぶ**。
+ * 「ここを中心に回す」つもりで押すたびに視点が飛ぶのはこれが理由で、
+ * 歩いている位置も 1 回のドラッグで失われていた。
+ *
+ * 目の位置から新しい中心への向きと距離を取り直せば、見えている絵は
+ * 1 ピクセルも変わらず、回る軸だけが移る。
+ */
+export function pivotAround(cam: Camera3D, at: Vec3): void {
+  const eye = cameraEye(cam);
+  const dx = eye.x - at.x;
+  const dy = eye.y - at.y;
+  const dz = eye.z - at.z;
+  const dist = Math.hypot(dx, dy, dz);
+  // 目の位置そのものを中心にはできない（向きが決まらない）
+  if (!Number.isFinite(dist) || dist < MIN_DISTANCE) return;
+  cam.target = { ...at };
+  cam.distance = Math.min(MAX_DISTANCE, dist);
+  cam.yaw = Math.atan2(dy, dx);
+  cam.pitch = clampPitch(Math.asin(dz / dist));
+}
+
+/**
  * フライオーバー（歩き回る視点）。
  *
  * **目線の高さに下ろして、注視点を前方に置く。** 軌道カメラのまま

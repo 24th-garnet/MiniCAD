@@ -12,6 +12,7 @@ import {
   lookAt,
   type OrbitCenter,
   orbit,
+  pivotAround,
   pan,
   projectPoint,
   viewProjection,
@@ -190,7 +191,17 @@ export class Viewer3D {
   }
 
   /**
-   * 回す中心を、いまのモードに合わせて置き直す。
+   * 回す中心を置き直す。
+   *
+   * **押すたびには効かせない。** 以前はドラッグのたびに呼んでいたので、
+   * 「全図形の中心」のまま 3D を触ると、押した瞬間に注視点が建物の中心へ
+   * 戻り、**歩いている位置が 1 回のドラッグで消えていた**。中心の選び直しは
+   * 人が選んだときの 1 回だけにする。
+   *
+   * **「指したところ」だけは押すたび。** それがこの選択の意味そのもの
+   * （いま叩いた点を軸に回す）。ただし `pivotAround` で移すので、
+   * 目の位置は動かず、回る軸だけが移る。
+   *
    * 決まらなければ（選択が空、何も拾えない）**いまの中心のまま**にする。
    */
   private applyOrbitCenter(p: { hit: { point: Vec3 } | null }): void {
@@ -216,11 +227,33 @@ export class Viewer3D {
         return;
       }
       case "pick":
-        if (p.hit) lookAt(this.camera, p.hit.point);
+        if (p.hit) pivotAround(this.camera, p.hit.point);
         return;
       case "origin":
         lookAt(this.camera, vec3(0, 0, 0));
     }
+  }
+
+  /**
+   * 回す中心を選び直す。**選んだその場で 1 回だけ効く。**
+   *
+   * 「指したところ」は押した点が要るので、ここでは何もしない——
+   * 次にドラッグを始めたときに効く。
+   */
+  setOrbitCenter(center: OrbitCenter): void {
+    this.orbitCenter = center;
+    this.applyOrbitCenter({ hit: null });
+    this.requestRender();
+  }
+
+  /**
+   * ドラッグを始めるときの中心合わせ。**「指したところ」のときだけ動かす。**
+   *
+   * 他の選び方（全図形・選択・原点）は、選んだ瞬間に 1 回効けば足りる。
+   * 押すたびに効かせると、人が動かしたカメラを毎回取り消すことになる。
+   */
+  private aimPivot(p: { hit: { point: Vec3 } | null }): void {
+    if (this.orbitCenter === "pick") this.applyOrbitCenter(p);
   }
 
   /** 歩き回る視点にする。いまの注視点の真下、目線の高さに立つ */
@@ -604,7 +637,7 @@ export class Viewer3D {
       // 動かさずに離したら置く、動かしたら回す。ドラッグで回せなくなると
       // 「置きたい場所を正面に持ってくる」ができなくなる
       if (this.tool !== this.select) {
-        this.applyOrbitCenter(p);
+        this.aimPivot(p);
         this.dragging = "orbit";
         return;
       }
@@ -616,9 +649,9 @@ export class Viewer3D {
         this.select.onPointerDown(this.editor, p);
         return;
       }
-      // **回す前に中心を決める。** 距離と角度はそのままなので、
-      // 見ている向きは変わらず、回る軸だけが移る
-      this.applyOrbitCenter(p);
+      // **回す前に中心を決める。** 移すのは「指したところ」のときだけで、
+      // そのときも目の位置は動かない（`pivotAround`）
+      this.aimPivot(p);
       this.dragging = "orbit";
       this.select.onPointerDown(this.editor, p);
     });
