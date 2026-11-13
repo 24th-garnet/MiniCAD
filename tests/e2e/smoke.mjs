@@ -36,6 +36,22 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 
+/**
+ * 上部バーのボタンを押す。**メニューに畳まれていれば先に開く。**
+ *
+ * 13 個を横に並べると狭い幅で 2 段に折り返すので、ファイル / 書き出し /
+ * 表示 の 3 つに畳んである。畳んだことを試験の全箇所に書くと、次に畳み方を
+ * 変えたときに全部直すことになるので、**ここ 1 か所**に閉じ込める。
+ */
+async function bar(title) {
+  const sel = `.file-actions button[title="${title}"]`;
+  // 畳まれている口を開ける。入っていなければ何も起きない
+  await page.evaluate((q) => {
+    document.querySelector(q)?.closest('details.menu')?.setAttribute('open', '');
+  }, sel);
+  await page.click(sel);
+}
+
 let failed = false;
 try {
   await run();
@@ -1128,7 +1144,7 @@ async function run() {
     (s) => assert.equal(s.sheetTitle, 'テスト住宅 1階平面図'),
   );
 
-  await step('用紙に合わせて表示できる', () => page.click('button[title="用紙全体が見えるように表示"]'), () => {});
+  await step('用紙に合わせて表示できる', () => bar('用紙全体が見えるように表示'), () => {});
 
   // --- 画層の管理 ---
 
@@ -1219,7 +1235,7 @@ async function run() {
   ]) {
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 5000 }),
-      page.click(`button[title="${label}"]`),
+      bar(label),
     ]);
     assert.equal(download.suggestedFilename(), filename);
     console.log(`✔ ${filename} が書き出せる`);
@@ -1228,7 +1244,7 @@ async function run() {
   // 書き出した SVG を本物の XML パーサに通す
   const [svgDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="SVG で書き出す"]'),
+    bar('SVG で書き出す'),
   ]);
   const svg = await readFile(await svgDownload.path(), 'utf8');
   const svgError = await page.evaluate((source) => {
@@ -1244,7 +1260,7 @@ async function run() {
   // 書き出した DXF の中身まで確認する
   const [dxfDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="DXF (R12) で書き出す — 他の CAD で開けます"]'),
+    bar('DXF (R12) で書き出す — 他の CAD で開けます'),
   ]);
   const dxfPath = await dxfDownload.path();
   const dxf = await readFile(dxfPath, 'utf8');
@@ -1264,7 +1280,7 @@ async function run() {
   // 実測 JSON（数量拾いへ渡す）
   const [measuresDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="実測 JSON を書き出す — 数量拾いへ渡します"]'),
+    bar('実測 JSON を書き出す — 数量拾いへ渡します'),
   ]);
   const measures = JSON.parse(await readFile(await measuresDownload.path(), 'utf8'));
   assert.equal(measures.schema_version, 'mdr-measures-1', '契約の版が違う');
@@ -1309,7 +1325,7 @@ async function run() {
     await sjis.check();
     const [sjisDownload] = await Promise.all([
       page.waitForEvent('download', { timeout: 5000 }),
-      page.click('button[title="DXF (R12) で書き出す — 他の CAD で開けます"]'),
+      bar('DXF (R12) で書き出す — 他の CAD で開けます'),
     ]);
     const bytes = await readFile(await sjisDownload.path());
     const text = new TextDecoder('shift_jis').decode(bytes);
@@ -2485,7 +2501,7 @@ async function run() {
   page.once('dialog', (d) => d.accept());
   const [dxf3d] = await Promise.all([
     page.waitForEvent('download', { timeout: 5000 }),
-    page.click('button[title="3D を DXF (3DFACE) で書き出す"]'),
+    bar('3D を DXF (3DFACE) で書き出す'),
   ]);
   const dxf3dText = await readFile(await dxf3d.path(), 'utf8');
   assert.ok(dxf3dText.includes('3DFACE'), '3DFACE が入っていない');
@@ -3171,14 +3187,14 @@ async function run() {
  * 機能を利用するか、ポップアップ等で選択が可能」）ので、e2e もダイアログを通る。
  */
 async function exportElevationView(page, kind) {
-  await page.click('button[title="立面・断面・展開のどれを書き出すか選ぶ"]');
+  await bar('立面・断面・展開のどれを書き出すか選ぶ');
   await page.locator('.dialog select').selectOption(kind);
   return page.locator('.dialog button.primary').click();
 }
 
 /** 書き出せないときの様子。**閉じずに理由が出る**ことを見る */
 async function elevationViewRefusal(page, kind) {
-  await page.click('button[title="立面・断面・展開のどれを書き出すか選ぶ"]');
+  await bar('立面・断面・展開のどれを書き出すか選ぶ');
   await page.locator('.dialog select').selectOption(kind);
   await page.locator('.dialog button.primary').click();
   const open = await page.locator('.dialog').count();

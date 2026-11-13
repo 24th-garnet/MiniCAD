@@ -137,7 +137,7 @@ export class App {
     ];
 
     toolbar.build(this.ctx);
-    fileActions.build(this.ctx);
+    fileActions.build(this.ctx, this.teardown.signal);
     commandInput.build(this.ctx);
     installKeymap(this.ctx, bindings, commandInput, this.teardown.signal);
 

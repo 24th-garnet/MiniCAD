@@ -79,6 +79,70 @@ body {
   background: #4a4b53;
 }
 
+/* --- 上部バーのメニュー（ファイル / 書き出し / 表示） --- */
+
+.file-actions .menu {
+  position: relative;
+}
+
+/* `summary` の三角は出さない。見た目は他のボタンに揃える */
+.file-actions .menu > summary {
+  list-style: none;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid #45464d;
+  background: #3a3b42;
+  color: #e9e8e4;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-actions .menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.file-actions .menu > summary::after {
+  content: "▾";
+  margin-left: 6px;
+  color: #9b9aa2;
+}
+
+.file-actions .menu > summary:hover,
+.file-actions .menu[open] > summary {
+  background: #4a4b53;
+}
+
+/* **中身は明るい紙の上。** 暗いバーの上に暗い箱を重ねると境が読めない */
+.file-actions .menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+}
+
+.file-actions .menu-list button {
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.file-actions .menu-list button:hover {
+  background: var(--panel);
+}
+
 /* --- 編集モード --- */
 
 .mode-switch {

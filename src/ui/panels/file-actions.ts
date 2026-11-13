@@ -23,10 +23,21 @@ import { dialogText, openDialog } from "../dialog.ts";
 import { openDxfImport } from "./dxf-import.ts";
 import type { Panel, PanelContext } from "../panel.ts";
 
+/**
+ * 上部バーのファイル操作。
+ *
+ * **押しボタンを並べず、メニューに畳む。** 13 個を横に並べると、作図領域が
+ * 狭いとき（コメント欄を出した埋め込みなど）に 2 段へ折り返して読めなく
+ * なる。一般の CAD（Jw_cad・LibreCAD・QCAD）は**メニューバー**を持つので、
+ * 畳み方もそれに倣って「ファイル / 書き出し / 表示」の 3 つにする。
+ *
+ * **閲覧のみのときは中身ごと消える。** 空のメニューは出さない——押しても
+ * 何も入っていない口は、壊れていると見える。
+ */
 export class FileActions implements Panel {
   constructor(private readonly host: HTMLElement) {}
 
-  build(ctx: PanelContext): void {
+  build(ctx: PanelContext, signal?: AbortSignal): void {
     const button = (label: string, onClick: () => void, title?: string) =>
       el(
         "button",
@@ -61,8 +72,41 @@ export class FileActions implements Panel {
       });
     });
 
+    /**
+     * 畳んだ口。**中身が 1 つも無ければ出さない。**
+     *
+     * `<details>` を使うのは、開け閉めの状態を DOM に持たせるため——
+     * 自前で持つと、片付け（`destroy`）のときに取り残しが出る。
+     */
+    const menus: HTMLDetailsElement[] = [];
+    const menu = (label: string, items: (HTMLElement | null)[]): HTMLElement | null => {
+      const live = items.filter((node): node is HTMLElement => node !== null);
+      if (live.length === 0) return null;
+      const list = el("div", { class: "menu-list" }, live);
+      const box = el("details", { class: "menu" }, [
+        el("summary", { title: label }, [label]),
+        list,
+      ]) as HTMLDetailsElement;
+      // 押したら閉じる。開いたままだと、次に何を押すのか分からなくなる
+      list.addEventListener("click", () => void (box.open = false));
+      menus.push(box);
+      return box;
+    };
+
+    // **外を押したら閉じる。** `signal` で外すので `destroy()` に残らない
+    this.host.ownerDocument.addEventListener(
+      "pointerdown",
+      (e) => {
+        for (const m of menus) {
+          if (m.open && !m.contains(e.target as Node)) m.open = false;
+        }
+      },
+      { signal, capture: true },
+    );
+
     this.host.append(
       ...[
+        menu("ファイル", [
         when(
           canEdit,
           button("新規", () => {
@@ -96,6 +140,9 @@ export class FileActions implements Panel {
             "JSON で保存 (Cmd/Ctrl+S)",
           ),
         ),
+        ]),
+
+        menu("書き出し", [
         when(
           canDownload,
           button(
@@ -243,12 +290,16 @@ export class FileActions implements Panel {
             "いま見えている絵を PNG で保存する",
           ),
         ),
-        button("全体表示", () => ctx.editor.zoomToFit(), "図面全体を表示 (0)"),
-        button(
-          "用紙に合わせる",
-          () => ctx.editor.zoomToSheet(),
-          "用紙全体が見えるように表示",
-        ),
+        ]),
+
+        menu("表示", [
+          button("全体表示", () => ctx.editor.zoomToFit(), "図面全体を表示 (0)"),
+          button(
+            "用紙に合わせる",
+            () => ctx.editor.zoomToSheet(),
+            "用紙全体が見えるように表示",
+          ),
+        ]),
         fileInput,
       ].filter((node) => node !== null),
     );
