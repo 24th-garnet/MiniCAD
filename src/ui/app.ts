@@ -1,3 +1,4 @@
+import { vec } from "../core/geometry.ts";
 import { removeEntities } from "../core/entity.ts";
 import { serialize } from "../io/scene.ts";
 import type { Scene } from "../core/types.ts";
@@ -76,6 +77,8 @@ export class App {
     // インスペクタもドラッグもショートカットも別の経路で書きに来る
     this.editor.store.readOnly = !this.can.edit;
 
+    // ゲッターの中から見るので、`this` ではなく実体を掴んでおく
+    const viewer = this.viewer3d;
     this.ctx = {
       editor: this.editor,
       refresh: () => this.refresh(),
@@ -90,6 +93,10 @@ export class App {
       setMode: (mode) => this.setMode(mode),
       selectTool: (id) => this.selectTool(id),
       setTool3D: (tool) => this.setTool3D(tool),
+      setWalkthrough: (on) => this.setWalkthrough(on),
+      get walkthrough(): boolean {
+        return viewer.walking;
+      },
       capture: (view) => this.capture(view),
     };
 
@@ -152,6 +159,17 @@ export class App {
     // コメントはホストの持ち物。図面には入らないので `Store` を通さない
     this.editor.comments = host.comments ?? [];
     this.viewer3d.onCommentOpen = (id) => host.onCommentOpen?.(id);
+    // **平面に立ち位置を出す。**
+    this.viewer3d.onWalkMove = () => {
+      // 断り文は押した直後に出したい。全部描き直すのは重いので案内だけ
+      this.statusBar.refreshHint(this.ctx);
+      // **覚えるのはいつでも、描き直すのは 2D が見えているときだけ。**
+      // 3D 単独で歩いてから分割へ移ったときに、入った地点の古い印が
+      // 残らないように——歩いた場所と印が食い違うのがいちばん困る
+      this.pushViewpoint();
+      if (!this.view.shows2d) return;
+      this.editor.requestRender();
+    };
     const commentTool = this.editor.allTools().find((t) => t.id === "comment");
     if (commentTool instanceof CommentTool) {
       commentTool.onOpen = (id) => host.onCommentOpen?.(id);
@@ -268,6 +286,50 @@ export class App {
     this.viewer3d.setTool3D(tool);
     if (tool) this.editor.setTool("select");
     this.refresh();
+  }
+
+  /**
+   * ウォークスルーの出入り。
+   *
+   * 入るときは**ワイヤーどおり 3D 単独に切り替え、道具を全部外す**
+   * （「3D 図面の表示のみに切り替わる／不要ボタンは非アクティブとなる」）。
+   * そのあと使う人が分割へ移れば、2D に現在位置が出る。
+   *
+   * 2D の道具帯は根に付けた印で畳む。**`buildTools` では畳まない**——
+   * `setTools` は作図を取り消して道具の選択を捨てるので、一時的に歩くだけの
+   * ことには重すぎる。
+   */
+  setWalkthrough(on: boolean): void {
+    if (this.viewer3d.walking === on) return;
+    if (on) {
+      this.view.set("3d");
+      this.viewer3d.setTool3D(null);
+      this.editor.setTool("select");
+    }
+    this.viewer3d.setWalking(on);
+    this.shellRoot.classList.toggle("walking", on);
+    this.pushViewpoint();
+    this.refresh();
+    // **出入りのときだけ知らせる。** 歩いているあいだは鳴らさない
+    this.host.onWalkthroughChange?.(on);
+  }
+
+  /**
+   * 3D の立ち位置を 2D へ流す。**両方を握っているのはここだけ。**
+   *
+   * 歩いていなければ null にする——歩いていないのに平面へ印が残ると、
+   * いまどこを見ているのかの嘘になる。
+   */
+  private pushViewpoint(): void {
+    if (!this.viewer3d.walking) {
+      this.editor.viewpoint = null;
+      return;
+    }
+    const cam = this.viewer3d.cameraParams;
+    this.editor.viewpoint = {
+      at: vec(cam.eye.x, cam.eye.y),
+      yaw: Math.atan2(cam.target.y - cam.eye.y, cam.target.x - cam.eye.x),
+    };
   }
 
   private deleteSelection(): void {

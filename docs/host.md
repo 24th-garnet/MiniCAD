@@ -22,6 +22,7 @@ const cad = mount(document.getElementById('editor')!, {
   onSelectionChange: (refs) => show(refs),
   onCommentOpen: (id) => openThread(id), // バッジを叩いた
   onCommentPlace: (a) => askBody(a),     // 新しく置いた。まだ本文が無い
+  onWalkthroughChange: (on) => setBar(on), // 出入りしたときだけ。毎フレームは流れない
 });
 
 cad.getScene();          // SceneFile。保存はホスト
@@ -32,6 +33,8 @@ cad.setComments(anchors);  // 一覧を差し替える。図面には保存さ�
 cad.capture();             // いま見えている絵を PNG で。保存はホスト
 cad.getCamera();           // ウォークスルー・AI パースへはこの形で渡す
 cad.setCamera({ fovDeg: 35 });
+cad.setWalkthrough(true);  // 一人称で歩き回る。入ると 3D だけになる
+cad.walkthrough;           // いま歩いているか
 cad.destroy();           // DOM からも window からも痕跡を消す
 ```
 
@@ -61,6 +64,8 @@ cad.destroy();           // DOM からも window からも痕跡を消す
 | ライブラリ／素材の**マスタ**（検索・公開・いいね・DL 数） | **ホスト** |
 | コメントの本文・スレッド・メンション・通知・既読 | **ホスト** |
 | 保存・版管理・排他制御・共同編集の調停 | **ホスト** |
+| **ウォークスルーで歩き回ること**（立つ・見回す・床をクリックして移る・2D に現在地） | **MiniCAD** |
+| **ウォークスルーの録画・動画生成** | **ホスト** |
 | 写実レンダリング・AI・usdz/IGES/STEP の変換 | **ホスト側のサービス** |
 | 単価・歩掛り・諸経費・消費税 | [QuantityTakeoff][qt] / [InteriorEstimation][ie] |
 
@@ -180,6 +185,7 @@ interface Capabilities {
 | 3D | `sceneToDxf3d(...)` → DXF R12 の `3DFACE` |
 | キャプチャ | `capture()` → PNG。保存はホスト |
 | カメラ | `getCamera()` / `setCamera()`。ウォークスルーと AI パースへ渡す形 |
+| ウォークスルー | `setWalkthrough(on)` / `walkthrough` / `onWalkthroughChange`。ワイヤーの「ウォークスルー」ボタンはホストのメニューにあるので、MiniCAD 側のビュータブと同じことをここからもできる。**録画はホスト**——`capture()` を好きな間隔で呼べば駒が集まる |
 | 変更の通知 | 編集のたびに発火。保存するかどうかはホストが決める |
 
 **PDF はホスト側で作る。** ワイヤーは 2D の出力を PDF と書いている

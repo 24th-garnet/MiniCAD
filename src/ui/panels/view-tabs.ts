@@ -48,6 +48,26 @@ export class ViewTabs implements Panel {
 
     // カメラの操作は 3D が見えているときだけ意味がある
     if (!ctx.view.shows3d) return;
+
+    /**
+     * ウォークスルー（一人称で歩き回る）。
+     *
+     * ワイヤー（`20_案件詳細_現状図面` 4 枚目）「3D 図面の表示のみに
+     * 切り替わる／**不要ボタンは非アクティブとなる**／解除ボタン」。
+     * **入っているあいだは、この先のボタンを 1 つも出さない**——
+     * 歩いている最中に測ったり置いたりはしない
+     */
+    if (ctx.walkthrough) {
+      this.host.append(
+        el("span", { class: "walk-note" }, ["ウォークスルー"]),
+        el("button", {
+          type: "button",
+          title: "ウォークスルーをやめる（視点はそのまま残ります）",
+          onclick: () => ctx.setWalkthrough(false),
+        }, ["解除"]),
+      );
+      return;
+    }
     this.host.append(
       el(
         "button",
@@ -116,13 +136,24 @@ export class ViewTabs implements Panel {
         "button",
         {
           type: "button",
-          title: "目線の高さに下りて歩き回る視点にする",
+          title: "目線の高さに下りて歩き回る視点にする（カメラを置き直すだけ）",
           onclick: () => {
             this.viewer.flyOverHere();
             ctx.refresh();
           },
         },
         ["歩く"],
+      ),
+      // **「歩く」とは別物。** あちらはカメラの置き直し 1 回で、
+      // こちらは入力の意味ごと変わるモード（床を叩いて移る・見回す）
+      el(
+        "button",
+        {
+          type: "button",
+          title: "一人称で歩き回る。床をクリックで移動、ドラッグで見回す",
+          onclick: () => ctx.setWalkthrough(true),
+        },
+        ["ウォークスルー"],
       ),
     );
 

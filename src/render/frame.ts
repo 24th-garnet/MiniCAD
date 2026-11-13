@@ -24,6 +24,13 @@ export interface Frame {
    * ホストから渡されるもので、図面を保存しても付いてこない
    */
   comments?: CommentAnchor[];
+  /**
+   * ウォークスルー中の立ち位置と向き。**シーンには入らない。**
+   *
+   * `comments` と同じ扱い——図面の一部ではなく、いまの見え方の話なので
+   * 保存しても付いてこない。歩いていないときは省略する。
+   */
+  viewpoint?: { at: Vec; yaw: number };
 }
 
 export const refKey = (ref: EntityRef): string => `${ref.type}:${ref.id}`;

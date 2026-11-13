@@ -137,6 +137,65 @@ export function orbit(cam: Camera3D, dxPx: number, dyPx: number): void {
   cam.pitch = clampPitch(cam.pitch - dyPx * 0.005);
 }
 
+/**
+ * その場で見回す。**目の位置を動かさずに向きだけ変える。**
+ *
+ * `orbit` との違いは、**どちらが固定されるか**だけ。`orbit` は注視点を軸に
+ * 目が回り、`lookAround` は目を軸に注視点が回る。一人称で要るのは後者で、
+ * 前者を一人称の位置で使うと**目そのものが横へ滑る**（半径 1.5m の軌道カメラで
+ * 100px ドラッグすると 742mm）。
+ *
+ * **カメラの型は増やさない**（このファイルの `flyOver` の注記と同じ理由）。
+ * 目を先に押さえてから、向きを変えたぶんだけ注視点を置き直す。
+ */
+export function lookAround(cam: Camera3D, dxPx: number, dyPx: number): void {
+  const eye = cameraEye(cam);
+  // 向きは `orbit` と同じ係数・同じ符号にする。手触りを揃えるため
+  cam.yaw -= dxPx * 0.005;
+  cam.pitch = clampPitch(cam.pitch - dyPx * 0.005);
+  aimFrom(cam, eye);
+}
+
+/**
+ * 目を動かさずに方角だけ置き直す。
+ *
+ * 歩き始めに「空いているほう」を向くのに使う。`lookAround` と同じ不変量
+ * （目が 1mm も動かない）を同じ 1 か所で保つ。
+ */
+export function faceYaw(cam: Camera3D, yaw: number): void {
+  const eye = cameraEye(cam);
+  cam.yaw = yaw;
+  aimFrom(cam, eye);
+}
+
+/**
+ * いまの `yaw`・`pitch` のまま、**目がここに来る**ように注視点を置き直す。
+ *
+ * 目は `target + dir(yaw, pitch) * distance` なので、逆に解くだけ。
+ * 一人称の操作はどれも「目は動かさない」ので、その式をここに 1 つだけ置く。
+ */
+function aimFrom(cam: Camera3D, eye: Vec3): void {
+  const cp = Math.cos(cam.pitch);
+  cam.target = vec3(
+    eye.x - cam.distance * cp * Math.cos(cam.yaw),
+    eye.y - cam.distance * cp * Math.sin(cam.yaw),
+    eye.z - cam.distance * Math.sin(cam.pitch),
+  );
+}
+
+/**
+ * 立っている場所を移す。**高さも向きも変えない。**
+ *
+ * 注視点ごと平行に動かすので、`yaw`・`pitch`・`distance` はそのまま——
+ * 目の z も変わらない。ワイヤーの「移動位置をクリックすれば、**視点の xy 座標が
+ * 移動する**」がそのままこの形。
+ */
+export function walkTo(cam: Camera3D, x: number, y: number): void {
+  const eye = cameraEye(cam);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  cam.target = vec3(cam.target.x + (x - eye.x), cam.target.y + (y - eye.y), cam.target.z);
+}
+
 export function dolly(cam: Camera3D, factor: number): void {
   const next = cam.distance / factor;
   cam.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, Number.isFinite(next) ? next : cam.distance));

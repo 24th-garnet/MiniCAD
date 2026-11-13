@@ -75,6 +75,7 @@ export function render(frame: Frame, overlay?: (f: Frame) => void): void {
   drawNodes(frame);
   drawConstraints(frame);
   drawComments(frame);
+  drawViewpoint(frame);
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
   overlay?.(frame);
@@ -539,6 +540,53 @@ function drawComments(frame: Frame): void {
     ctx.fillStyle = "#fff";
     ctx.fillText(String(i + 1), p.x, p.y + 0.5);
   });
+  ctx.restore();
+}
+
+/**
+ * ウォークスルー中の立ち位置と向き。
+ *
+ * ワイヤー（`20_案件詳細_現状図面` 4 枚目）「**躯体図のどの位置にいるのか、
+ * 視点の向きと合わせて、表示**」。分割にしているときだけ目に入る。
+ *
+ * **ズームに依らない大きさで描く**（コメントのバッジと同じ）。縮尺を変える
+ * たびに人の大きさが変わるのは、位置を読む道具としておかしい。
+ *
+ * **画面は y 下向き。** 向きを画面の角度に直すところで符号が反転する
+ * （`drawConstraints` と同じ注意）。
+ */
+function drawViewpoint(frame: Frame): void {
+  const { ctx, vp, viewpoint } = frame;
+  if (!viewpoint) return;
+  const p = vp.toScreen(viewpoint.at);
+  // ワールドは y 上向き、画面は y 下向きなので角度の符号が裏返る
+  const a = -viewpoint.yaw;
+  const R = 13;
+  /*
+   * 視線の向きに尖った三角。**後ろの 2 点は短くする。**
+   * ±140 度で先端の 0.8 倍まで伸ばすと 3 頂点の距離が揃い、どれが先端か
+   * 読めない（実際に画面で見分けられなかった）。0.55 倍まで詰めて矢に寄せる
+   */
+  const corner = (deg: number, r: number) => ({
+    x: p.x + Math.cos(a + (deg * Math.PI) / 180) * r,
+    y: p.y + Math.sin(a + (deg * Math.PI) / 180) * r,
+  });
+  const tip = corner(0, R);
+  const left = corner(145, R * 0.55);
+  const right = corner(-145, R * 0.55);
+
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(tip.x, tip.y);
+  ctx.lineTo(left.x, left.y);
+  ctx.lineTo(right.x, right.y);
+  ctx.closePath();
+  ctx.fillStyle = theme.viewpoint;
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
   ctx.restore();
 }
 

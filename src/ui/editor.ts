@@ -47,6 +47,11 @@ export class Editor {
    * `Store` ではなくここに置く。
    */
   comments: CommentAnchor[] = [];
+  /**
+   * ウォークスルー中の立ち位置と向き。`App` が 3D から流し込む。
+   * 歩いていなければ null で、2D には何も出ない
+   */
+  viewpoint: { at: Vec; yaw: number } | null = null;
 
   private resizeObserver: ResizeObserver | null = null;
 
@@ -210,6 +215,7 @@ export class Editor {
       hover: this.hover,
       violated: new Set(this.store.lastSolve?.violated ?? []),
       comments: this.comments,
+      viewpoint: this.viewpoint ?? undefined,
     };
     render(frame, (f) => this.tool.drawOverlay?.(this, f));
   }

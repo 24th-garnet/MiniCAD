@@ -38,6 +38,10 @@ export function mount(container: HTMLElement, options: MountOptions = {}): MiniC
       return app.mode;
     },
     setMode: (mode) => app.setMode(mode),
+    setWalkthrough: (on) => app.setWalkthrough(on),
+    get walkthrough(): boolean {
+      return app.viewer.walking;
+    },
     setComments: (list) => app.setComments(list),
     capture: (view) => app.capture(view),
     getCamera: () => app.viewer.cameraParams,

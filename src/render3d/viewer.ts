@@ -11,8 +11,12 @@ import {
   frameAll,
   lookAt,
   type OrbitCenter,
+  cameraEye,
+  faceYaw,
+  lookAround,
   orbit,
   pivotAround,
+  walkTo,
   pan,
   projectPoint,
   viewProjection,
@@ -24,6 +28,7 @@ import {
   highlightOf,
   isWallTop,
   pickEntity,
+  pickFloor,
   Select3D,
   type Pointer3D,
   type Tool3D,
@@ -43,7 +48,7 @@ import { theme } from "../render/theme.ts";
 import type { CommentAnchor } from "../core/annotation.ts";
 import { vec3, type Vec3 } from "./mat4.ts";
 import type { Vec } from "../core/geometry.ts";
-import { screenRay } from "./ray.ts";
+import { pickRay, screenRay } from "./ray.ts";
 
 /**
  * 3D ビュー。2D とは**別のキャンバス**に描く。
@@ -80,6 +85,30 @@ function sameFaces(a: readonly Face3[], b: readonly Face3[]): boolean {
 /** 拾うときの near。`camera.ts` の NEAR と揃える */
 const NEAR_PICK = 50;
 
+/** 歩くときの目線の高さ (mm)。日本人の平均身長からの目線 */
+const EYE_HEIGHT = 1500;
+
+/**
+ * 歩いているときの「見ている先までの距離」(mm)。
+ *
+ * 一人称では画面に出ないが、軌道カメラの型をそのまま使うので 0 にはできない
+ * （向きが決まらない）。1.5m 前方を見ている形にしておく。
+ */
+const MIN_LOOK = 1500;
+
+/**
+ * 立った直後の俯角（ラジアン）。足元の床が画角に入る程度に下を向く。
+ *
+ * **この型では正が見下ろし。** 目は `target.z + distance·sin(pitch)` なので、
+ * 正で目が注視点より上＝見下ろしになる。符号を取り違えると空を向く。
+ *
+ * **値はサンプル間取りの LDK で測って決めた。** 画面を 19×19 で割り、
+ * 床として叩ける点がいくつあるか：俯角 0.2 → 0、0.3 → 4、0.4 → 18、0.5 → 34。
+ * 水平に近いと壁と家具で埋まり、**最初の 1 歩が踏めない**。下を向きすぎると
+ * 足元しか見えない。その間を採る
+ */
+const START_PITCH = 0.45;
+
 /** これ以内の動きはクリック扱い。2D の `SelectTool` と同じ考え方 */
 const CLICK_SLOP = 4;
 
@@ -100,7 +129,7 @@ export class Viewer3D {
   private height = 0;
   private dpr = 1;
   private shownOnce = false;
-  private dragging: "orbit" | "pan" | null = null;
+  private dragging: "orbit" | "pan" | "look" | null = null;
   private last = { x: 0, y: 0 };
   private readonly select = new Select3D();
   /** ソリッドを 3D の中に置く道具。選択と入れ替えて使う */
@@ -184,6 +213,16 @@ export class Viewer3D {
   /** コメントのバッジを叩いたときの通知。`App` が差し込む */
   onCommentOpen: ((id: string) => void) | null = null;
 
+  /**
+   * 歩いているあいだ、描き直すたびに鳴る。`App` が差し込む。
+   *
+   * **「動いたとき」ではなく毎フレーム。** 見回している最中も平面の矢は
+   * 回り続ける必要があるので、位置と向きの両方をここで流す。
+   * **歩いていないときは鳴らさない**——普段のカメラ操作で鳴らすと、
+   * 3D を触るだけで 2D を毎フレーム描き直すことになる。
+   */
+  onWalkMove: (() => void) | null = null;
+
   /** ホストのカタログから表示色を取り込む。渡されなければ既定の 5 色のまま */
   setMaterialColors(colors: ReadonlyMap<string, string>): void {
     this.materials = colors;
@@ -256,6 +295,130 @@ export class Viewer3D {
     if (this.orbitCenter === "pick") this.applyOrbitCenter(p);
   }
 
+  /**
+   * ウォークスルー（一人称で歩き回る）に入っているか。
+   *
+   * **道具ではない。** 道具は「何を作るか」で、これは「どう見るか」。
+   * ワイヤー（`20_案件詳細_現状図面` 4 枚目）も画面ごと切り替わると書いている。
+   *
+   * **ビューにも足さない。** `ViewMode` の 4 つめにすると、歩きながら分割に
+   * できなくなる——2D に現在位置を出すのは分割のときなので、それでは困る。
+   * 歩行はビューと直交する。
+   */
+  walking = false;
+  /** 床でないところを叩いたときの理由。次に動いたら消す */
+  private refusal: string | null = null;
+
+  /**
+   * 歩き始める／やめる。
+   *
+   * 始めるときは**原点に立つ**（ワイヤー「xyz=0 の地点からウォークスルーが
+   * 開始」）。ただし原点に床が無ければ、いちばん広い部屋の中心へ寄せる——
+   * 図面を原点から描いていない物件では、壁の外や宙に浮いた位置から
+   * 始まってしまうため。
+   *
+   * **やめてもカメラは戻さない。** 戻した瞬間に視点が飛ぶと、何が起きたのか
+   * 分からなくなる。見ていた場所から続けられるほうがよい。
+   */
+  setWalking(on: boolean): void {
+    if (this.walking === on) return;
+    this.walking = on;
+    if (on) this.standAtStart();
+    this.canvas.style.cursor = on ? "crosshair" : "";
+    this.requestRender();
+  }
+
+  /** 歩き始める場所。原点に床が無ければ、いちばん広い部屋の中心へ */
+  private standAtStart(): void {
+    const scene = this.editor.store.scene;
+    // **距離は詰める。** 入る前の引いた構図（数十 m）をそのまま持ち込むと、
+    // 平行移動の 1 ドラッグが何 m も滑る
+    this.camera.distance = MIN_LOOK;
+    // **やや下を向く。** 水平のまま立つと足元の床が画角に入らず、
+    // 「床をクリックで移動」が最初の 1 歩から使えない（Matterport も下向きで始まる）
+    this.camera.pitch = START_PITCH;
+    // **目線の高さを合わせるのは「目」であって注視点ではない。**
+    // 目は注視点から `distance·sin(pitch)` だけ上なので、その分を引いて置く
+    const eyeZ = activeLevel(scene).floorZ + EYE_HEIGHT;
+    const z = eyeZ - this.camera.distance * Math.sin(this.camera.pitch);
+    this.camera.target = vec3(this.camera.target.x, this.camera.target.y, z);
+
+    /**
+     * 立つ場所。**ワイヤーどおり原点から。**
+     *
+     * 原点に床が無ければ（図面を原点から描いていない物件では壁の外や宙に
+     * なる）、広い部屋から順に中心を試す。**ただの重心では家具の中に立つ**
+     * ——サンプル間取りの LDK の重心はダイニングテーブルの真ん中で、
+     * そこから見ると画面が机の内側で埋まり、床が 1 点も叩けない
+     */
+    const rooms = [...this.editor.rooms]
+      .filter((r) => !r.outdoor && r.levelId === scene.activeLevelId)
+      .sort((a, b) => b.floorArea - a.floorArea);
+    const spots: Vec[] = [{ x: 0, y: 0 }, ...rooms.map((r) => r.center)];
+    const clear = spots.find((q) => this.standsOnClearFloor(q.x, q.y, eyeZ));
+    const at = clear ?? rooms[0]?.center ?? { x: 0, y: 0 };
+    walkTo(this.camera, at.x, at.y);
+    this.faceOpenSpace();
+  }
+
+  /**
+   * 空いているほうを向く。
+   *
+   * **向きを引き継ぐと、だいたい家具の天板で画面が埋まる。** 入る前の軌道
+   * カメラは建物を外から見ているので、その方角をそのまま一人称に持ち込むと
+   * 目の前 1m に机があたりまえに来る（サンプル間取りで実際にそうなった）。
+   * 目線から 16 方角へ投げて、**いちばん遠くまで届く向き**を選ぶ。
+   *
+   * 何にも当たらない方角（開口から外へ抜ける）は最遠として扱う——
+   * そこが画面でいちばん開けている、で正しい。
+   */
+  private faceOpenSpace(): void {
+    const eye = cameraEye(this.camera);
+    const sp = Math.sin(this.camera.pitch);
+    const cp = Math.cos(this.camera.pitch);
+    let bestYaw = this.camera.yaw;
+    let bestT = -1;
+    for (let i = 0; i < 16; i++) {
+      const yaw = (i * Math.PI * 2) / 16;
+      // 目から注視点へ向かう向き。`cameraEye` の式の符号を反転したもの
+      const direction = vec3(-cp * Math.cos(yaw), -cp * Math.sin(yaw), -sp);
+      const hit = pickRay({ origin: eye, direction }, this.mesh, NEAR_PICK);
+      const t = hit ? hit.t : Number.POSITIVE_INFINITY;
+      if (t > bestT) {
+        bestT = t;
+        bestYaw = yaw;
+      }
+    }
+    faceYaw(this.camera, bestYaw);
+  }
+
+  /**
+   * そこに立てるか。**目の高さから真下へ落として、最初に当たるのが床か**を見る。
+   *
+   * 床があるかだけでは足りない——家具の中に立つと、足元の床より先に机の
+   * 天板や箱の内側が来る。「最初に当たるのが床」なら、空いた床の上に立てる。
+   */
+  private standsOnClearFloor(x: number, y: number, eyeZ: number): boolean {
+    const down = { origin: vec3(x, y, eyeZ), direction: vec3(0, 0, -1) };
+    return pickFloor(this.editor, down, this.mesh, 1) !== null;
+  }
+
+  /**
+   * 叩いたところへ移る。**床でなければ動かず、理由を状況表示に出す。**
+   *
+   * 壁の手前が返れば床ではないので断られる——歩いて壁をすり抜けないのは、
+   * 当たり判定ではなく「床しか行き先にしない」ことで保たれている。
+   */
+  private stepTo(p: Pointer3D): void {
+    const floor = pickFloor(this.editor, p.ray, this.mesh, NEAR_PICK);
+    if (!floor) {
+      this.refusal = "床をクリックしてください（壁や家具の上へは移れません）";
+      return;
+    }
+    this.refusal = null;
+    walkTo(this.camera, floor.point.x, floor.point.y);
+  }
+
   /** 歩き回る視点にする。いまの注視点の真下、目線の高さに立つ */
   flyOverHere(eyeHeight = 1500): void {
     flyOver(this.camera, this.camera.target, eyeHeight);
@@ -276,6 +439,7 @@ export class Viewer3D {
     requestAnimationFrame(() => {
       this.frameRequested = false;
       this.paintFrame();
+      if (this.walking) this.onWalkMove?.();
     });
   }
 
@@ -509,6 +673,10 @@ export class Viewer3D {
 
   /** いまの状態の説明。ステータスバーが 3D のときに読む */
   status(): string {
+    if (this.walking) {
+      return this.refusal
+        ?? "床をクリックで移動 / ドラッグで見回す / 「解除」で戻る";
+    }
     return this.tool.status(this.editor);
   }
 
@@ -525,6 +693,16 @@ export class Viewer3D {
   /** 3D で何かを掴んでいる最中か。分割中にどちらの説明を出すかの判断に使う */
   isGrabbing(): boolean {
     return this.select.isActive();
+  }
+
+  /**
+   * 画面の点の先にある床。**歩く先の確認用**（`hitAt` は床を外すので測れない）。
+   * `window.minicad.viewer.floorAt(x, y)`
+   */
+  floorAt(x: number, y: number): { x: number; y: number } | null {
+    const ray = screenRay(this.camera, x, y, this.width, this.height);
+    const hit = pickFloor(this.editor, ray, this.mesh, NEAR_PICK);
+    return hit ? { x: hit.point.x, y: hit.point.y } : null;
   }
 
   /**
@@ -620,6 +798,22 @@ export class Viewer3D {
         return;
       }
 
+      // **歩いているあいだは見回す。** バッジだけは先に拾う（下で）
+      if (this.walking) {
+        const badge = this.commentAt(
+          e.clientX - canvas.getBoundingClientRect().left,
+          e.clientY - canvas.getBoundingClientRect().top,
+        );
+        if (badge) {
+          this.dragging = null;
+          this.onCommentOpen?.(badge.id);
+          return;
+        }
+        this.refusal = null;
+        this.dragging = "look";
+        return;
+      }
+
       // **バッジがいちばん手前。** 図面の上に重ねた印なので、下の面より先に拾う
       const badge = this.commentAt(
         e.clientX - canvas.getBoundingClientRect().left,
@@ -674,6 +868,8 @@ export class Viewer3D {
       const dy = e.clientY - this.last.y;
       this.last = { x: e.clientX, y: e.clientY };
       if (this.dragging === "pan") pan(this.camera, dx, dy, this.height);
+      // **見回しは目を動かさない。** 回すと目そのものが横へ滑る
+      else if (this.dragging === "look") lookAround(this.camera, dx, dy);
       else orbit(this.camera, dx, dy);
       this.requestRender();
     });
@@ -687,8 +883,16 @@ export class Viewer3D {
       if (canvas.hasPointerCapture(e.pointerId))
         canvas.releasePointerCapture(e.pointerId);
       const clicked = !this.moved;
+      const wasLooking = this.dragging === "look";
       this.dragging = null;
       this.moved = false;
+      // **歩いているあいだは、動かさずに離したら床へ移る。**
+      // ワイヤー「移動位置をクリックすれば、視点の xy 座標が移動する」
+      if (this.walking) {
+        if (wasLooking && clicked) this.stepTo(this.pointer(e));
+        this.requestRender();
+        return;
+      }
       // 置く道具は「動かさずに離した」ときだけ効く（回しただけでは置かない）
       if (this.tool !== this.select && clicked)
         this.tool.onPointerDown(this.editor, this.pointer(e));
@@ -725,6 +929,9 @@ export class Viewer3D {
       "wheel",
       (e) => {
         e.preventDefault();
+        // **歩いているあいだは寄れない。** 一人称に「注視点との距離」は
+        // 意味が無く、変えると目線の高さだけが静かに狂う
+        if (this.walking) return;
         // 2D と同じ係数。トラックパッドの手触りを揃える
         const intensity = e.ctrlKey ? 0.01 : 0.0015;
         dolly(this.camera, Math.exp(-e.deltaY * intensity));

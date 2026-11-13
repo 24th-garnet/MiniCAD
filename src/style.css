@@ -1004,6 +1004,44 @@ input.layer-name:focus {
   color: #fff;
 }
 
+/* --- ウォークスルー中 --- */
+
+/*
+ * **道具帯とパーツ一覧を畳む。** ワイヤーの「不要ボタンは非アクティブとなる」。
+ * パーツ一覧を残すと、歩きながら家具を置く道具が武装してしまう——
+ * 「歩く」と「置く」でできることが重なる、まさにその形。
+ * 道具の登録そのものは触らない——`setTools` は作図を取り消して道具の選択を
+ * 捨てるので、一時的に歩くだけのことには重すぎる（`app.ts` の注記）。
+ *
+ * **消すときは列の指定も書き換える。** `display: none` だけだと残りが
+ * 1 列ずつ手前へ詰み、右の欄が主領域を占める。**幅 0 で残すのも駄目**で、
+ * 幅 0 の道具帯は縦長（1111px）になって行の高さを押し上げ、キャンバスが
+ * 作業領域（830px）からはみ出す。**消すなら両方消して、1 列と書く。**
+ */
+.minicad.walking .workspace {
+  grid-template-columns: 1fr;
+  /*
+   * **行の高さも書く。** ふだんは道具帯とパーツ一覧（どちらも自前で
+   * 縦スクロールする）が行の高さを決めていて、キャンバスの
+   * `height: 100%` はそこへ解決していた。2 つとも消すと行の高さが
+   * キャンバス自身の中身で決まり、`height: 100%` が解決先を失って
+   * 裏バッファの画素数（1111px）に落ちる——作業領域からはみ出す
+   */
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.minicad.walking .toolbar,
+.minicad.walking .inspector {
+  display: none;
+}
+
+.view-tabs .walk-note {
+  font-size: 12px;
+  color: #2563eb;
+  font-weight: 600;
+  align-self: center;
+}
+
 .view-tabs button[aria-pressed='true'] {
   background: #2563eb;
   border-color: #2563eb;

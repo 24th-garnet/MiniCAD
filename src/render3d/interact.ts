@@ -369,6 +369,23 @@ export function pickEntity(editor: Editor, ray: Ray3, mesh: Face3[], near: numbe
 }
 
 /**
+ * 歩く先の床。**床でなければ null。**
+ *
+ * `pickEntity` は `ref !== null` で絞っているので、**床は最初から外れている**
+ * ——床の面は部屋から導かれる派生で、実体を持たない（`mesh.ts` の `flatFace`）。
+ * 歩く先は床そのものなので、ここは別に用意する。
+ *
+ * **手前にあるものを全部拾ってから床かどうかを見る。** 壁の向こうの床を
+ * 拾えてしまうと、壁をすり抜けて移動できることになる。壁が手前なら壁が返り、
+ * 床でないので断られる——それが正しい。
+ */
+export function pickFloor(editor: Editor, ray: Ray3, mesh: Face3[], near: number): RayHit | null {
+  const scene = editor.store.scene;
+  const hit = pickRay(ray, mesh, near, (ref) => ref === null || isOnVisibleLayer(scene, ref));
+  return hit && hit.face.bucket === 'floor' ? hit : null;
+}
+
+/**
  * 面の色の差し替え。選択中とホバー中を目立たせる。
  *
  * **色の文字列を返すだけ**なので、`paint` が `ctx` に頼むことは変わらない

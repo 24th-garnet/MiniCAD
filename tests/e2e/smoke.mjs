@@ -3228,6 +3228,103 @@ async function run() {
     await sleep(200);
     console.log('✔ 道具は一度に 1 つで、歩いた視点がドラッグで消えない');
   }
+
+  // ── ウォークスルー（一人称で歩き回る）
+  //
+  // ワイヤー `20_案件詳細_現状図面` 4 枚目：「移動位置をクリックすれば、視点の
+  // xy 座標が移動する」「マウス操作で、視点の向きを上下左右に移動できる」
+  // 「不要ボタンは非アクティブとなる」「躯体図のどの位置にいるのか、視点の
+  // 向きと合わせて、表示」。
+  //
+  // **いちばん大事なのは「ドラッグで目が動かない」。** 壊れていたときは
+  // 1 回のドラッグで目が 742mm 滑っていた。
+  {
+    // **カメラは控えを取ってから。** ウォークスルーは出ても戻さない仕様なので、
+    // このあとの段に一人称の構図を持ち越さない
+    const savedCam = await page.evaluate(() => ({ ...window.minicad.viewer.camera }));
+    const eye = () => page.evaluate(() => {
+      const app = window.minicad;
+      const e = app.viewer.cameraParams.eye;
+      return { x: e.x, y: e.y, z: e.z, yaw: app.viewer.camera.yaw };
+    });
+
+    await page.locator('#view-tabs button', { hasText: '3D' }).first().click();
+    await sleep(900);
+    await page.getByRole('button', { name: 'ウォークスルー', exact: true }).click();
+    await sleep(600);
+
+    assert.ok(await page.evaluate(() => window.minicadApi.walkthrough), 'API が歩行中と答えない');
+    const stood = await eye();
+    assert.ok(Math.abs(stood.z - 1500) < 1, `目線が 1500mm でない (${Math.round(stood.z)})`);
+    assert.equal(
+      await page.evaluate(() => window.minicad.editorInstance.tool.id), 'select',
+      '歩いているのに 2D の道具が武装している',
+    );
+
+    // 不要ボタンは出さない
+    for (const name of ['計測', 'コメント', '置く', '描く', '稜線', '歩く']) {
+      assert.equal(
+        await page.getByRole('button', { name, exact: true }).count(), 0,
+        `歩いている間に「${name}」が出ている`,
+      );
+    }
+    assert.equal(await page.locator('.minicad.walking .toolbar').count(), 1, '道具帯を畳むクラスが当たっていない');
+
+    // 見回す：**目は 1mm も動かず、向きだけ変わる**
+    const box3d = await page.locator('#canvas3d').boundingBox();
+    await page.mouse.move(box3d.x + box3d.width / 2, box3d.y + box3d.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box3d.x + box3d.width / 2 + 120, box3d.y + box3d.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await sleep(300);
+    const looked = await eye();
+    assert.ok(Math.hypot(looked.x - stood.x, looked.y - stood.y) < 1,
+      `見回したら目が ${Math.round(Math.hypot(looked.x - stood.x, looked.y - stood.y))}mm 動いた`);
+    assert.ok(Math.abs(looked.yaw - stood.yaw) > 0.1, '見回しても向きが変わらない');
+
+    // 床をクリックして移る。**叩ける床の点は走査で探す**
+    const spot = await page.evaluate(() => {
+      const v = window.minicad.viewer;
+      for (let iy = 19; iy >= 10; iy--) for (let ix = 1; ix < 20; ix++) {
+        if (v.floorAt((v.width * ix) / 20, (v.height * iy) / 20)) return [ix / 20, iy / 20];
+      }
+      return null;
+    });
+    assert.ok(spot, '立った直後の画面に、叩ける床が 1 点も無い');
+    await page.mouse.click(box3d.x + box3d.width * spot[0], box3d.y + box3d.height * spot[1]);
+    await sleep(400);
+    const moved = await eye();
+    assert.ok(Math.hypot(moved.x - looked.x, moved.y - looked.y) > 100, '床を叩いても移らない');
+    assert.ok(Math.abs(moved.z - 1500) < 1, `移ったら目線が ${Math.round(moved.z)}mm になった`);
+
+    // 分割にすると 2D に現在地と向きが出る
+    await page.locator('#view-tabs button', { hasText: '分割' }).first().click();
+    await sleep(600);
+    const mark = await page.evaluate(() => {
+      const v = window.minicad.editorInstance.viewpoint;
+      return v && { x: v.at.x, y: v.at.y };
+    });
+    assert.ok(mark, '分割にしても 2D に現在地が出ない');
+    assert.ok(Math.hypot(mark.x - moved.x, mark.y - moved.y) < 1, '2D の現在地が 3D の目とずれている');
+
+    // 解除：カメラは残したまま、道具帯とパーツ一覧が戻る
+    await page.getByRole('button', { name: '解除', exact: true }).click();
+    await sleep(500);
+    assert.equal(await page.evaluate(() => window.minicadApi.walkthrough), false, '解除しても歩行中のまま');
+    const after = await eye();
+    assert.ok(Math.hypot(after.x - moved.x, after.y - moved.y) < 1, '解除でカメラが飛んだ');
+    assert.equal(await page.locator('.minicad.walking').count(), 0, '解除しても畳んだままのクラスが残る');
+    assert.ok(await page.getByRole('button', { name: '歩く', exact: true }).count() > 0, '解除しても「歩く」が戻らない');
+    assert.equal(await page.evaluate(() => window.minicad.editorInstance.viewpoint), null, '解除しても 2D の印が残る');
+
+    await page.evaluate((cam) => {
+      Object.assign(window.minicad.viewer.camera, cam);
+      window.minicad.viewer.requestRender();
+    }, savedCam);
+    await page.locator('#view-tabs button', { hasText: '2D' }).first().click();
+    await sleep(400);
+    console.log('✔ ウォークスルー：床を叩いて移り、ドラッグでは目が動かない');
+  }
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

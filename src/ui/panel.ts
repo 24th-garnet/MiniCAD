@@ -39,6 +39,15 @@ export interface PanelContext {
    * 残って、ビューを行き来するたびに違うものが効く。
    */
   setTool3D(tool: Tool3D | null): void;
+  /**
+   * ウォークスルー（一人称で歩き回る）の出入り。
+   *
+   * **道具ではなくビューでもない。** 道具は「何を作るか」、ビューは「どれを
+   * 見るか」で、これは「どう見るか」。入ると道具は全部外れ、3D 単独になる。
+   */
+  setWalkthrough(on: boolean): void;
+  /** いまウォークスルーに入っているか */
+  readonly walkthrough: boolean;
   /** いま見えている絵を PNG にする */
   capture(view?: '2d' | '3d'): Promise<Blob | null>;
 }

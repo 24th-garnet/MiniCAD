@@ -59,6 +59,15 @@ export interface HostCallbacks {
 
   /** 選択が変わった。インスペクタをホスト側に出したいときに使う */
   onSelectionChange?(refs: EntityRef[]): void;
+
+  /**
+   * ウォークスルーに入った／出たとき。
+   *
+   * MiniCAD の中の「解除」でも出られるので、ホストが自分のボタンの見た目を
+   * 合わせられるように知らせる。**出入りのときだけ**で、歩いているあいだは
+   * 鳴らない（カメラが要るなら `getCamera()` を読む）。
+   */
+  onWalkthroughChange?(on: boolean): void;
 }
 
 /** `mount()` が返すもの。ホストから MiniCAD を触る窓口 */
@@ -71,6 +80,19 @@ export interface MiniCad {
   getMeasures(planId?: string): MeasuresFile;
   readonly mode: Mode;
   setMode(mode: Mode): void;
+
+  /**
+   * ウォークスルー（一人称で歩き回る）の出入り。
+   *
+   * ワイヤーの「ウォークスルー」ボタンは**ホストのメニュー**にあるので、
+   * 外から入れられるようにしておく。入ると 3D 単独になり、道具は全部外れ、
+   * 床をクリックで移動・ドラッグで見回すようになる。
+   *
+   * **録画と動画生成はここに含まない。** 分担表どおりホスト側のサービスの
+   * 仕事で、MiniCAD が録画の口を持つと実行時依存ゼロと正面衝突する。
+   */
+  setWalkthrough(on: boolean): void;
+  readonly walkthrough: boolean;
   /** コメントのアンカーを差し替える。図面には保存されない */
   setComments(list: CommentAnchor[]): void;
   /**

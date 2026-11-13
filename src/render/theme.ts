@@ -32,6 +32,8 @@ export const theme = {
   crossingRectStroke: '#16a34a',
   /** 下の階の下敷き。**合わせるための目印**なので、読むためではなく見失わない濃さ */
   underlay: 'rgba(63, 63, 70, 0.22)',
+  /** ウォークスルー中の立ち位置。平面の上で人の居場所を指す印 */
+  viewpoint: '#dc2626',
   constraint: '#7c3aed',
   constraintConflict: '#dc2626',
   // 3D。画層は増やさず、ここに色を持つ
