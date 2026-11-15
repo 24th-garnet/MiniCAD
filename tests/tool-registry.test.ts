@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTools, TOOL_REGISTRY } from '../src/ui/tool-registry.ts';
+import { ICONS } from '../src/ui/icon.ts';
+import type { ToolId } from '../src/tools/tool.ts';
 import { MODES, type Mode } from '../src/ui/mode.ts';
 import { defaultCapabilities } from '../src/host.ts';
 
 const ALL = defaultCapabilities();
 const VIEW_ONLY = { ...ALL, edit: false };
-import type { ToolId } from '../src/tools/tool.ts';
 
 test('表のキーとツール自身の id が一致する', () => {
   // **ここが食い違うと静かに壊れる。** `Editor.registerTool` は `tool.id` で
@@ -68,14 +69,15 @@ test('キーを持たないツールも、ツールバーからは選べる', ()
   const keyless = buildTools('pro', ALL).filter((t) => t.shortcut === '');
   for (const tool of keyless) {
     assert.ok(TOOL_REGISTRY[tool.id], `${tool.id} が表に無い`);
-    assert.ok(TOOL_REGISTRY[tool.id].glyph.length > 0, `${tool.id} に絵記号が無い`);
+    assert.ok(ICONS[tool.id].length > 0, `${tool.id} にアイコンが無い`);
   }
 });
 
-test('グリフと表示名が全部入っている', () => {
+test('アイコンと表示名が全部入っている', () => {
   for (const mode of MODES) {
     for (const [id, entry] of Object.entries(TOOL_REGISTRY)) {
-      assert.ok(entry.glyph.length > 0, `${id} のグリフが空`);
+      // **アイコンは線の集まり。** 空だとボタンが無地になり、押す先が読めない
+      assert.ok(ICONS[id as ToolId].length > 0, `${id} のアイコンが空`);
       const tool = entry.make(mode);
       assert.ok(tool.label.length > 0, `${mode}: ${id} の表示名が空`);
       assert.ok(tool.cursor.length > 0, `${mode}: ${id} のカーソルが空`);

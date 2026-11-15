@@ -51,8 +51,6 @@ export interface ToolEntry {
    * `Tool` に `Mode` を持たせると、どこで分岐しているか追えなくなる。
    */
   make(mode: Mode): Tool;
-  /** ツールバーのアイコン */
-  glyph: string;
   /** どのモードで出すか */
   modes: readonly Mode[];
   /** 図面を書き換えるツールか。閲覧のみのときは出さない */
@@ -67,21 +65,21 @@ export interface ToolEntry {
 }
 
 export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
-  select: { make: () => new SelectTool(), glyph: '↖', modes: BOTH_MODES, edits: false },
+  select: { make: () => new SelectTool(), modes: BOTH_MODES, edits: false },
   // 計測は Phase 5 から図面に残るので、閲覧のみでは出さない。
   // 出すと `Store.readOnly` に弾かれて、測っても何も残らない
-  measure: { make: () => new MeasureTool(), glyph: '↔', modes: BOTH_MODES, edits: true },
-  copy: { make: () => new TransformTool('copy', 'copy', '複写', 'Y'), glyph: '⧉', modes: BOTH_MODES, edits: true },
-  rotate: { make: () => new TransformTool('rotate', 'rotate', '回転', 'R'), glyph: '↻', modes: BOTH_MODES, edits: true },
-  mirror: { make: () => new TransformTool('mirror', 'mirror', '鏡像', 'X'), glyph: '⇄', modes: BOTH_MODES, edits: true },
-  offset: { make: () => new ModifyTool('offset', 'offset', 'オフセット', 'O'), glyph: '⫽', modes: PRO_ONLY, edits: true },
-  trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), glyph: '✂', modes: PRO_ONLY, edits: true },
-  extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), glyph: '⇥', modes: PRO_ONLY, edits: true },
+  measure: { make: () => new MeasureTool(), modes: BOTH_MODES, edits: true },
+  copy: { make: () => new TransformTool('copy', 'copy', '複写', 'Y'), modes: BOTH_MODES, edits: true },
+  rotate: { make: () => new TransformTool('rotate', 'rotate', '回転', 'R'), modes: BOTH_MODES, edits: true },
+  mirror: { make: () => new TransformTool('mirror', 'mirror', '鏡像', 'X'), modes: BOTH_MODES, edits: true },
+  offset: { make: () => new ModifyTool('offset', 'offset', 'オフセット', 'O'), modes: PRO_ONLY, edits: true },
+  trim: { make: () => new ModifyTool('trim', 'trim', 'トリム', 'U'), modes: PRO_ONLY, edits: true },
+  extend: { make: () => new ModifyTool('extend', 'extend', '延長', 'E'), modes: PRO_ONLY, edits: true },
   // 分割と消しゴムは「1 つの対象を切る」で同じなので、1 ツールにまとめた。
   // ショートカットの文字が足りず、変形に 1 つ空ける必要もあった
   split: {
     make: () => new ModifyTool(['split', 'erase'], 'split', '切断', 'P'),
-    glyph: '⨉', modes: PRO_ONLY, edits: true,
+    modes: PRO_ONLY, edits: true,
   },
   /**
    * 角と結合。**結合だけは通常モードにも出す。**
@@ -96,28 +94,28 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
       mode === 'pro'
         ? new CornerTool(['fillet', 'chamfer', 'join'], '角')
         : new CornerTool(['join'], '結合'),
-    glyph: '◝', modes: BOTH_MODES, edits: true,
+    modes: BOTH_MODES, edits: true,
   },
-  vertex: { make: () => new VertexTool(), glyph: '◆', modes: PRO_ONLY, edits: true },
+  vertex: { make: () => new VertexTool(), modes: PRO_ONLY, edits: true },
   // 3D のソリッドとは無関係。2D でも 3D でも同じものが動く
-  array: { make: () => new ArrayCopyTool(), glyph: '⠿', modes: PRO_ONLY, edits: true },
+  array: { make: () => new ArrayCopyTool(), modes: PRO_ONLY, edits: true },
   /** スポイト。**キーを持たない**——A〜Z に空きが 1 つも無い */
-  eyedrop: { make: () => new EyedropperTool(), glyph: '⬩', modes: PRO_ONLY, edits: true },
-  wall: { make: () => new WallTool(), glyph: '▬', modes: BOTH_MODES, edits: true },
+  eyedrop: { make: () => new EyedropperTool(), modes: PRO_ONLY, edits: true },
+  wall: { make: () => new WallTool(), modes: BOTH_MODES, edits: true },
   // **構造は建具より上に並べる**（ワイヤーの奥谷さんの指摘）。
   // 躯体を決めてから建具を入れるのが実際の手順
-  fixture: { make: () => new FixtureTool('structure', 'fixture', '構造', 'K'), glyph: '◫', modes: BOTH_MODES, edits: true },
+  fixture: { make: () => new FixtureTool('structure', 'fixture', '構造', 'K'), modes: BOTH_MODES, edits: true },
   /**
    * 汎用ソリッド。**キーを持たない。** A〜Z が埋まっていて、しかも配列複写と同じく
    * 「種類を選んで置く」操作なので、指の記憶で呼ぶものではない
    */
-  solid: { make: () => new FixtureTool('solid', 'solid', 'ソリッド', ''), glyph: '◧', modes: PRO_ONLY, edits: true },
-  door: { make: () => new OpeningTool('door', 'door', 'ドア', 'D'), glyph: '⌒', modes: BOTH_MODES, edits: true },
-  window: { make: () => new OpeningTool('window', 'window', '窓', 'S'), glyph: '▤', modes: BOTH_MODES, edits: true },
-  block: { make: () => new BlockInsertTool(), glyph: '▦', modes: BOTH_MODES, edits: true },
+  solid: { make: () => new FixtureTool('solid', 'solid', 'ソリッド', ''), modes: PRO_ONLY, edits: true },
+  door: { make: () => new OpeningTool('door', 'door', 'ドア', 'D'), modes: BOTH_MODES, edits: true },
+  window: { make: () => new OpeningTool('window', 'window', '窓', 'S'), modes: BOTH_MODES, edits: true },
+  block: { make: () => new BlockInsertTool(), modes: BOTH_MODES, edits: true },
   // シンボルは置いた瞬間に実体へ展開される（スタンプ）
-  assembly: { make: () => new AssemblyTool(), glyph: '⊞', modes: BOTH_MODES, edits: true },
-  line: { make: () => new ShapeTool('line', 'line', '線', 'L'), glyph: '／', modes: BOTH_MODES, edits: true },
+  assembly: { make: () => new AssemblyTool(), modes: BOTH_MODES, edits: true },
+  line: { make: () => new ShapeTool('line', 'line', '線', 'L'), modes: BOTH_MODES, edits: true },
   /**
    * 作図。**1 種別 1 ツールにするとツールバーが破綻する**ので、建具と同じく
    * 「種類」セレクタで切り替える。
@@ -130,15 +128,15 @@ export const TOOL_REGISTRY: Record<ToolId, ToolEntry> = {
   shape: {
     make: (mode) =>
       new ShapeTool(mode === 'pro' ? PRO_SHAPES : PAINT_SHAPES, 'shape', '作図', 'F'),
-    glyph: '▭', modes: BOTH_MODES, edits: true,
+    modes: BOTH_MODES, edits: true,
   },
-  arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), glyph: '○', modes: BOTH_MODES, edits: true },
-  point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), glyph: '・', modes: PRO_ONLY, edits: true },
-  text: { make: () => new ShapeTool('text', 'text', '文字', 'T'), glyph: 'A', modes: BOTH_MODES, edits: true },
-  dimension: { make: () => new DimensionTool(), glyph: '↦', modes: BOTH_MODES, edits: true },
-  room: { make: () => new RoomTool(), glyph: 'あ', modes: BOTH_MODES, edits: true },
+  arc: { make: () => new ShapeTool('arc', 'arc', '円・弧', 'C'), modes: BOTH_MODES, edits: true },
+  point: { make: () => new ShapeTool('point', 'point', '点', 'Q'), modes: PRO_ONLY, edits: true },
+  text: { make: () => new ShapeTool('text', 'text', '文字', 'T'), modes: BOTH_MODES, edits: true },
+  dimension: { make: () => new DimensionTool(), modes: BOTH_MODES, edits: true },
+  room: { make: () => new RoomTool(), modes: BOTH_MODES, edits: true },
   // **コメントは図面を変えない。** 閲覧のみでも置ける（権限は `comment` が決める）
-  comment: { make: () => new CommentTool(), glyph: '💬', modes: BOTH_MODES, edits: false, needs: 'comment' },
+  comment: { make: () => new CommentTool(), modes: BOTH_MODES, edits: false, needs: 'comment' },
 };
 
 /** ワイヤー 8 枚目「ペイント」のうち、作図ツールが受け持つもの（直線は `line`） */

@@ -185,6 +185,7 @@ interface Capabilities {
 | 3D | `sceneToDxf3d(...)` → DXF R12 の `3DFACE` |
 | キャプチャ | `capture()` → PNG。保存はホスト |
 | カメラ | `getCamera()` / `setCamera()`。ウォークスルーと AI パースへ渡す形 |
+| 上のバー | `mount(el, { chrome: 'embedded' })` で**製品の名前だけ畳む**。ホストが図面名と製品名を自分の帯に出しているとき、その下にもう 1 本「MiniCAD ／ 間取りエディタ」が並ぶと同じ役の帯が 2 段になる。**メニューと編集モードは残る**——あれはホストの帯には移せない |
 | ウォークスルー | `setWalkthrough(on)` / `walkthrough` / `onWalkthroughChange`。ワイヤーの「ウォークスルー」ボタンはホストのメニューにあるので、MiniCAD 側のビュータブと同じことをここからもできる。**録画はホスト**——`capture()` を好きな間隔で呼べば駒が集まる |
 | 変更の通知 | 編集のたびに発火。保存するかどうかはホストが決める |
 

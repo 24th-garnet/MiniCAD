@@ -1,5 +1,8 @@
 import { el } from './dom.ts';
 
+/** 上のバーに製品の名前を出すか。`MountOptions.chrome` がそのまま来る */
+export type Chrome = 'standalone' | 'embedded';
+
 /**
  * 画面の骨組みを組み立てる。
  *
@@ -26,6 +29,7 @@ export interface Shell {
   readonly viewTabs: HTMLElement;
   readonly levelSwitch: HTMLElement;
   readonly options: HTMLElement;
+  readonly zoomBar: HTMLElement;
   readonly numeric: HTMLFormElement;
   readonly numericLabel: HTMLElement;
   readonly numericInput: HTMLInputElement;
@@ -35,7 +39,7 @@ export interface Shell {
   readonly statusReadout: HTMLElement;
 }
 
-export function buildShell(host: HTMLElement): Shell {
+export function buildShell(host: HTMLElement, chrome: Chrome = 'standalone'): Shell {
   const modeSwitch = el('div', { class: 'mode-switch', id: 'mode-switch' }, []);
   const fileActions = el('div', { class: 'file-actions', id: 'file-actions' }, []);
   const toolbar = el('nav', { class: 'toolbar', id: 'toolbar', 'aria-label': 'ツール' }, []);
@@ -53,10 +57,20 @@ export function buildShell(host: HTMLElement): Shell {
     spellcheck: false,
   }, []);
   const numeric = el('form', { class: 'numeric', id: 'numeric', hidden: true }, [numericLabel, numericInput]);
-    // **左上は 1 本の縦の列にまとめる。** 階の切り替えと道具の設定はどちらも
-  // 図面の左上に出したいもので、別々に絶対配置すると重なる
-  const overlayLeft = el('div', { class: 'overlay-left' }, [levelSwitch, options]);
-  const canvasWrap = el('main', { class: 'canvas-wrap' }, [canvas, canvas3d, viewTabs, overlayLeft, numeric]);
+  /*
+   * **左上は道具の設定だけ。**
+   *
+   * 以前はここに階の切り替えも積んでいた（「別々に絶対配置すると重なる」
+   * という注記つきで）。**階は左下の帯へ移した**ので、重なりの心配も消えた——
+   * ワイヤー（`ベース図面.html`）の `.bottom-bar` が「1F ／ 👁 ／ − 100% +」で、
+   * Coohom も同じところに置いている。図面を見ながら触るものは下に集める
+   */
+  const overlayLeft = el('div', { class: 'overlay-left' }, [options]);
+  const zoomBar = el('div', { class: 'zoom-bar', id: 'zoom-bar' }, []);
+  const overlayBottom = el('div', { class: 'overlay-bottom' }, [levelSwitch, zoomBar]);
+  const canvasWrap = el('main', { class: 'canvas-wrap' }, [
+    canvas, canvas3d, viewTabs, overlayLeft, overlayBottom, numeric,
+  ]);
   const inspector = el('aside', { class: 'inspector', id: 'inspector', 'aria-label': 'プロパティ' }, []);
   /*
    * **右の欄に何の束を出すかを選ぶレール。**
@@ -71,7 +85,17 @@ export function buildShell(host: HTMLElement): Shell {
 
   const root = el('div', { class: 'minicad' }, [
     el('header', { class: 'topbar' }, [
-      el('div', { class: 'brand' }, [el('strong', {}, ['MiniCAD']), el('span', {}, ['間取りエディタ'])]),
+      /*
+       * **製品の名前は 1 か所だけ。** ホストに組み込まれたときは、
+       * ホストの帯が図面名と製品名を出しているので、ここは畳む。
+       * `el` は `null` の子を飛ばすので、条件はここに 1 つ書けば足りる
+       */
+      chrome === 'embedded'
+        ? null
+        : el('div', { class: 'brand' }, [
+            el('strong', {}, ['MiniCAD']),
+            el('span', {}, ['間取りエディタ']),
+          ]),
       modeSwitch,
       fileActions,
     ]),
@@ -83,6 +107,6 @@ export function buildShell(host: HTMLElement): Shell {
 
   return {
     root, modeSwitch, fileActions, toolbar, canvasWrap, canvas, canvas3d, viewTabs, levelSwitch,
-    options, numeric, numericLabel, numericInput, inspector, panelRail, statusHint, statusReadout,
+    options, zoomBar, numeric, numericLabel, numericInput, inspector, panelRail, statusHint, statusReadout,
   };
 }

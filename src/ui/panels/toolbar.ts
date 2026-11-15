@@ -1,6 +1,6 @@
 import type { ToolGroup } from '../../tools/tool.ts';
-import { TOOL_REGISTRY } from '../tool-registry.ts';
 import { clear, el } from '../dom.ts';
+import { icon } from '../icon.ts';
 import type { Panel, PanelContext } from '../panel.ts';
 
 export class Toolbar implements Panel {
@@ -32,9 +32,16 @@ export class Toolbar implements Panel {
             },
           },
           [
-            el('span', { class: 'glyph' }, [TOOL_REGISTRY[tool.id].glyph]),
-            el('span', {}, [tool.label]),
-            el('span', { class: 'key' }, [tool.shortcut]),
+            icon(tool.id, 20),
+            /*
+             * **名札にキーを焼き込む。** アイコンだけにすると、どの道具が
+             * どのキーか画面から読めなくなる。Coohom も `Straight wall(B)`・
+             * `Arc wall(H)` と名札にキーを入れている
+             */
+            el('span', { class: 'tool-name' }, [
+              tool.label,
+              tool.shortcut ? el('span', { class: 'key' }, [tool.shortcut]) : null,
+            ]),
           ],
         ),
       );

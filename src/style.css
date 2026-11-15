@@ -322,18 +322,15 @@ body {
 }
 
 .tool-button {
-  font: inherit;
-  font-size: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 8px 2px 6px;
+  gap: 4px;
+  padding: 7px 2px 6px;
   border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink-soft);
 }
 
 .tool-button:hover {
@@ -342,18 +339,35 @@ body {
 
 .tool-button[aria-pressed='true'] {
   background: var(--accent-soft);
-  border-color: var(--accent);
+  border-color: transparent;
   color: var(--accent);
 }
 
-.tool-button .glyph {
-  font-size: 17px;
-  line-height: 1;
+/*
+ * **名札とキーを 1 行に。** 「壁 (W)」の形。以前はアイコン・名前・キーが
+ * 3 段に積まれていて、1 つのボタンが縦に伸びていた
+ */
+.tool-name {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  /* 「オフセット」は 6 文字。76px に収めるため少し詰める */
+  letter-spacing: -0.04em;
+}
+
+.tool-button .key::before {
+  content: '(';
+}
+
+.tool-button .key::after {
+  content: ')';
 }
 
 .tool-button .key {
-  font-size: 10px;
-  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  color: var(--ink-mute);
 }
 
 .tool-button[aria-pressed='true'] .key {
@@ -963,23 +977,47 @@ input.layer-name:focus {
   margin-bottom: 6px;
 }
 
+/*
+ * **絵のついたタイル。** ワイヤー（`ベース図面.html`）の `.asset-item` と
+ * Coohom のパーツ一覧が同じ形。以前は文字ボタンが 60 個並ぶだけだった。
+ *
+ * 絵は `thumb.ts` が**図面と同じ記号を描いて**作る。画像ファイルは持たない
+ */
 .part-button {
-  font: inherit;
-  font-size: 12px;
-  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 4px 6px;
   border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
+  border-radius: var(--r-md);
+  background: var(--surface-sunk);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+/* **横長。** 平面の建具は細長いので、正方形に収めると壁の帯が潰れる */
+.part-thumb {
+  width: 100%;
+  max-width: 96px;
+  height: 40px;
+}
+
+/* **名前は 2 行まで。** 「ドア開口(建具なし)」は 1 行に入らない */
+.part-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+  text-align: center;
 }
 
 .part-button:hover:not(:disabled) {
   background: var(--accent-soft);
   border-color: var(--accent);
+  color: var(--accent);
 }
 
 .part-button:disabled {
@@ -1069,15 +1107,26 @@ input.layer-name:focus {
 /* --- 2D / 3D の切り替え --- */
 .view-tabs {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
   z-index: 2;
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 6px;
-  background: rgb(255 255 255 / 85%);
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px;
+  border-radius: var(--r-md);
+  /* **透かさない。** 下に図面が透けると、押せるものの縁が読めなくなる */
+  background: var(--surface);
   box-shadow: var(--shadow);
+}
+
+.view-tabs button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--fs);
 }
 
 /* 階の区画。画層の行と同じ組み方 */
@@ -1146,14 +1195,72 @@ input.layer-name:focus {
   display: none;
 }
 
-.level-switch {
+/*
+ * **図面の左下に浮かぶ帯。** 階と倍率を 1 枚のカードに並べる。
+ * ワイヤー（`ベース図面.html`）の `.bottom-bar` と同じ形
+ */
+.overlay-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  background: rgb(255 255 255 / 85%);
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: var(--r-md);
+  background: var(--surface);
   box-shadow: var(--shadow);
+}
+
+.level-switch,
+.zoom-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* 階と倍率のあいだの仕切り */
+.zoom-bar::before {
+  content: '';
+  width: 1px;
+  height: 16px;
+  margin-right: 3px;
+  background: var(--line);
+}
+
+/* 階が 1 つしか無いときは仕切りも要らない */
+.level-switch[hidden] + .zoom-bar::before {
+  display: none;
+}
+
+.zoom-step {
+  display: flex;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-soft);
+}
+
+.zoom-value {
+  min-width: 46px;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--ink-mid);
+  font-size: var(--fs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.level-switch button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--fs);
 }
 
 .level-switch .level-label {

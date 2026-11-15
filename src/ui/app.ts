@@ -29,6 +29,7 @@ import { ModeSwitch } from "./panels/mode-switch.ts";
 import { StatusBar } from "./status-bar.ts";
 import { ViewTabs } from "./panels/view-tabs.ts";
 import { PanelRail } from "./panels/panel-rail.ts";
+import { ZoomBar } from "./panels/zoom-bar.ts";
 import { LevelSwitch } from "./panels/level-switch.ts";
 import { Viewer3D } from "../render3d/viewer.ts";
 import type { Tool3D } from "../render3d/interact.ts";
@@ -70,7 +71,7 @@ export class App {
     this.catalogs = host.catalogs ?? {};
     this.currentMode = host.mode ?? DEFAULT_MODE;
     // 骨組みは自分で組む。埋め込まれるとき、MiniCAD は入る箱しか貰えない
-    const shell = buildShell(container);
+    const shell = buildShell(container, host.chrome);
     this.shellRoot = shell.root;
     this.editor = new Editor(shell.canvas);
     this.viewer3d = new Viewer3D(shell.canvas3d, this.editor);
@@ -158,6 +159,7 @@ export class App {
       commandInput,
       new ViewTabs(shell.viewTabs, this.viewer3d),
       new LevelSwitch(shell.levelSwitch),
+      new ZoomBar(shell.zoomBar),
       new PanelRail(shell.panelRail),
     ];
 

@@ -10,6 +10,7 @@ import { AssemblyTool } from '../../../tools/assembly.ts';
 import { deserialize } from '../../../io/scene.ts';
 import { el } from '../../dom.ts';
 import type { PanelContext, Section } from '../../panel.ts';
+import { fixtureThumb, openingThumb } from '../../thumb.ts';
 import type { LibraryItem } from '../../../host.ts';
 import { ALL_USES, USES, USE_LABELS, type Use } from '../../../core/use.ts';
 
@@ -135,7 +136,7 @@ function fixtureButton(kind: FixtureKind, ctx: PanelContext): HTMLElement {
       ctx.editor.canvas.focus();
       ctx.refresh();
     },
-  }, [spec.label]);
+  }, [thumb(fixtureThumb(kind)), el('span', { class: 'part-name' }, [spec.label])]);
 }
 
 /**
@@ -250,7 +251,17 @@ function openingButton(part: OpeningPart, ctx: PanelContext): HTMLElement {
       ctx.editor.canvas.focus();
       ctx.refresh();
     },
-  }, [part.label]);
+  }, [thumb(openingThumb(part)), el('span', { class: 'part-name' }, [part.label])]);
+}
+
+/**
+ * 記号の絵。**空なら何も足さない。**
+ *
+ * 絵が作れないことはある（ホストの部品には平面の記号が無い）。そのときは
+ * 名前だけのタイルになる——空の枠を置くより、詰めたほうが読みやすい
+ */
+function thumb(src: string): HTMLElement | null {
+  return src ? el('img', { class: 'part-thumb', src, alt: '' }) : null;
 }
 
 function currentKind(ctx: PanelContext): FixtureKind | null {
