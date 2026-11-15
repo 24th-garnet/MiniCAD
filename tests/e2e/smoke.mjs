@@ -50,6 +50,15 @@ page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
  * `SECTION_PANE`）ので、区画を触る前にその束を開く。畳み方を変えたときに
  * 全箇所を直さなくて済むよう、**ここ 1 か所**に閉じ込める。
  */
+/**
+ * サンプル間取りの素の数。
+ *
+ * **ここから何本増えたかで見る段がいくつもある。** 以前は `12` `13` `14` と
+ * 絶対の数で書いてあり、見本を直すたびに全部書き直すことになっていた。
+ * 中身は `src/io/sample.ts`（1LDK 48 m²、7 室）。
+ */
+const SAMPLE = { walls: 24, openings: 11, instances: 7, rooms: 7, dimensions: 12 };
+
 async function pane(name) {
   const sel = `#panel-rail button[data-pane="${name}"]`;
   const open = await page.$eval(sel, (b) => b.getAttribute('aria-pressed') === 'true')
@@ -540,12 +549,13 @@ async function run() {
   await sleep(150);
 
   await step('サンプル間取りが読み込まれる', async () => {}, (s) => {
-    assert.equal(s.walls, 10);
+    assert.equal(s.walls, SAMPLE.walls);
     assert.deepEqual(
       s.rooms.map((r) => r.name).sort(),
-      ['LDK', '水まわり', '洋室'].sort(),
+      ['LDK', 'CL', '玄関', '洗面脱衣室', '浴室', 'トイレ', '洋室'].sort(),
     );
-    assert.equal(s.dimensions, 10, '壁ぶんの寸法が入っているはず');
+    // **寸法は外周ぶんだけ。** 仕切りまで入れると図面が寸法線で埋まる
+    assert.equal(s.dimensions, SAMPLE.dimensions, '外周ぶんの寸法が入っているはず');
   });
 
   await step(
@@ -570,7 +580,7 @@ async function run() {
       await moveWorld(10000, 3000);
     },
     (s) => {
-      assert.equal(s.walls, 12, '壁が2本増えているはず');
+      assert.equal(s.walls, SAMPLE.walls + 2, '壁が2本増えているはず');
       assert.ok(s.numericVisible, '作図中は数値入力欄が出るはず');
     },
   );
@@ -581,7 +591,7 @@ async function run() {
       await page.fill('#numeric-input', '4000<180');
       await page.keyboard.press('Enter');
     },
-    (s) => assert.equal(s.walls, 13),
+    (s) => assert.equal(s.walls, SAMPLE.walls + 3),
   );
 
   await step(
@@ -591,7 +601,7 @@ async function run() {
       await page.keyboard.press('Escape');
     },
     (s) => {
-      assert.equal(s.walls, 14);
+      assert.equal(s.walls, SAMPLE.walls + 4);
       // 壁ツールは作図前でも入力欄を出す（絶対座標で始点を打てるようにするため）
       assert.ok(s.numericVisible);
       const room = s.rooms.find((r) => r.name === null);
@@ -613,7 +623,7 @@ async function run() {
       await page.keyboard.press('Enter');
       await page.keyboard.press('Escape');
     },
-    (s) => assert.equal(s.walls, 15, '絶対座標と相対直交で壁が引けていない'),
+    (s) => assert.equal(s.walls, SAMPLE.walls + 5, '絶対座標と相対直交で壁が引けていない'),
   );
 
   await step(
@@ -624,7 +634,7 @@ async function run() {
       await page.keyboard.press('Enter');
     },
     async (s) => {
-      assert.equal(s.walls, 15, '不正な入力で何か作られている');
+      assert.equal(s.walls, SAMPLE.walls + 5, '不正な入力で何か作られている');
       const invalid = await page.locator('#numeric-input').getAttribute('aria-invalid');
       assert.equal(invalid, 'true', '入力欄が不正と表示されていない');
     },
@@ -661,7 +671,7 @@ async function run() {
       await moveWorld(12000, 0);
       await clickWorld(12000, 0);
     },
-    (s) => assert.equal(s.openings, 8),
+    (s) => assert.equal(s.openings, SAMPLE.openings + 1),
   );
 
   await step(
@@ -671,7 +681,7 @@ async function run() {
       await moveWorld(12000, 3000);
       await clickWorld(12000, 3000);
     },
-    (s) => assert.equal(s.openings, 9),
+    (s) => assert.equal(s.openings, SAMPLE.openings + 2),
   );
 
   await step(
@@ -682,7 +692,7 @@ async function run() {
       await moveWorld(11500, 1500);
       await clickWorld(11500, 1500);
     },
-    (s) => assert.equal(s.instances, 8),
+    (s) => assert.equal(s.instances, SAMPLE.instances + 1),
   );
 
   await step(
@@ -813,7 +823,7 @@ async function run() {
     },
     (s) => {
       assert.equal(s.tool, 'dimension');
-      assert.equal(s.dimensions, 11, '寸法が増えていない');
+      assert.equal(s.dimensions, SAMPLE.dimensions + 1, '寸法が増えていない');
     },
   );
 
@@ -843,7 +853,7 @@ async function run() {
       await page.keyboard.press('Meta+z');
       await page.keyboard.press('Meta+z');
     },
-    (s) => assert.equal(s.dimensions, 10),
+    (s) => assert.equal(s.dimensions, SAMPLE.dimensions),
   );
 
   // --- 複写・回転・鏡像 ---
@@ -932,8 +942,8 @@ async function run() {
     },
     (s) => {
       assert.equal(s.walls, wallsBeforeCopy + 4, '壁が4本増えるはず');
-      assert.equal(s.instances, 9, '範囲内のブロックも複製されるはず');
-      assert.equal(s.rooms.length, 5, '閉じた部屋が1つ増えるはず');
+      assert.equal(s.instances, SAMPLE.instances + 2, '範囲内のブロックも複製されるはず');
+      assert.equal(s.rooms.length, SAMPLE.rooms + 2, '閉じた部屋が1つ増えるはず');
       // 壁4 + 家具1 + 室名1。建具は壁に乗って複製されるので選択には入らない
       assert.equal(s.selection, 6, '複製側が選択されているはず');
       assert.equal(s.rooms.filter((r) => r.name === '書斎').length, 2, '室名も複製されるはず');
@@ -945,7 +955,7 @@ async function run() {
     () => page.keyboard.press('Meta+z'),
     (s) => {
       assert.equal(s.walls, wallsBeforeCopy);
-      assert.equal(s.rooms.length, 4);
+      assert.equal(s.rooms.length, SAMPLE.rooms + 1);
     },
   );
 
@@ -972,7 +982,7 @@ async function run() {
     (s) => {
       assert.equal(s.tool, 'rotate');
       assert.equal(s.walls, wallsBeforeCopy + 4, '回転では本数が変わらないはず');
-      assert.equal(s.rooms.length, 5, '回転しても部屋は保たれるはず');
+      assert.equal(s.rooms.length, SAMPLE.rooms + 2, '回転しても部屋は保たれるはず');
     },
   );
 
@@ -3359,19 +3369,46 @@ async function run() {
       `見回したら目が ${Math.round(Math.hypot(looked.x - stood.x, looked.y - stood.y))}mm 動いた`);
     assert.ok(Math.abs(looked.yaw - stood.yaw) > 0.1, '見回しても向きが変わらない');
 
-    // 床をクリックして移る。**叩ける床の点は走査で探す**
-    const spot = await page.evaluate(() => {
+    /*
+     * 床をクリックして移る。**叩ける床の点は走査で探す。**
+     *
+     * **足元の床は拾わない。** いちばん手前の点を取ると、立っている場所の
+     * すぐ横に「移る」ことになり、移れたのかどうか見分けがつかない。
+     * 1m 以上離れた床だけを行き先にする
+     */
+    /*
+     * 床をクリックして移る。
+     *
+     * **叩いた床の世界座標まで、ページの中で出しておく。** `floorAt` は
+     * キャンバスの中の画素で測るので、外から `boundingBox` の比で叩き直すと
+     * 1 画素のずれで別の場所を指す。行き先が分かっていれば、
+     * 「**その場所に立ったか**」を直に見られる——「100mm 以上動いたか」より
+     * 強く、落ちたときに何が起きたかも分かる。
+     *
+     * 探すのは**画面の真ん中から下**へ。いちばん手前の床は足元すぎて、
+     * 移れたのかどうか見分けがつかない
+     */
+    const spot = await page.evaluate(([ex, ey]) => {
       const v = window.minicad.viewer;
-      for (let iy = 19; iy >= 10; iy--) for (let ix = 1; ix < 20; ix++) {
-        if (v.floorAt((v.width * ix) / 20, (v.height * iy) / 20)) return [ix / 20, iy / 20];
+      const r = document.getElementById('canvas3d').getBoundingClientRect();
+      let best = null;
+      for (let iy = 10; iy <= 19; iy++) for (let ix = 1; ix < 20; ix++) {
+        const px = (v.width * ix) / 20;
+        const py = (v.height * iy) / 20;
+        const f = v.floorAt(px, py);
+        if (!f) continue;
+        const d = Math.hypot(f.x - ex, f.y - ey);
+        if (d > 1000 && (!best || d < best.d)) best = { x: r.left + px, y: r.top + py, world: f, d: Math.round(d) };
       }
-      return null;
-    });
-    assert.ok(spot, '立った直後の画面に、叩ける床が 1 点も無い');
-    await page.mouse.click(box3d.x + box3d.width * spot[0], box3d.y + box3d.height * spot[1]);
+      return best;
+    }, [looked.x, looked.y]);
+    assert.ok(spot, '立った直後の画面に、1m 以上離れた床が 1 点も無い');
+    await page.mouse.click(spot.x, spot.y);
     await sleep(400);
     const moved = await eye();
-    assert.ok(Math.hypot(moved.x - looked.x, moved.y - looked.y) > 100, '床を叩いても移らない');
+    const off = Math.round(Math.hypot(moved.x - spot.world.x, moved.y - spot.world.y));
+    assert.ok(off < 50, `叩いた床 (${Math.round(spot.world.x)}, ${Math.round(spot.world.y)}) に立っていない`
+      + `（目は ${Math.round(moved.x)}, ${Math.round(moved.y)}、${off}mm ずれ）`);
     assert.ok(Math.abs(moved.z - 1500) < 1, `移ったら目線が ${Math.round(moved.z)}mm になった`);
 
     // 分割にすると 2D に現在地と向きが出る

@@ -143,10 +143,19 @@ test('壁を複写せずに寸法だけ複写すると、紐づけが外れて�
   assert.equal(Math.round(dimensionGeometry(scene, copied, scene.standard)!.value), 4000);
 });
 
-test('サンプル間取りに壁ぶんの寸法が入っている', () => {
+/**
+ * **サンプルが寸法を入れるのは外周だけ。**
+ *
+ * `createWallDimensions` は壁ぶん全部を返すが、サンプルはそこから外周だけを
+ * 拾って入れている（`io/sample.ts`）。仕切りが 12 本あるので全部入れると
+ * 図面が寸法線で埋まって間取りが読めない。
+ */
+test('サンプル間取りに外周ぶんの寸法が入っている', () => {
   const scene = sampleScene();
   const dims = Object.values(scene.shapes).filter((s) => s.shape === 'dimension');
-  assert.equal(dims.length, Object.keys(scene.walls).length, '壁の数と寸法の数が合わない');
+  const outerWalls = Object.values(scene.walls).filter((w) => w.thickness === 180);
+  assert.equal(dims.length, outerWalls.length, '外周の数と寸法の数が合わない');
+  assert.ok(outerWalls.length < Object.keys(scene.walls).length, '前提: 仕切りもある');
   for (const d of dims as DimensionShape[]) {
     assert.ok(d.a.nodeId && d.b.nodeId, '壁の角に紐づいていない');
     assert.ok(dimensionGeometry(scene, d, scene.standard), '幾何が作れない');

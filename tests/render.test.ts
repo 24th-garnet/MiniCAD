@@ -16,10 +16,10 @@ import { addConstraint } from '../src/core/constraintOps.ts';
 test('サンプル間取りが例外なく描画できる', () => {
   const scene = sampleScene();
   const rooms = detectRooms(scene);
-  assert.equal(rooms.length, 3, `検出された部屋: ${rooms.map((r) => r.name).join(',')}`);
+  assert.equal(rooms.length, 7, `検出された部屋: ${rooms.map((r) => r.name).join(',')}`);
   assert.deepEqual(
     rooms.map((r) => r.name).sort(),
-    ['LDK', '水まわり', '洋室'].sort(),
+    ['LDK', 'CL', '玄関', '洗面脱衣室', '浴室', 'トイレ', '洋室'].sort(),
   );
 
   const vp = new Viewport();
@@ -51,7 +51,7 @@ test('JSON に保存して読み戻しても内容が一致する', () => {
   const restored = deserialize(JSON.parse(JSON.stringify(serialize(scene))));
   assert.deepEqual(Object.keys(restored.walls).sort(), Object.keys(scene.walls).sort());
   assert.deepEqual(Object.keys(restored.openings).sort(), Object.keys(scene.openings).sort());
-  assert.equal(detectRooms(restored).length, 3);
+  assert.equal(detectRooms(restored).length, 7);
 });
 
 test('壊れた JSON は読み込み時に弾かれる', () => {
