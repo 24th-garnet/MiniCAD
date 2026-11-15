@@ -7,7 +7,12 @@ import { CommandInput } from "./command-input.ts";
 import { Editor } from "./editor.ts";
 import { defaultBindings, installKeymap, type Binding } from "./keymap.ts";
 import type { Panel, PanelContext } from "./panel.ts";
-import { buildSections } from "./section-registry.ts";
+import {
+  buildSections,
+  PANE_IDS,
+  paneHasSections,
+  type PaneId,
+} from "./section-registry.ts";
 import { buildTools } from "./tool-registry.ts";
 import { DEFAULT_MODE, type Mode } from "./mode.ts";
 import {
@@ -23,6 +28,7 @@ import { Toolbar } from "./panels/toolbar.ts";
 import { ModeSwitch } from "./panels/mode-switch.ts";
 import { StatusBar } from "./status-bar.ts";
 import { ViewTabs } from "./panels/view-tabs.ts";
+import { PanelRail } from "./panels/panel-rail.ts";
 import { LevelSwitch } from "./panels/level-switch.ts";
 import { Viewer3D } from "../render3d/viewer.ts";
 import type { Tool3D } from "../render3d/interact.ts";
@@ -48,6 +54,8 @@ export class App {
   private readonly inspector: Inspector;
   private readonly bindings: Binding[];
   private currentMode: Mode;
+  /** 右の欄にいま出している束。`null` なら畳んである */
+  private pane: PaneId | null;
   private readonly host: HostCallbacks;
   private readonly can: Capabilities;
   private readonly catalogs: HostCatalogs;
@@ -79,6 +87,8 @@ export class App {
 
     // ゲッターの中から見るので、`this` ではなく実体を掴んでおく
     const viewer = this.viewer3d;
+    // eslint 風の `self` ではなく、ゲッターから `App` 本体を見るための控え
+    const self = this;
     this.ctx = {
       editor: this.editor,
       refresh: () => this.refresh(),
@@ -94,6 +104,10 @@ export class App {
       selectTool: (id) => this.selectTool(id),
       setTool3D: (tool) => this.setTool3D(tool),
       setWalkthrough: (on) => this.setWalkthrough(on),
+      get pane(): PaneId | null {
+        return self.pane;
+      },
+      setPane: (pane) => this.setPane(pane),
       get walkthrough(): boolean {
         return viewer.walking;
       },
@@ -128,9 +142,10 @@ export class App {
       this.viewer3d,
     );
 
+    this.pane = PANE_IDS.find((id) => paneHasSections(id, this.currentMode, this.can)) ?? null;
     this.inspector = new Inspector(
       shell.inspector,
-      buildSections({ bindings }, this.currentMode, this.can),
+      buildSections({ bindings }, this.currentMode, this.can, this.pane ?? undefined),
     );
     if (!this.can.edit) shell.root.classList.add("read-only");
     this.panels = [
@@ -143,6 +158,7 @@ export class App {
       commandInput,
       new ViewTabs(shell.viewTabs, this.viewer3d),
       new LevelSwitch(shell.levelSwitch),
+      new PanelRail(shell.panelRail),
     ];
 
     toolbar.build(this.ctx);
@@ -255,10 +271,37 @@ export class App {
     this.ctx.mode = mode;
     this.editor.setTools(buildTools(mode, this.can));
     this.toolbar.build(this.ctx);
-    this.inspector.setSections(
-      buildSections({ bindings: this.bindings }, mode, this.can),
-    );
+    // **束ごと消えることがある。** プロだけの区画しか無い束は通常モードで空になる
+    if (this.pane && !paneHasSections(this.pane, mode, this.can)) {
+      this.pane = PANE_IDS.find((id) => paneHasSections(id, mode, this.can)) ?? null;
+    }
+    this.rebuildSections();
     this.refresh();
+  }
+
+  /**
+   * 右の欄に出す束を変える。**同じものを押したら畳む。**
+   *
+   * 畳むのは `null`。作図中に図面を広く見たいのは CAD の常で、
+   * 畳むとキャンバスが 272px 広がる。
+   */
+  setPane(pane: PaneId | null): void {
+    if (this.pane === pane) return;
+    this.pane = pane;
+    this.shellRoot.classList.toggle("pane-closed", pane === null);
+    this.rebuildSections();
+    this.refresh();
+  }
+
+  private rebuildSections(): void {
+    this.inspector.setSections(
+      buildSections(
+        { bindings: this.bindings },
+        this.currentMode,
+        this.can,
+        this.pane ?? undefined,
+      ),
+    );
   }
 
   /**

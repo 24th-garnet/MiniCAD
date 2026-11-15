@@ -4,6 +4,7 @@ import type { Capabilities, HostCatalogs } from '../host.ts';
 import type { Mode } from './mode.ts';
 import type { ViewState } from './view-state.ts';
 import type { Tool3D } from '../render3d/interact.ts';
+import type { PaneId } from './section-registry.ts';
 
 /**
  * パネルから編集系の操作を呼ぶための窓口。
@@ -48,6 +49,14 @@ export interface PanelContext {
   setWalkthrough(on: boolean): void;
   /** いまウォークスルーに入っているか */
   readonly walkthrough: boolean;
+  /**
+   * 右の欄にいま出している束。`null` なら畳んである。
+   *
+   * **ビューにも道具にも足さない。** ビューは「どれを見るか」、道具は
+   * 「何を作るか」で、これは「どれを調べるか」。3 つは直交する
+   */
+  readonly pane: PaneId | null;
+  setPane(pane: PaneId | null): void;
   /** いま見えている絵を PNG にする */
   capture(view?: '2d' | '3d'): Promise<Blob | null>;
 }

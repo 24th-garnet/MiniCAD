@@ -30,6 +30,7 @@ export interface Shell {
   readonly numericLabel: HTMLElement;
   readonly numericInput: HTMLInputElement;
   readonly inspector: HTMLElement;
+  readonly panelRail: HTMLElement;
   readonly statusHint: HTMLElement;
   readonly statusReadout: HTMLElement;
 }
@@ -57,6 +58,14 @@ export function buildShell(host: HTMLElement): Shell {
   const overlayLeft = el('div', { class: 'overlay-left' }, [levelSwitch, options]);
   const canvasWrap = el('main', { class: 'canvas-wrap' }, [canvas, canvas3d, viewTabs, overlayLeft, numeric]);
   const inspector = el('aside', { class: 'inspector', id: 'inspector', 'aria-label': 'プロパティ' }, []);
+  /*
+   * **右の欄に何の束を出すかを選ぶレール。**
+   *
+   * ワイヤー（`ベース図面.html`）は同じものを左に置いているが、こちらは右。
+   * MiniCAD の左列は道具帯で、両方を左に積むとキャンバスが 1076 → 844px まで痩せる。
+   * 左＝作るもの、右＝調べるもの、という読み方もそのまま残る
+   */
+  const panelRail = el('nav', { class: 'panel-rail', id: 'panel-rail', 'aria-label': '右の欄' }, []);
   const statusHint = el('span', { id: 'status-hint' }, []);
   const statusReadout = el('span', { id: 'status-readout' }, []);
 
@@ -66,7 +75,7 @@ export function buildShell(host: HTMLElement): Shell {
       modeSwitch,
       fileActions,
     ]),
-    el('div', { class: 'workspace' }, [toolbar, canvasWrap, inspector]),
+    el('div', { class: 'workspace' }, [toolbar, canvasWrap, inspector, panelRail]),
     el('footer', { class: 'statusbar' }, [statusHint, statusReadout]),
   ]);
 
@@ -74,6 +83,6 @@ export function buildShell(host: HTMLElement): Shell {
 
   return {
     root, modeSwitch, fileActions, toolbar, canvasWrap, canvas, canvas3d, viewTabs, levelSwitch,
-    options, numeric, numericLabel, numericInput, inspector, statusHint, statusReadout,
+    options, numeric, numericLabel, numericInput, inspector, panelRail, statusHint, statusReadout,
   };
 }

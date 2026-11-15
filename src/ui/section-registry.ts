@@ -1,6 +1,7 @@
 import type { Binding } from './keymap.ts';
 import type { Section } from './panel.ts';
 import type { Capabilities } from '../host.ts';
+import type { IconName } from './icon.ts';
 import { BOTH_MODES, PRO_ONLY, type Mode } from './mode.ts';
 import { BlocksSection } from './panels/sections/blocks.ts';
 import { ConstraintsSection } from './panels/sections/constraints.ts';
@@ -73,10 +74,86 @@ export const SECTION_REGISTRY: Record<SectionId, SectionEntry> = {
   shortcuts: { make: (deps) => new ShortcutsSection(deps.bindings), modes: BOTH_MODES, edits: false },
 };
 
-/** そのモードとできることで出す区画を順に作る。並びは表のキーの順 */
-export function buildSections(deps: SectionDeps, mode: Mode, can: Capabilities): Section[] {
-  return Object.values(SECTION_REGISTRY)
-    .filter((entry) => entry.modes.includes(mode))
-    .filter((entry) => can.edit || !entry.edits)
-    .map((entry) => entry.make(deps));
+/**
+ * 右の欄をどの束に入れるか。
+ *
+ * **14 区画を 1 本のスクロールに積むのをやめる。** 壁を 1 枚選ぶと
+ * 「プロパティ」だけで 15 欄あり、パーツも画層も製図規格も、その下へ
+ * 流れていって見えなかった。レールで束を選び、選んだ束だけを出す。
+ *
+ * 倣い先は `ワイヤー/クライアント/ベース図面.html` の左レール（`.rail-icon`）。
+ * **ワイヤーは左、こちらは右**——MiniCAD の左列は道具帯で、両方を左に積むと
+ * キャンバスが 1076 → 844px まで痩せる。左＝作るもの、右＝調べるものという
+ * いまの読み方もそのまま保てる。
+ *
+ * `Record` にしてあるので、**区画を足して束を書き忘れるとコンパイルエラー**になる。
+ * `TOOL_REGISTRY` と同じ作法。
+ */
+export type PaneId = 'properties' | 'parts' | 'layers' | 'sheet' | 'info';
+
+export const SECTION_PANE: Record<SectionId, PaneId> = {
+  // 選んでいるものと、いま見ている階。ワイヤーの右パネルがこの 2 つ
+  selection: 'properties',
+  levels: 'properties',
+  // 図面に足すもの
+  library: 'parts',
+  // 何がどの画層に乗っていて、何が固定されているか
+  layers: 'layers',
+  constraints: 'layers',
+  // 書き出すもの・規格・用紙・作図の決まり
+  views: 'sheet',
+  standard: 'sheet',
+  sheet: 'sheet',
+  settings: 'sheet',
+  // 図面に何があるかと、手引き
+  rooms: 'info',
+  blocks: 'info',
+  stats: 'info',
+  missing: 'info',
+  shortcuts: 'info',
+};
+
+export interface PaneSpec {
+  label: string;
+  /** レールのアイコン。`icon.ts` の名前 */
+  icon: IconName;
+}
+
+/** レールの並びはこの表のキー順。**先頭が既定** */
+export const PANE_SPECS: Record<PaneId, PaneSpec> = {
+  properties: { label: 'プロパティ', icon: 'properties' },
+  parts: { label: 'パーツ', icon: 'parts' },
+  layers: { label: '画層', icon: 'layers' },
+  sheet: { label: '図面', icon: 'sheet' },
+  info: { label: '情報', icon: 'info' },
+};
+
+export const PANE_IDS = Object.keys(PANE_SPECS) as PaneId[];
+
+/** その束にいま出せる区画があるか。**空の束はレールに出さない** */
+export function paneHasSections(pane: PaneId, mode: Mode, can: Capabilities): boolean {
+  return entriesFor(mode, can).some(([id]) => SECTION_PANE[id] === pane);
+}
+
+/**
+ * そのモードとできることで出す区画を順に作る。並びは表のキーの順。
+ *
+ * `pane` を渡すとその束だけ。渡さなければ全部——**試験が全区画を
+ * 一度に見たいときのため**に残してある。
+ */
+export function buildSections(
+  deps: SectionDeps,
+  mode: Mode,
+  can: Capabilities,
+  pane?: PaneId,
+): Section[] {
+  return entriesFor(mode, can)
+    .filter(([id]) => pane === undefined || SECTION_PANE[id] === pane)
+    .map(([, entry]) => entry.make(deps));
+}
+
+function entriesFor(mode: Mode, can: Capabilities): [SectionId, SectionEntry][] {
+  return (Object.entries(SECTION_REGISTRY) as [SectionId, SectionEntry][])
+    .filter(([, entry]) => entry.modes.includes(mode))
+    .filter(([, entry]) => can.edit || !entry.edits);
 }

@@ -1,12 +1,111 @@
+/*
+ * **見た目の素は、ここに 1 組だけ置く。**
+ *
+ * 以前は変数が 8 個しかなく、**直書きの 16 進色が 76 箇所**あった。
+ * `--accent` と同じ `#2563eb` が別に 10 箇所書かれていて、青を変えるには
+ * 11 か所を直す必要があった。色・余白・角丸・影・字の大きさを全部ここへ移す。
+ *
+ * 値の出どころは **`ワイヤー/クライアント/ベース図面.html`**（`madoriba WebCAD`）。
+ * ワイヤー自身が色・寸法まで決めた動くモックアップを持っていたので、
+ * Coohom を見て真似るのではなく、そちらに揃えた。
+ */
 :root {
-  --bg: #1f2024;
-  --panel: #f4f3ef;
-  --panel-border: #d8d5cc;
-  --ink: #26262b;
-  --ink-soft: #6b6b73;
-  --accent: #2563eb;
-  --accent-soft: #e4ecfd;
+  /* --- 地と面 --- */
+  /** 画面の地。パネルの外側 */
+  --bg: #eef0f2;
+  /** パネル・バー・浮いているカード */
+  --surface: #ffffff;
+  /** 面の中で一段沈んだところ（タイルの地・空の欄） */
+  --surface-sunk: #f8fafc;
+  /** 押せるものに指が乗ったとき */
+  --surface-hover: #f1f5f9;
+  /** 図面の外側。紙でないことが分かる濃さ */
+  --canvas: #e5e9ee;
+  /** 区切りの罫線 */
+  --line: #e2e8f0;
+  /** 入力欄の枠。罫線より 1 段強い */
+  --line-strong: #cbd5e1;
+
+  /* --- 文字。濃い順に 4 段 --- */
+  --ink: #1a1a2e;
+  --ink-mid: #334155;
+  --ink-soft: #64748b;
+  --ink-mute: #94a3b8;
+  /** 強調色の上に乗る文字 */
+  --on-accent: #ffffff;
+
+  /* --- 強調 --- */
+  --accent: #2d6cdf;
+  --accent-soft: #eaf1ff;
+  /** 副。ワイヤーでは AI と配置済みのアセットに使っている */
+  --sub: #e8622a;
+  --danger: #b91c1c;
+  --danger-soft: #fdeaea;
+  --danger-line: #e9c3c3;
+  --warn: #7a5a1e;
+  --warn-soft: #fdf3e3;
+  --warn-line: #e8d4a8;
+
+  /* --- 形。以前は角丸が 8 種・影が 6 種すべて別の値だった --- */
+  --r-sm: 5px;
+  --r: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  /** 面から 1 枚浮いているもの（キャンバス上のカード） */
+  --shadow: 0 2px 10px rgb(0 0 0 / 10%);
+  /** さらに上に重なるもの（メニュー・ポップオーバー） */
+  --shadow-lg: 0 4px 16px rgb(0 0 0 / 12%);
+  /** 画面全体を覆うもの（ダイアログ） */
+  --shadow-xl: 0 8px 32px rgb(24 24 27 / 25%);
+  /** ダイアログの後ろ */
+  --scrim: rgb(24 24 27 / 35%);
+
+  /* --- 字。以前は px と rem が混ざっていた --- */
+  --fs-xs: 9px;
+  --fs-sm: 10px;
+  --fs: 11px;
+  --fs-md: 12px;
+  --fs-lg: 15px;
+
   --font: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+}
+
+/*
+ * **押せるもの・打てるものの素。**
+ *
+ * 以前は 8 つのセレクタが `font: inherit` と箱の形を別々に書いていて、
+ * 1 つ足すたびに同じ 5 行を写していた。素をここで決めて、違うところだけ上書きする。
+ */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  font-size: var(--fs-md);
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink-mid);
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--surface-hover);
+}
+
+input,
+select,
+textarea {
+  font-size: var(--fs);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
 }
 
 * {
@@ -43,9 +142,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  background: #2b2c31;
-  color: #e9e8e4;
-  border-bottom: 1px solid #000;
+  background: var(--surface);
+  color: var(--ink-mid);
+  border-bottom: 1px solid var(--line);
 }
 
 .brand strong {
@@ -56,7 +155,7 @@ body {
 .brand span {
   margin-left: 8px;
   font-size: 12px;
-  color: #9b9aa2;
+  color: var(--ink-mute);
 }
 
 .file-actions {
@@ -69,14 +168,14 @@ body {
   font-size: 12px;
   padding: 5px 10px;
   border-radius: 5px;
-  border: 1px solid #45464d;
-  background: #3a3b42;
-  color: #e9e8e4;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-mid);
   cursor: pointer;
 }
 
 .file-actions button:hover {
-  background: #4a4b53;
+  background: var(--surface-hover);
 }
 
 /* --- 上部バーのメニュー（ファイル / 書き出し / 表示） --- */
@@ -91,9 +190,9 @@ body {
   font-size: 12px;
   padding: 5px 10px;
   border-radius: 5px;
-  border: 1px solid #45464d;
-  background: #3a3b42;
-  color: #e9e8e4;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-mid);
   cursor: pointer;
   user-select: none;
 }
@@ -105,15 +204,21 @@ body {
 .file-actions .menu > summary::after {
   content: "▾";
   margin-left: 6px;
-  color: #9b9aa2;
+  color: var(--ink-mute);
 }
 
 .file-actions .menu > summary:hover,
 .file-actions .menu[open] > summary {
-  background: #4a4b53;
+  background: var(--surface-hover);
 }
 
-/* **中身は明るい紙の上。** 暗いバーの上に暗い箱を重ねると境が読めない */
+/*
+ * 畳んだ口の中身。**バーから 1 枚浮かせて、影で段を作る。**
+ *
+ * 以前はここに「中身は明るい紙の上。暗いバーの上に暗い箱を重ねると境が読めない」
+ * と書いてあった。**バーが白くなったので前提が消えた**——いまは地が同じ白なので、
+ * 境を作るのは明るさの差ではなく罫線と影。
+ */
 .file-actions .menu-list {
   position: absolute;
   right: 0;
@@ -123,10 +228,10 @@ body {
   flex-direction: column;
   min-width: 11rem;
   padding: 4px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
 }
 
 .file-actions .menu-list button {
@@ -140,7 +245,7 @@ body {
 }
 
 .file-actions .menu-list button:hover {
-  background: var(--panel);
+  background: var(--surface);
 }
 
 /* --- 編集モード --- */
@@ -155,43 +260,55 @@ body {
 
 .mode-label {
   font-size: 11px;
-  color: #a8a7a2;
+  color: var(--ink-soft);
 }
 
 .read-only-badge {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: #5a4a1e;
-  color: #f0dca8;
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 
 .mode-switch button {
   font: inherit;
   font-size: 12px;
   padding: 3px 10px;
-  border: 1px solid #4a4b53;
+  border: 1px solid var(--line-strong);
   border-radius: 5px;
-  background: #35363c;
-  color: #e9e8e4;
+  background: var(--surface);
+  color: var(--ink-mid);
   cursor: pointer;
 }
 
 .mode-switch button:hover {
-  background: #4a4b53;
+  background: var(--surface-hover);
 }
 
 .mode-switch button[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 /* --- 作業領域 --- */
 
 .workspace {
   display: grid;
-  grid-template-columns: 76px 1fr 288px;
+  /* 道具帯 / 図面 / 右の欄 / 束を選ぶレール */
+  grid-template-columns: 76px 1fr 272px 56px;
   min-height: 0;
+}
+
+/* **束を畳んだら、右の欄ごと消す。** 列の指定も一緒に書き換える——
+   `display: none` だけだと残りが 1 列ずつ手前へ詰む（道具帯で起きた事故） */
+.minicad.pane-closed .workspace {
+  grid-template-columns: 76px 1fr 56px;
+}
+
+.minicad.pane-closed .inspector {
+  display: none;
 }
 
 .toolbar {
@@ -199,8 +316,8 @@ body {
   flex-direction: column;
   gap: 4px;
   padding: 8px 6px;
-  background: var(--panel);
-  border-right: 1px solid var(--panel-border);
+  background: var(--surface);
+  border-right: 1px solid var(--line);
   overflow-y: auto;
 }
 
@@ -220,13 +337,13 @@ body {
 }
 
 .tool-button:hover {
-  background: #e8e6df;
+  background: var(--surface-hover);
 }
 
 .tool-button[aria-pressed='true'] {
   background: var(--accent-soft);
-  border-color: #b9ccf8;
-  color: #1b47b5;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .tool-button .glyph {
@@ -240,7 +357,7 @@ body {
 }
 
 .tool-button[aria-pressed='true'] .key {
-  color: #4a6fd0;
+  color: var(--accent);
 }
 
 /* --- キャンバス --- */
@@ -248,7 +365,7 @@ body {
 .canvas-wrap {
   position: relative;
   min-width: 0;
-  background: #f7f6f3;
+  background: var(--canvas);
 }
 
 #canvas,
@@ -293,7 +410,7 @@ body {
 /* 重ね置きをやめて 2 列目に落とす。inset は position が static だと効かない */
 .canvas-wrap.split > #canvas3d {
   position: static;
-  border-left: 1px solid var(--panel-border);
+  border-left: 1px solid var(--line);
 }
 
 /* 図面の左上に積む列。階の切り替えと道具の設定が重ならないように、
@@ -322,8 +439,8 @@ body {
   padding: 6px 10px;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.94);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
   font-size: 12px;
 }
 
@@ -344,9 +461,9 @@ body {
   font: inherit;
   font-size: 12px;
   padding: 3px 5px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 
@@ -366,7 +483,7 @@ body {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--accent);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-lg);
   font-size: 12px;
 }
 
@@ -384,20 +501,20 @@ body {
   font-size: 13px;
   width: 250px;
   padding: 4px 7px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
 }
 
 .numeric input[aria-invalid='true'] {
-  border-color: #b91c1c;
-  background: #fdeaea;
+  border-color: var(--danger);
+  background: var(--danger-soft);
 }
 
 /* --- インスペクタ --- */
 
 .inspector {
-  background: var(--panel);
-  border-left: 1px solid var(--panel-border);
+  background: var(--surface);
+  border-left: 1px solid var(--line);
   overflow-y: auto;
   padding: 10px 12px 24px;
   font-size: 12px;
@@ -436,9 +553,9 @@ body {
   font-size: 12px;
   width: 112px;
   padding: 3px 5px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 
@@ -462,19 +579,19 @@ body {
   width: 100%;
   margin-top: 6px;
   padding: 6px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 
 .inspector button.wide:hover {
-  background: #ecebe5;
+  background: var(--surface-hover);
 }
 
 .inspector button.danger {
-  color: #b91c1c;
-  border-color: #e9c3c3;
+  color: var(--danger);
+  border-color: var(--danger-line);
 }
 
 .room-list {
@@ -487,7 +604,7 @@ body {
   display: flex;
   justify-content: space-between;
   padding: 3px 0;
-  border-bottom: 1px dotted var(--panel-border);
+  border-bottom: 1px dotted var(--line);
   font-variant-numeric: tabular-nums;
 }
 
@@ -509,10 +626,10 @@ kbd {
   font: inherit;
   font-size: 11px;
   padding: 1px 5px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-bottom-width: 2px;
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .shortcut-list {
@@ -523,6 +640,52 @@ kbd {
   color: var(--ink-soft);
 }
 
+/* --- 右の欄の束を選ぶレール --- */
+
+/*
+ * ワイヤー（`ベース図面.html`）の `.rail-icon` に倣う。あちらは左、こちらは右。
+ * **アイコンだけにしない**——どの束か読めないと、押して確かめることになる
+ */
+.panel-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.rail-button {
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 0 6px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+}
+
+.rail-button:hover {
+  background: var(--surface-hover);
+}
+
+.rail-button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.rail-label {
+  /* 「プロパティ」は 5 文字。48px に収めるため 1 行で詰める */
+  letter-spacing: -0.03em;
+}
+
 /* --- ステータスバー --- */
 
 .statusbar {
@@ -530,22 +693,22 @@ kbd {
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  background: #2b2c31;
-  color: #b8b7bf;
+  background: var(--surface);
+  color: var(--ink-soft);
   font-size: 11px;
-  border-top: 1px solid #000;
+  border-top: 1px solid var(--line);
 }
 
 #status-readout {
   font-variant-numeric: tabular-nums;
-  color: #8d8c95;
+  color: var(--ink-mute);
 }
 
 /* --- 画層パネル --- */
 
 .layer-row {
   padding: 4px 0;
-  border-bottom: 1px dotted var(--panel-border);
+  border-bottom: 1px dotted var(--line);
 }
 
 .layer-head {
@@ -591,8 +754,8 @@ input.layer-name {
 
 input.layer-name:hover,
 input.layer-name:focus {
-  border-color: var(--panel-border);
-  background: #fff;
+  border-color: var(--line);
+  background: var(--surface);
 }
 
 .layer-mm {
@@ -614,15 +777,15 @@ input.layer-name:focus {
   line-height: 1;
   flex: none;
   padding: 2px 6px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
-  color: #b91c1c;
+  background: var(--surface);
+  color: var(--danger);
   cursor: pointer;
 }
 
 .layer-delete:hover {
-  background: #fdeaea;
+  background: var(--danger-soft);
 }
 
 .layer-controls select {
@@ -632,9 +795,9 @@ input.layer-name:focus {
   min-width: 0;
   width: 0;
   padding: 2px 3px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 
@@ -650,9 +813,9 @@ input.layer-name:focus {
   font: inherit;
   font-size: 11px;
   padding: 2px 6px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   cursor: pointer;
 }
@@ -671,7 +834,7 @@ input.layer-name:focus {
 .tool-divider {
   height: 1px;
   margin: 4px 8px;
-  background: var(--panel-border);
+  background: var(--line);
 }
 
 
@@ -679,9 +842,9 @@ input.layer-name:focus {
   margin: 4px 0;
   padding: 6px 8px;
   border-radius: 5px;
-  background: #fdf3e3;
-  border: 1px solid #e8d4a8;
-  color: #7a5a1e;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-line);
+  color: var(--warn);
   line-height: 1.5;
 }
 
@@ -699,7 +862,7 @@ input.layer-name:focus {
 }
 
 .view-row.active {
-  border-color: #b9ccf8;
+  border-color: var(--accent);
   background: var(--accent-soft);
 }
 
@@ -722,8 +885,8 @@ input.layer-name:focus {
 }
 
 .view-row.active input.view-name {
-  background: #fff;
-  border-color: var(--panel-border);
+  background: var(--surface);
+  border-color: var(--line);
 }
 
 .view-scale {
@@ -767,9 +930,9 @@ input.layer-name:focus {
   font-size: 11px;
   flex: 1;
   padding: 4px 2px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink-soft);
   cursor: pointer;
   white-space: nowrap;
@@ -781,7 +944,7 @@ input.layer-name:focus {
 
 .use-button[aria-pressed='true'] {
   background: var(--accent-soft);
-  border-color: #b9ccf8;
+  border-color: var(--accent);
   color: var(--ink);
   font-weight: 600;
 }
@@ -804,9 +967,9 @@ input.layer-name:focus {
   font: inherit;
   font-size: 12px;
   padding: 6px 4px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   cursor: pointer;
   overflow: hidden;
@@ -816,12 +979,12 @@ input.layer-name:focus {
 
 .part-button:hover:not(:disabled) {
   background: var(--accent-soft);
-  border-color: #b9ccf8;
+  border-color: var(--accent);
 }
 
 .part-button:disabled {
   color: var(--ink-soft);
-  background: #f2f1ec;
+  background: var(--surface-sunk);
   cursor: not-allowed;
 }
 
@@ -840,7 +1003,7 @@ input.layer-name:focus {
   z-index: 50;
   display: grid;
   place-items: center;
-  background: rgb(24 24 27 / 35%);
+  background: var(--scrim);
 }
 
 .dialog {
@@ -851,8 +1014,8 @@ input.layer-name:focus {
   gap: 0.75rem;
   padding: 1rem 1.25rem 1.25rem;
   border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 8px 32px rgb(24 24 27 / 25%);
+  background: var(--surface);
+  box-shadow: var(--shadow-xl);
 }
 
 .dialog h2 {
@@ -882,9 +1045,9 @@ input.layer-name:focus {
 }
 
 .dialog-actions button.primary {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .constraint-buttons {
@@ -914,7 +1077,7 @@ input.layer-name:focus {
   padding: 4px;
   border-radius: 6px;
   background: rgb(255 255 255 / 85%);
-  box-shadow: 0 1px 4px rgb(24 24 27 / 12%);
+  box-shadow: var(--shadow);
 }
 
 /* 階の区画。画層の行と同じ組み方 */
@@ -923,7 +1086,7 @@ input.layer-name:focus {
   flex-direction: column;
   gap: 4px;
   padding: 6px 0;
-  border-bottom: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--line);
 }
 
 .level-head {
@@ -940,9 +1103,9 @@ input.layer-name:focus {
 }
 
 .level-head .level-pick[aria-pressed='true'] {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .level-head .level-name {
@@ -990,7 +1153,7 @@ input.layer-name:focus {
   padding: 4px 6px;
   border-radius: 6px;
   background: rgb(255 255 255 / 85%);
-  box-shadow: 0 1px 4px rgb(24 24 27 / 12%);
+  box-shadow: var(--shadow);
 }
 
 .level-switch .level-label {
@@ -999,9 +1162,9 @@ input.layer-name:focus {
 }
 
 .level-switch button[aria-pressed='true'] {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 /* --- ウォークスルー中 --- */
@@ -1037,15 +1200,15 @@ input.layer-name:focus {
 
 .view-tabs .walk-note {
   font-size: 12px;
-  color: #2563eb;
+  color: var(--accent);
   font-weight: 600;
   align-self: center;
 }
 
 .view-tabs button[aria-pressed='true'] {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 /* 色の欄。`<input type="color">` と「画層の色に戻す」を横に並べる */
@@ -1058,7 +1221,7 @@ input.layer-name:focus {
   width: 36px;
   height: 24px;
   padding: 0;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   background: none;
   cursor: pointer;
 }
@@ -1066,7 +1229,7 @@ input.layer-name:focus {
   padding: 2px 6px;
   font-size: 11px;
   background: none;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--line);
   border-radius: 3px;
   cursor: pointer;
   color: var(--ink-soft);

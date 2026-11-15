@@ -43,6 +43,38 @@ page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
  * 表示 の 3 つに畳んである。畳んだことを試験の全箇所に書くと、次に畳み方を
  * 変えたときに全部直すことになるので、**ここ 1 か所**に閉じ込める。
  */
+/**
+ * 右のレールで束を開く。
+ *
+ * **インスペクタの 14 区画はレールで束に分かれている**（`section-registry.ts` の
+ * `SECTION_PANE`）ので、区画を触る前にその束を開く。畳み方を変えたときに
+ * 全箇所を直さなくて済むよう、**ここ 1 か所**に閉じ込める。
+ */
+async function pane(name) {
+  const sel = `#panel-rail button[data-pane="${name}"]`;
+  const open = await page.$eval(sel, (b) => b.getAttribute('aria-pressed') === 'true')
+    .catch(() => null);
+  if (open === null) throw new Error(`レールに「${name}」の束が出ていない`);
+  if (!open) {
+    await page.click(sel);
+    await sleep(150);
+  }
+}
+
+/**
+ * **全部の束の見出しを集める。** 束ごとに切り替えるので、1 回の
+ * `querySelectorAll` では開いている束しか見えない。
+ */
+async function allInspectorHeads() {
+  const names = await page.$$eval('#panel-rail button', (bs) => bs.map((b) => b.dataset.pane));
+  const heads = [];
+  for (const name of names) {
+    await pane(name);
+    heads.push(...await page.$$eval('#inspector h2', (hs) => hs.map((h) => h.textContent)));
+  }
+  return heads;
+}
+
 async function bar(title) {
   const sel = `.file-actions button[title="${title}"]`;
   // 畳まれている口を開ける。入っていなければ何も起きない
@@ -239,8 +271,9 @@ async function run() {
   assert.ok(joinOnly.label.includes('結合'), `通常モードの名前が「結合」でない: ${joinOnly.label}`);
   await page.locator('#toolbar button[data-tool="select"]').click();
   await sleep(200);
-  assert.ok(!normal.inspectorHeads.some((h) => h.includes('幾何拘束') || h.includes('製図規格')),
-    `通常モードに CAD 寄りの区画が出ている: ${normal.inspectorHeads}`);
+  const normalHeads = await allInspectorHeads();
+  assert.ok(!normalHeads.some((h) => h.includes('幾何拘束') || h.includes('製図規格')),
+    `通常モードに CAD 寄りの区画が出ている: ${normalHeads}`);
 
   // 隠したツールはショートカットでも選べない。登録から外しているので
   await page.keyboard.press('u');
@@ -257,8 +290,10 @@ async function run() {
   for (const id of normal.toolbar) {
     assert.ok(pro.toolbar.includes(id), `${id} が通常にだけある`);
   }
-  assert.ok(pro.inspectorHeads.includes('まだ無いもの'),
+  const proHeads = await allInspectorHeads();
+  assert.ok(proHeads.includes('まだ無いもの'),
     'プロモードに「まだ無いもの」が出ていない');
+  await pane('properties');
   console.log('✔ 既定は通常モード、プロモードで CAD 寄りの道具が増える');
 
   // --- プロモードの作図（四角形・曲線） ---
@@ -955,6 +990,7 @@ async function run() {
     },
   );
 
+  await pane('layers');
   await step(
     '画層パネルが全画層を出している',
     async () => {},
@@ -964,8 +1000,12 @@ async function run() {
   await step(
     '線群を替えると画層の線幅表示が変わる',
     async () => {
+      // **線群は「図面」、線幅の表示は「画層」。** 束が違うので行き来する
+      await pane('layers');
       const before = await page.locator('.layer-row .layer-mm').first().textContent();
+      await pane('sheet');
       await selectByLabel('線群 (JIS Z 8312)', '線群 1.4 (0.35 / 0.7 / 1.4)');
+      await pane('layers');
       const after = await page.locator('.layer-row .layer-mm').first().textContent();
       assert.notEqual(before, after, `線幅表示が変わらない (${before} -> ${after})`);
       assert.equal(after.trim(), '0.70mm', '線群1.4の太線は0.70mm');
@@ -973,12 +1013,14 @@ async function run() {
     (s) => assert.equal(s.standard.lineGroupId, '1.4'),
   );
 
+  await pane('sheet');
   await step(
     '尺度を替えられる',
     () => selectByLabel('尺度 (JIS Z 8314)', '1:50'),
     (s) => assert.equal(s.standard.scale, 50),
   );
 
+  await pane('sheet');
   await step(
     '壁を輪郭線表示に切り替えても描画が落ちない',
     () => page.getByText('壁を塗りつぶす').click(),
@@ -988,6 +1030,7 @@ async function run() {
   await step(
     '画層を非表示にできる',
     async () => {
+      await pane('layers');
       await page.locator('.layer-row').first().locator('.layer-visible').uncheck();
     },
     (s) => assert.equal(s.wallLayerVisible, false),
@@ -1096,6 +1139,7 @@ async function run() {
       await page.keyboard.press('v');
       await clickWorld(5000, 9000);
       assert.ok((await state()).selection >= 1, '図形を選択できていない');
+      await pane('properties');
       await page.getByText('ブロックにする').click();
     },
     (s) => {
@@ -1107,6 +1151,7 @@ async function run() {
   await step(
     'ブロックの名前を変えられる',
     async () => {
+      await pane('properties');
       const field = page.locator('.field').filter({ hasText: 'ブロック名' }).first();
       await field.locator('input').fill('方位記号');
       await field.locator('input').press('Enter');
@@ -1117,6 +1162,7 @@ async function run() {
   await step(
     'ブロックを分解すると図形に戻る',
     async () => {
+      await pane('properties');
       await page.getByText('分解する').click();
     },
     (s) => assert.equal(s.instances, instancesBeforeBlock, 'インスタンスが残っている'),
@@ -1129,6 +1175,7 @@ async function run() {
   await step(
     '用紙枠を表示できる',
     async () => {
+      await pane('sheet');
       await page.getByText('用紙枠を表示').click();
     },
     (s) => assert.equal(s.sheetShown, true),
@@ -1137,6 +1184,7 @@ async function run() {
   await step(
     '表題欄の図面名称を変えられる',
     async () => {
+      await pane('sheet');
       const field = page.locator('.field').filter({ hasText: '図面名称' }).first();
       await field.locator('input').fill('テスト住宅 1階平面図');
       await field.locator('input').press('Enter');
@@ -1148,6 +1196,7 @@ async function run() {
 
   // --- 画層の管理 ---
 
+  await pane('layers');
   await step(
     '画層を追加できる',
     () => page.getByText('＋ 画層を追加').click(),
@@ -1160,6 +1209,7 @@ async function run() {
   await step(
     '画層を改名できる',
     async () => {
+      await pane('layers');
       const row = page.locator('.layer-row').last();
       await row.locator('input.layer-name').fill('A-SITE');
       await row.locator('input.layer-name').press('Enter');
@@ -1170,6 +1220,7 @@ async function run() {
   await step(
     '既存と同じ名前には改名できない',
     async () => {
+      await pane('layers');
       const row = page.locator('.layer-row').last();
       await row.locator('input.layer-name').fill('A-WALL');
       await row.locator('input.layer-name').press('Enter');
@@ -1180,6 +1231,7 @@ async function run() {
     },
   );
 
+  await pane('layers');
   await step(
     '新規作成の画層を指定できる',
     () => selectByLabel('新規作成の画層', 'A-SITE'),
@@ -1209,6 +1261,7 @@ async function run() {
       await page.keyboard.press('v');
       await clickWorld(4000, -2000);
       assert.equal((await state()).selection, 1, '線を選択できていない');
+      await pane('properties');
       await selectByLabel('画層', 'A-GRID');
     },
     (s) => assert.equal(s.selection, 1),
@@ -1218,6 +1271,7 @@ async function run() {
     '画層を削除すると中身は既定の画層へ移る',
     async () => {
       await page.keyboard.press('Escape');
+      await pane('layers');
       const row = page.locator('.layer-row').last();
       await row.locator('.layer-delete').click();
     },
@@ -1274,6 +1328,7 @@ async function run() {
   console.log('✔ 書き出した DXF の中身が妥当');
 
   // 書き出した DXF をそのまま読み戻す（書き出しと読み込みが噛み合っているかの通し確認）
+  await pane('layers');
   const before = await state();
   // --- 今回足した書き出し -------------------------------------------------
 
@@ -1317,8 +1372,9 @@ async function run() {
   console.log('✔ 立面図が書き出せて、高さ寸法と但し書きが入る');
 
   // Shift-JIS の DXF（Jw_cad 用）
-  // 作図設定はインスペクタに常時出ている
+  // **作図設定は「図面」の束**（`SECTION_PANE` の `settings`）
   // checkboxField は input と label を兄弟に並べる
+  await pane('sheet');
   const sjis = page.locator('.field.checkbox:has(label:text-is("DXFをShift-JISで書く (Jw_cad 用)")) input');
   assert.ok(await sjis.count(), 'Shift-JIS の設定が見つからない');
   {
@@ -1352,6 +1408,7 @@ async function run() {
   assert.ok(!report.includes('画層を追加'), `画層が増えている: ${report}`);
   await page.click('.dialog-actions button.primary');
 
+  await pane('layers');
   const after = await state();
   assert.ok(after.drawings > before.drawings, 'DXF を読み込んでも図形が増えていない');
   assert.equal(after.layerRows, before.layerRows, '読み込みで画層が増えた');
@@ -1393,6 +1450,7 @@ async function run() {
   await sleep(150);
   assert.ok((await slope(wallId)) > 500, '傾いた壁になっていない');
 
+  await pane('layers');
   const horizontal = page.locator('.constraint-buttons button', { hasText: '水平' });
   await horizontal.click();
   await sleep(200);
@@ -1416,6 +1474,7 @@ async function run() {
 
   // --- 構造 ---
   const beforeFixture = await state();
+  await pane('parts');
   await page.locator('.part-button[data-fixture="column"]').click();
   await sleep(250);
   assert.equal((await state()).tool, 'fixture', '構造ツールに移っていない');
@@ -1496,6 +1555,7 @@ async function run() {
   assert.equal((await state()).measurements, beforeMeasure.measurements + 1, 'ツールを離れて消えた');
 
   // 手入力に切り替えると、自動の値は残ったまま上書きされる
+  await pane('properties');
   const manualField = page.locator('.field').filter({ hasText: '手で入れる' }).first();
   assert.equal(await manualField.count(), 1, '手入力の欄が出ていない');
   await manualField.locator('input').check();
@@ -1518,6 +1578,7 @@ async function run() {
 
   // --- 出窓 ---
   // **種別は増やさない。** 窓に張り出しを持たせる
+  await pane('parts');
   await page.locator('.part-button[data-opening="角型出窓"]').click();
   await sleep(200);
   const beforeBay = await state();
@@ -1570,6 +1631,7 @@ async function run() {
 
   // --- 建具の結合 ---
   // 同じ種別に重ねて置くと、まとまって 1 つになる（区間マージ）
+  await pane('parts');
   await page.locator('.part-button[data-opening="引き違い窓"]').click();
   await sleep(200);
   const beforeMerge = await state();
@@ -1641,6 +1703,7 @@ async function run() {
   console.log('✔ 改訂版のパーツ表の品が、既定値ごと 1 クリックで選べる');
 
   // --- 物件用途の絞り込み ---
+  await pane('parts');
   const countParts = () => page.locator('.part-button[data-opening]').count();
   const all = await countParts();
   await page.locator('.use-button[data-use="オ"]').click();
@@ -1914,6 +1977,7 @@ async function run() {
   const fieldNames = () => page.evaluate(() =>
     [...document.querySelectorAll('.field > span')].map((n) => n.textContent.trim()));
 
+  await pane('properties');
   await seedTiltable('box');
   await sleep(400);
   const solidFields = await fieldNames();
@@ -1969,6 +2033,7 @@ async function run() {
     return fx.localOutline(window.minicad.editorInstance.store.scene.fixtures.tiltme).length;
   });
   assert.equal(await outlineLen(), 4, '素の箱が四角でない');
+  await pane('properties');
   await selectByLabel('稜線の仕上げ', '面取り');
   await sleep(400);
   assert.equal(await outlineLen(), 4, '上下の仕上げで平面が変わった');
@@ -2016,6 +2081,7 @@ async function run() {
 
   await seedRects(1000, 1000);
   await sleep(400);
+  await pane('properties');
   await page.locator('button.wide', { hasText: '合成' }).first().click();
   await sleep(400);
   const united = await page.evaluate(() => {
@@ -2043,6 +2109,7 @@ async function run() {
     ed.notifyUi();
   });
   await sleep(300);
+  await pane('properties');
   await page.locator('button.wide', { hasText: '切り欠き' }).first().click();
   await sleep(400);
   const refused = await page.evaluate(() => ({
@@ -2129,6 +2196,7 @@ async function run() {
   });
   await sleep(400);
   const beforeSplit = (await state()).fixtures;
+  await pane('properties');
   await page.locator('button.wide', { hasText: '切り分け' }).first().click();
   await sleep(500);
   const halved = await page.evaluate(async () => {
@@ -2187,6 +2255,7 @@ async function run() {
     ed.notifyUi();
   });
   await sleep(300);
+  await pane('properties');
   await page.getByRole('button', { name: '押し出す' }).click();
   await sleep(400);
   const extruded = await page.evaluate(() => {
@@ -2281,6 +2350,7 @@ async function run() {
     ed.notifyUi();
   }, walls2[0]);
   await sleep(300);
+  await pane('properties');
   const picker = page.locator('.color-cell input[type=color]');
   assert.equal(await picker.count(), 1, 'プロパティに色の欄が無い');
   await picker.evaluate((el) => {
@@ -2775,6 +2845,7 @@ async function run() {
     '閲覧のみで書き出しまで消えている');
   assert.equal(await page.locator('.file-actions button:text-is("開く")').count(), 0,
     '図面を差し替えるボタンが残っている');
+  await pane('layers');
   assert.equal(await page.locator('.layer-row input.layer-name:not([disabled])').count(), 0,
     '画層名を直せてしまう');
 
@@ -2836,6 +2907,7 @@ async function run() {
   await sleep(500);
 
   // 構造のボタンは組み込みなので、ホストのカタログだけを数える
+  await pane('parts');
   const parts = page.locator('.part-button:not([data-fixture]):not([data-opening])');
   assert.equal(await parts.count(), 2, 'カタログがパレットに出ていない');
   // **壁を含む部品も挿せる（シンボルとしてスタンプする）**
@@ -2925,6 +2997,7 @@ async function run() {
   });
   await sleep(250);
 
+  await pane('properties');
   const field = page.locator('.field').filter({ hasText: '素材' }).first();
   assert.equal(await field.count(), 1, '素材の欄が出ていない');
   await field.locator('select').selectOption({ label: '赤い壁紙' });
@@ -3081,6 +3154,7 @@ async function run() {
   }, hostFile);
   await sleep(600);
 
+  await pane('sheet');
   const oneView = await state();
   // **最初から 4 枚ある**（現状図 / レイアウト図 / 天井伏図 / 立面図）
   assert.equal(oneView.viewRows, 4, `初期の図面が ${oneView.viewRows} 枚`);
@@ -3095,8 +3169,10 @@ async function run() {
   const otherScale = baseScale === 50 ? 100 : 50;
 
   // いまの状態を 2 枚目として覚える
+  await pane('sheet');
   await page.locator('button', { hasText: 'いまの状態を図面として覚える' }).first().click();
   await sleep(300);
+  await pane('sheet');
   const twoViews = await state();
   assert.equal(twoViews.viewRows, 5, '覚えた図面が増えていない');
   assert.notEqual(twoViews.activeView, oneView.activeView, '覚えた図面が作業中になっていない');
@@ -3119,6 +3195,7 @@ async function run() {
   await sleep(300);
 
   // 1 枚目に戻すと、元の状態が当たる
+  await pane('sheet');
   const firstRadio = page.locator('.view-row').first().locator('input.view-active');
   await firstRadio.check();
   await sleep(350);
