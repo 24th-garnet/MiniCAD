@@ -8,8 +8,16 @@
  * 値の出どころは **`ワイヤー/クライアント/ベース図面.html`**（`madoriba WebCAD`）。
  * ワイヤー自身が色・寸法まで決めた動くモックアップを持っていたので、
  * Coohom を見て真似るのではなく、そちらに揃えた。
+ *
+ * **`:root` ではなく `.minicad` に置く。** MiniCAD はホストのページに
+ * `mount()` されるモジュールで、`:root` はそのとき**ホストの `<html>`**
+ * になる——40 個あまりのトークンがホストの名前空間に流れ込み、ホストが
+ * 同じ名前（`--bg` や `--accent` はありふれている）を持っていればぶつかる。
+ *
+ * ここに置くと、ついでに**ホストが外から配色を差し替えられる**ようになる。
+ * `.minicad { --accent: … }` を後から当てれば勝つ。
  */
-:root {
+.minicad {
   /* --- 地と面 --- */
   /** 画面の地。パネルの外側 */
   --bg: #eef0f2;
@@ -76,15 +84,15 @@
  * 以前は 8 つのセレクタが `font: inherit` と箱の形を別々に書いていて、
  * 1 つ足すたびに同じ 5 行を写していた。素をここで決めて、違うところだけ上書きする。
  */
-button,
-input,
-select,
-textarea {
+.minicad button,
+.minicad input,
+.minicad select,
+.minicad textarea {
   font: inherit;
   color: inherit;
 }
 
-button {
+.minicad button {
   font-size: var(--fs-md);
   padding: 5px 10px;
   border: 1px solid var(--line-strong);
@@ -94,13 +102,13 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+.minicad button:hover {
   background: var(--surface-hover);
 }
 
-input,
-select,
-textarea {
+.minicad input,
+.minicad select,
+.minicad textarea {
   font-size: var(--fs);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
@@ -108,36 +116,31 @@ textarea {
   color: var(--ink);
 }
 
-* {
+.minicad,
+.minicad * {
   box-sizing: border-box;
 }
 
-html,
-body {
-  margin: 0;
-  height: 100%;
-  font-family: var(--font);
-  color: var(--ink);
-  background: var(--bg);
-  overflow: hidden;
-}
-
-/* 単体で立ち上げたときの入れ物。埋め込まれるときはホストが寸法を決める */
-#app {
-  height: 100%;
-}
-
-/* MiniCAD 本体の外枠。貰った箱いっぱいに広がる */
+/*
+ * MiniCAD 本体の外枠。貰った箱いっぱいに広がる。
+ *
+ * **字と色と地はここで引き受ける。** 以前は `html, body` に書いてあったが、
+ * それはホストのページそのものなので、組み込むとホストの地色まで変わった。
+ * 外枠に書けば、効く範囲が貰った箱の中で止まる。
+ */
 .minicad {
   display: grid;
   grid-template-rows: 44px 1fr 26px;
   height: 100%;
   min-height: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
 }
 
 /* --- 上部バー --- */
 
-.topbar {
+.minicad .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -147,23 +150,23 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brand strong {
+.minicad .brand strong {
   font-size: 15px;
   letter-spacing: 0.02em;
 }
 
-.brand span {
+.minicad .brand span {
   margin-left: 8px;
   font-size: 12px;
   color: var(--ink-mute);
 }
 
-.file-actions {
+.minicad .file-actions {
   display: flex;
   gap: 6px;
 }
 
-.file-actions button {
+.minicad .file-actions button {
   font: inherit;
   font-size: 12px;
   padding: 5px 10px;
@@ -174,18 +177,18 @@ body {
   cursor: pointer;
 }
 
-.file-actions button:hover {
+.minicad .file-actions button:hover {
   background: var(--surface-hover);
 }
 
 /* --- 上部バーのメニュー（ファイル / 書き出し / 表示） --- */
 
-.file-actions .menu {
+.minicad .file-actions .menu {
   position: relative;
 }
 
 /* `summary` の三角は出さない。見た目は他のボタンに揃える */
-.file-actions .menu > summary {
+.minicad .file-actions .menu > summary {
   list-style: none;
   font-size: 12px;
   padding: 5px 10px;
@@ -197,18 +200,18 @@ body {
   user-select: none;
 }
 
-.file-actions .menu > summary::-webkit-details-marker {
+.minicad .file-actions .menu > summary::-webkit-details-marker {
   display: none;
 }
 
-.file-actions .menu > summary::after {
+.minicad .file-actions .menu > summary::after {
   content: "▾";
   margin-left: 6px;
   color: var(--ink-mute);
 }
 
-.file-actions .menu > summary:hover,
-.file-actions .menu[open] > summary {
+.minicad .file-actions .menu > summary:hover,
+.minicad .file-actions .menu[open] > summary {
   background: var(--surface-hover);
 }
 
@@ -219,7 +222,7 @@ body {
  * と書いてあった。**バーが白くなったので前提が消えた**——いまは地が同じ白なので、
  * 境を作るのは明るさの差ではなく罫線と影。
  */
-.file-actions .menu-list {
+.minicad .file-actions .menu-list {
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
@@ -234,7 +237,7 @@ body {
   box-shadow: var(--shadow-lg);
 }
 
-.file-actions .menu-list button {
+.minicad .file-actions .menu-list button {
   border: 0;
   background: none;
   color: var(--ink);
@@ -244,13 +247,13 @@ body {
   white-space: nowrap;
 }
 
-.file-actions .menu-list button:hover {
+.minicad .file-actions .menu-list button:hover {
   background: var(--surface);
 }
 
 /* --- 編集モード --- */
 
-.mode-switch {
+.minicad .mode-switch {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -258,12 +261,12 @@ body {
   margin-right: 12px;
 }
 
-.mode-label {
+.minicad .mode-label {
   font-size: 11px;
   color: var(--ink-soft);
 }
 
-.read-only-badge {
+.minicad .read-only-badge {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -271,7 +274,7 @@ body {
   color: var(--warn);
 }
 
-.mode-switch button {
+.minicad .mode-switch button {
   font: inherit;
   font-size: 12px;
   padding: 3px 10px;
@@ -282,11 +285,11 @@ body {
   cursor: pointer;
 }
 
-.mode-switch button:hover {
+.minicad .mode-switch button:hover {
   background: var(--surface-hover);
 }
 
-.mode-switch button[aria-pressed='true'] {
+.minicad .mode-switch button[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
@@ -294,7 +297,7 @@ body {
 
 /* --- 作業領域 --- */
 
-.workspace {
+.minicad .workspace {
   display: grid;
   /* 道具帯 / 図面 / 右の欄 / 束を選ぶレール */
   grid-template-columns: 76px 1fr 272px 56px;
@@ -311,7 +314,7 @@ body {
   display: none;
 }
 
-.toolbar {
+.minicad .toolbar {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -321,7 +324,7 @@ body {
   overflow-y: auto;
 }
 
-.tool-button {
+.minicad .tool-button {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -333,11 +336,11 @@ body {
   color: var(--ink-soft);
 }
 
-.tool-button:hover {
+.minicad .tool-button:hover {
   background: var(--surface-hover);
 }
 
-.tool-button[aria-pressed='true'] {
+.minicad .tool-button[aria-pressed='true'] {
   background: var(--accent-soft);
   border-color: transparent;
   color: var(--accent);
@@ -347,7 +350,7 @@ body {
  * **名札とキーを 1 行に。** 「壁 (W)」の形。以前はアイコン・名前・キーが
  * 3 段に積まれていて、1 つのボタンが縦に伸びていた
  */
-.tool-name {
+.minicad .tool-name {
   display: flex;
   align-items: baseline;
   gap: 3px;
@@ -357,40 +360,40 @@ body {
   letter-spacing: -0.04em;
 }
 
-.tool-button .key::before {
+.minicad .tool-button .key::before {
   content: '(';
 }
 
-.tool-button .key::after {
+.minicad .tool-button .key::after {
   content: ')';
 }
 
-.tool-button .key {
+.minicad .tool-button .key {
   font-size: var(--fs-xs);
   color: var(--ink-mute);
 }
 
-.tool-button[aria-pressed='true'] .key {
+.minicad .tool-button[aria-pressed='true'] .key {
   color: var(--accent);
 }
 
 /* --- キャンバス --- */
 
-.canvas-wrap {
+.minicad .canvas-wrap {
   position: relative;
   min-width: 0;
   background: var(--canvas);
 }
 
-#canvas,
-#canvas3d {
+.minicad #canvas,
+.minicad #canvas3d {
   display: block;
   width: 100%;
   height: 100%;
   outline: none;
 }
 
-#canvas3d {
+.minicad #canvas3d {
   position: absolute;
   inset: 0;
   cursor: grab;
@@ -398,11 +401,11 @@ body {
 
 /* id セレクタは hidden 属性の既定より強いので、明示的に消す。
    これが無いと、隠したはずの 3D キャンバスが 2D の上に残ってクリックを吸う */
-#canvas3d[hidden] {
+.minicad #canvas3d[hidden] {
   display: none;
 }
 
-#canvas3d:active {
+.minicad #canvas3d:active {
   cursor: grabbing;
 }
 
@@ -410,26 +413,26 @@ body {
    2D と 3D はそれぞれ自前の ResizeObserver を持っているので、親の列が
    変われば両方が自分で測り直す。JS 側のサイズ計算には 1 行も触らない。
    キャンバスを 2 枚に分けた当初の判断が、ここで初めて本当に効く */
-.canvas-wrap.split {
+.minicad .canvas-wrap.split {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
 
-.canvas-wrap.split > #canvas,
-.canvas-wrap.split > #canvas3d {
+.minicad .canvas-wrap.split > #canvas,
+.minicad .canvas-wrap.split > #canvas3d {
   min-width: 0;
   min-height: 0;
 }
 
 /* 重ね置きをやめて 2 列目に落とす。inset は position が static だと効かない */
-.canvas-wrap.split > #canvas3d {
+.minicad .canvas-wrap.split > #canvas3d {
   position: static;
   border-left: 1px solid var(--line);
 }
 
 /* 図面の左上に積む列。階の切り替えと道具の設定が重ならないように、
    絶対配置はこの箱だけが持つ */
-.overlay-left {
+.minicad .overlay-left {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -442,11 +445,11 @@ body {
   pointer-events: none;
 }
 
-.overlay-left > * {
+.minicad .overlay-left > * {
   pointer-events: auto;
 }
 
-.options-bar {
+.minicad .options-bar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -458,20 +461,20 @@ body {
   font-size: 12px;
 }
 
-.options-bar:empty {
+.minicad .options-bar:empty {
   display: none;
 }
 
-.options-bar label {
+.minicad .options-bar label {
   display: flex;
   align-items: center;
   gap: 5px;
   color: var(--ink-soft);
 }
 
-.options-bar input[type='number'],
-.options-bar input[type='text'],
-.options-bar select {
+.minicad .options-bar input[type='number'],
+.minicad .options-bar input[type='text'],
+.minicad .options-bar select {
   font: inherit;
   font-size: 12px;
   padding: 3px 5px;
@@ -481,11 +484,11 @@ body {
   color: var(--ink);
 }
 
-.options-bar input[type='number'] {
+.minicad .options-bar input[type='number'] {
   width: 68px;
 }
 
-.numeric {
+.minicad .numeric {
   position: absolute;
   bottom: 18px;
   left: 50%;
@@ -501,16 +504,16 @@ body {
   font-size: 12px;
 }
 
-.numeric[hidden] {
+.minicad .numeric[hidden] {
   display: none;
 }
 
-.numeric label {
+.minicad .numeric label {
   color: var(--accent);
   font-weight: 600;
 }
 
-.numeric input {
+.minicad .numeric input {
   font: inherit;
   font-size: 13px;
   width: 250px;
@@ -519,14 +522,14 @@ body {
   border-radius: 4px;
 }
 
-.numeric input[aria-invalid='true'] {
+.minicad .numeric input[aria-invalid='true'] {
   border-color: var(--danger);
   background: var(--danger-soft);
 }
 
 /* --- インスペクタ --- */
 
-.inspector {
+.minicad .inspector {
   background: var(--surface);
   border-left: 1px solid var(--line);
   overflow-y: auto;
@@ -534,7 +537,7 @@ body {
   font-size: 12px;
 }
 
-.inspector h2 {
+.minicad .inspector h2 {
   margin: 14px 0 7px;
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -543,11 +546,11 @@ body {
   font-weight: 600;
 }
 
-.inspector h2:first-child {
+.minicad .inspector h2:first-child {
   margin-top: 2px;
 }
 
-.field {
+.minicad .field {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -555,14 +558,14 @@ body {
   margin-bottom: 5px;
 }
 
-.field > span {
+.minicad .field > span {
   color: var(--ink-soft);
   white-space: nowrap;
 }
 
-.field input[type='number'],
-.field input[type='text'],
-.field select {
+.minicad .field input[type='number'],
+.minicad .field input[type='text'],
+.minicad .field select {
   font: inherit;
   font-size: 12px;
   width: 112px;
@@ -573,21 +576,21 @@ body {
   color: var(--ink);
 }
 
-.field.checkbox {
+.minicad .field.checkbox {
   justify-content: flex-start;
   gap: 6px;
 }
 
-.field.checkbox input {
+.minicad .field.checkbox input {
   margin: 0;
 }
 
-.field .readonly {
+.minicad .field .readonly {
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 
-.inspector button.wide {
+.minicad .inspector button.wide {
   font: inherit;
   font-size: 12px;
   width: 100%;
@@ -599,22 +602,22 @@ body {
   cursor: pointer;
 }
 
-.inspector button.wide:hover {
+.minicad .inspector button.wide:hover {
   background: var(--surface-hover);
 }
 
-.inspector button.danger {
+.minicad .inspector button.danger {
   color: var(--danger);
   border-color: var(--danger-line);
 }
 
-.room-list {
+.minicad .room-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.room-list li {
+.minicad .room-list li {
   display: flex;
   justify-content: space-between;
   padding: 3px 0;
@@ -622,21 +625,21 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.room-list li span:first-child {
+.minicad .room-list li span:first-child {
   color: var(--ink);
 }
 
-.room-list li span:last-child {
+.minicad .room-list li span:last-child {
   color: var(--ink-soft);
 }
 
-.empty-note {
+.minicad .empty-note {
   color: var(--ink-soft);
   line-height: 1.6;
   margin: 4px 0 0;
 }
 
-kbd {
+.minicad kbd {
   font: inherit;
   font-size: 11px;
   padding: 1px 5px;
@@ -646,7 +649,7 @@ kbd {
   background: var(--surface);
 }
 
-.shortcut-list {
+.minicad .shortcut-list {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 8px;
@@ -660,7 +663,7 @@ kbd {
  * ワイヤー（`ベース図面.html`）の `.rail-icon` に倣う。あちらは左、こちらは右。
  * **アイコンだけにしない**——どの束か読めないと、押して確かめることになる
  */
-.panel-rail {
+.minicad .panel-rail {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -671,7 +674,7 @@ kbd {
   overflow-y: auto;
 }
 
-.rail-button {
+.minicad .rail-button {
   width: 48px;
   display: flex;
   flex-direction: column;
@@ -686,23 +689,23 @@ kbd {
   line-height: 1.2;
 }
 
-.rail-button:hover {
+.minicad .rail-button:hover {
   background: var(--surface-hover);
 }
 
-.rail-button[aria-pressed='true'] {
+.minicad .rail-button[aria-pressed='true'] {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.rail-label {
+.minicad .rail-label {
   /* 「プロパティ」は 5 文字。48px に収めるため 1 行で詰める */
   letter-spacing: -0.03em;
 }
 
 /* --- ステータスバー --- */
 
-.statusbar {
+.minicad .statusbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -713,38 +716,38 @@ kbd {
   border-top: 1px solid var(--line);
 }
 
-#status-readout {
+.minicad #status-readout {
   font-variant-numeric: tabular-nums;
   color: var(--ink-mute);
 }
 
 /* --- 画層パネル --- */
 
-.layer-row {
+.minicad .layer-row {
   padding: 4px 0;
   border-bottom: 1px dotted var(--line);
 }
 
-.layer-head {
+.minicad .layer-head {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.layer-head input[type='checkbox'] {
+.minicad .layer-head input[type='checkbox'] {
   margin: 0;
   flex: none;
 }
 
-.layer-head input.layer-locked {
+.minicad .layer-head input.layer-locked {
   opacity: 0.55;
 }
 
-.layer-head input.layer-locked:checked {
+.minicad .layer-head input.layer-locked:checked {
   opacity: 1;
 }
 
-.swatch {
+.minicad .swatch {
   width: 11px;
   height: 11px;
   border-radius: 2px;
@@ -752,7 +755,7 @@ kbd {
   flex: none;
 }
 
-input.layer-name {
+.minicad input.layer-name {
   flex: 1 1 auto;
   min-width: 0;
   width: 0;
@@ -766,26 +769,26 @@ input.layer-name {
   color: var(--ink);
 }
 
-input.layer-name:hover,
-input.layer-name:focus {
+.minicad input.layer-name:hover,
+.minicad input.layer-name:focus {
   border-color: var(--line);
   background: var(--surface);
 }
 
-.layer-mm {
+.minicad .layer-mm {
   flex: none;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--ink-soft);
 }
 
-.layer-controls {
+.minicad .layer-controls {
   display: flex;
   gap: 4px;
   margin: 3px 0 0 36px;
 }
 
-.layer-delete {
+.minicad .layer-delete {
   font: inherit;
   font-size: 12px;
   line-height: 1;
@@ -798,11 +801,11 @@ input.layer-name:focus {
   cursor: pointer;
 }
 
-.layer-delete:hover {
+.minicad .layer-delete:hover {
   background: var(--danger-soft);
 }
 
-.layer-controls select {
+.minicad .layer-controls select {
   font: inherit;
   font-size: 11px;
   flex: 1 1 0;
@@ -817,13 +820,13 @@ input.layer-name:focus {
 
 /* --- オプションバーの追加要素 --- */
 
-.option-chips {
+.minicad .option-chips {
   display: flex;
   gap: 3px;
   flex-wrap: wrap;
 }
 
-.option-chips button {
+.minicad .option-chips button {
   font: inherit;
   font-size: 11px;
   padding: 2px 6px;
@@ -834,25 +837,24 @@ input.layer-name:focus {
   cursor: pointer;
 }
 
-.option-chips button:hover {
+.minicad .option-chips button:hover {
   background: var(--accent-soft);
 }
 
-.option-note {
+.minicad .option-note {
   color: var(--ink-soft);
   white-space: nowrap;
 }
 
 /* --- ツールバーのグループ区切り --- */
 
-.tool-divider {
+.minicad .tool-divider {
   height: 1px;
   margin: 4px 8px;
   background: var(--line);
 }
 
-
-.warn-note {
+.minicad .warn-note {
   margin: 4px 0;
   padding: 6px 8px;
   border-radius: 5px;
@@ -863,30 +865,30 @@ input.layer-name:focus {
 }
 
 /* 図面ビュー */
-.view-list {
+.minicad .view-list {
   list-style: none;
   margin: 4px 0;
   padding: 0;
 }
 
-.view-row {
+.minicad .view-row {
   padding: 5px 6px;
   border: 1px solid transparent;
   border-radius: 5px;
 }
 
-.view-row.active {
+.minicad .view-row.active {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
 
-.view-head {
+.minicad .view-head {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.view-head input.view-name {
+.minicad .view-head input.view-name {
   flex: 1 1 auto;
   min-width: 0;
   font: inherit;
@@ -898,33 +900,33 @@ input.layer-name:focus {
   color: var(--ink);
 }
 
-.view-row.active input.view-name {
+.minicad .view-row.active input.view-name {
   background: var(--surface);
   border-color: var(--line);
 }
 
-.view-scale {
+.minicad .view-scale {
   flex: 0 0 auto;
   font-size: 11px;
   color: var(--ink-soft);
 }
 
-.view-delete {
+.minicad .view-delete {
   flex: 0 0 auto;
   padding: 0 6px;
 }
 
-.view-opacity {
+.minicad .view-opacity {
   margin-top: 4px;
 }
 
-.view-opacity .field input[type='range'] {
+.minicad .view-opacity .field input[type='range'] {
   flex: 1 1 auto;
   min-width: 0;
 }
 
 /* インスペクタの小見出し */
-.attr-head {
+.minicad .attr-head {
   margin: 10px 0 4px;
   font-size: 11px;
   font-weight: 600;
@@ -933,13 +935,13 @@ input.layer-name:focus {
 
 /* パーツのパレット */
 /* 物件用途の絞り込み。ワイヤー改訂版の画面上部のラジオ */
-.use-filter {
+.minicad .use-filter {
   display: flex;
   gap: 4px;
   margin: 6px 0 2px;
 }
 
-.use-button {
+.minicad .use-button {
   font: inherit;
   font-size: 11px;
   flex: 1;
@@ -952,25 +954,25 @@ input.layer-name:focus {
   white-space: nowrap;
 }
 
-.use-button:hover {
+.minicad .use-button:hover {
   background: var(--accent-soft);
 }
 
-.use-button[aria-pressed='true'] {
+.minicad .use-button[aria-pressed='true'] {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--ink);
   font-weight: 600;
 }
 
-.part-group {
+.minicad .part-group {
   margin: 8px 0 4px;
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-soft);
 }
 
-.part-grid {
+.minicad .part-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
@@ -983,7 +985,7 @@ input.layer-name:focus {
  *
  * 絵は `thumb.ts` が**図面と同じ記号を描いて**作る。画像ファイルは持たない
  */
-.part-button {
+.minicad .part-button {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -997,14 +999,14 @@ input.layer-name:focus {
 }
 
 /* **横長。** 平面の建具は細長いので、正方形に収めると壁の帯が潰れる */
-.part-thumb {
+.minicad .part-thumb {
   width: 100%;
   max-width: 96px;
   height: 40px;
 }
 
 /* **名前は 2 行まで。** 「ドア開口(建具なし)」は 1 行に入らない */
-.part-name {
+.minicad .part-name {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1014,20 +1016,20 @@ input.layer-name:focus {
   text-align: center;
 }
 
-.part-button:hover:not(:disabled) {
+.minicad .part-button:hover:not(:disabled) {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.part-button:disabled {
+.minicad .part-button:disabled {
   color: var(--ink-soft);
   background: var(--surface-sunk);
   cursor: not-allowed;
 }
 
 /* プロモードの「まだ無いもの」 */
-.missing-list {
+.minicad .missing-list {
   margin: 4px 0 10px;
   padding-left: 18px;
   color: var(--ink-soft);
@@ -1035,7 +1037,7 @@ input.layer-name:focus {
 }
 
 /* --- ダイアログ --- */
-.dialog-backdrop {
+.minicad .dialog-backdrop {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -1044,7 +1046,7 @@ input.layer-name:focus {
   background: var(--scrim);
 }
 
-.dialog {
+.minicad .dialog {
   width: min(32rem, calc(100vw - 2rem));
   max-height: calc(100vh - 4rem);
   display: flex;
@@ -1056,19 +1058,19 @@ input.layer-name:focus {
   box-shadow: var(--shadow-xl);
 }
 
-.dialog h2 {
+.minicad .dialog h2 {
   margin: 0;
   font-size: 0.95rem;
 }
 
-.dialog-body {
+.minicad .dialog-body {
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
 }
 
-.dialog-text {
+.minicad .dialog-text {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1076,36 +1078,36 @@ input.layer-name:focus {
   line-height: 1.6;
 }
 
-.dialog-actions {
+.minicad .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
 }
 
-.dialog-actions button.primary {
+.minicad .dialog-actions button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-.constraint-buttons {
+.minicad .constraint-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin: 4px 0;
 }
 
-.constraint-buttons button {
+.minicad .constraint-buttons button {
   flex: 1 1 auto;
 }
 
-.field > button.danger {
+.minicad .field > button.danger {
   flex: 0 0 auto;
   padding: 2px 8px;
 }
 
 /* --- 2D / 3D の切り替え --- */
-.view-tabs {
+.minicad .view-tabs {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -1120,7 +1122,7 @@ input.layer-name:focus {
   box-shadow: var(--shadow);
 }
 
-.view-tabs button {
+.minicad .view-tabs button {
   padding: 3px 9px;
   border: 0;
   border-radius: var(--r-sm);
@@ -1130,7 +1132,7 @@ input.layer-name:focus {
 }
 
 /* 階の区画。画層の行と同じ組み方 */
-.level-row {
+.minicad .level-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1138,31 +1140,31 @@ input.layer-name:focus {
   border-bottom: 1px solid var(--line);
 }
 
-.level-head {
+.minicad .level-head {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.level-head .level-pick {
+.minicad .level-head .level-pick {
   flex: none;
   width: 24px;
   padding: 2px 0;
   font-size: 11px;
 }
 
-.level-head .level-pick[aria-pressed='true'] {
+.minicad .level-head .level-pick[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-.level-head .level-name {
+.minicad .level-head .level-name {
   flex: 1;
   min-width: 0;
 }
 
-.level-controls {
+.minicad .level-controls {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1170,28 +1172,28 @@ input.layer-name:focus {
   color: var(--ink-soft);
 }
 
-.level-controls .level-num {
+.minicad .level-controls .level-num {
   width: 62px;
 }
 
-.level-controls .level-count {
+.minicad .level-controls .level-count {
   margin-left: auto;
 }
 
-.level-add {
+.minicad .level-add {
   display: flex;
   gap: 6px;
   margin-top: 6px;
 }
 
-.level-add button {
+.minicad .level-add button {
   flex: 1;
 }
 
 /* 階の切り替え。`view-tabs` と同じ作法で、図面の上に浮かせる */
 /* **`display: flex` は `hidden` を打ち負かす。** 1 階しか無いときに
    隠しているつもりで出ていた。属性のほうを明示して勝たせる */
-.level-switch[hidden] {
+.minicad .level-switch[hidden] {
   display: none;
 }
 
@@ -1199,7 +1201,7 @@ input.layer-name:focus {
  * **図面の左下に浮かぶ帯。** 階と倍率を 1 枚のカードに並べる。
  * ワイヤー（`ベース図面.html`）の `.bottom-bar` と同じ形
  */
-.overlay-bottom {
+.minicad .overlay-bottom {
   position: absolute;
   bottom: 12px;
   left: 12px;
@@ -1213,15 +1215,15 @@ input.layer-name:focus {
   box-shadow: var(--shadow);
 }
 
-.level-switch,
-.zoom-bar {
+.minicad .level-switch,
+.minicad .zoom-bar {
   display: flex;
   align-items: center;
   gap: 3px;
 }
 
 /* 階と倍率のあいだの仕切り */
-.zoom-bar::before {
+.minicad .zoom-bar::before {
   content: '';
   width: 1px;
   height: 16px;
@@ -1230,11 +1232,11 @@ input.layer-name:focus {
 }
 
 /* 階が 1 つしか無いときは仕切りも要らない */
-.level-switch[hidden] + .zoom-bar::before {
+.minicad .level-switch[hidden] + .zoom-bar::before {
   display: none;
 }
 
-.zoom-step {
+.minicad .zoom-step {
   display: flex;
   padding: 4px;
   border: 0;
@@ -1243,7 +1245,7 @@ input.layer-name:focus {
   color: var(--ink-soft);
 }
 
-.zoom-value {
+.minicad .zoom-value {
   min-width: 46px;
   padding: 4px 2px;
   border: 0;
@@ -1254,7 +1256,7 @@ input.layer-name:focus {
   text-align: center;
 }
 
-.level-switch button {
+.minicad .level-switch button {
   padding: 3px 9px;
   border: 0;
   border-radius: var(--r-sm);
@@ -1263,12 +1265,12 @@ input.layer-name:focus {
   font-size: var(--fs);
 }
 
-.level-switch .level-label {
+.minicad .level-switch .level-label {
   font-size: 11px;
   color: var(--ink-soft);
 }
 
-.level-switch button[aria-pressed='true'] {
+.minicad .level-switch button[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
@@ -1305,26 +1307,26 @@ input.layer-name:focus {
   display: none;
 }
 
-.view-tabs .walk-note {
+.minicad .view-tabs .walk-note {
   font-size: 12px;
   color: var(--accent);
   font-weight: 600;
   align-self: center;
 }
 
-.view-tabs button[aria-pressed='true'] {
+.minicad .view-tabs button[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
 /* 色の欄。`<input type="color">` と「画層の色に戻す」を横に並べる */
-.field .color-cell {
+.minicad .field .color-cell {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.field .color-cell input[type='color'] {
+.minicad .field .color-cell input[type='color'] {
   width: 36px;
   height: 24px;
   padding: 0;
@@ -1332,7 +1334,7 @@ input.layer-name:focus {
   background: none;
   cursor: pointer;
 }
-.field .color-cell button.subtle {
+.minicad .field .color-cell button.subtle {
   padding: 2px 6px;
   font-size: 11px;
   background: none;

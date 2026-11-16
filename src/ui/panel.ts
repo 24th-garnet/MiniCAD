@@ -13,6 +13,12 @@ import type { PaneId } from './section-registry.ts';
  */
 export interface PanelContext {
   readonly editor: Editor;
+  /**
+   * MiniCAD の外枠。**ダイアログを差す先**。
+   *
+   * ホストのページに組み込まれる以上、`document.body` は自分のものではない。
+   */
+  readonly root: HTMLElement;
   /** 全パネルを描き直す */
   refresh(): void;
   /** 履歴に残る変更（図面の中身） */

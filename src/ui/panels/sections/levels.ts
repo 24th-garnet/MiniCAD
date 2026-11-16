@@ -150,7 +150,7 @@ function levelRow(level: Level, ctx: PanelContext): HTMLElement {
           // 戻し損ねたときに図面が静かに欠ける
           const blocker = levelRemovalBlocker(scene, level.id);
           if (blocker !== null) {
-            openDialog('この階は消せません', [dialogText(blocker)], [
+            openDialog(ctx.root, 'この階は消せません', [dialogText(blocker)], [
               { label: '閉じる', primary: true },
             ]);
             return;

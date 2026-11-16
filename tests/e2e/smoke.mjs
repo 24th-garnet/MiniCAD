@@ -3439,6 +3439,80 @@ async function run() {
     await sleep(400);
     console.log('✔ ウォークスルー：床を叩いて移り、ドラッグでは目が動かない');
   }
+
+  await embedding();
+}
+
+/**
+ * **組み込んだときに、ホストのページが化けないこと。**
+ *
+ * MiniCAD はモジュールとして本番アプリに差す前提なのに、`index.html` は
+ * MiniCAD だけの全画面ページで、**漏れる先が無かった**——だから
+ * `html, body { overflow: hidden }` も素の `button {}` も、ここまで
+ * 誰にも咎められずに居座れた。
+ *
+ * `tests/e2e/embed.html` は自前の見出し・ボタン・入力欄を持ち、縦に長い
+ * ページの途中に MiniCAD を置く。本番アプリと同じ形。
+ *
+ * **期待値は決め打ちにしない。** 同じページを `?nomount=1` でもう 1 枚開き、
+ * 組んだ側と組まない側を比べる。ブラウザの既定が変わっても嘘にならない。
+ */
+async function embedding() {
+  const EMBED = `${BASE}tests/e2e/embed.html`;
+  const probe = () => ({
+    bodyOverflow: getComputedStyle(document.body).overflowY,
+    bodyBg: getComputedStyle(document.body).backgroundColor,
+    canScroll: document.documentElement.scrollHeight > window.innerHeight + 100,
+    button: (({ padding, borderRadius, backgroundColor, borderTopWidth, fontSize }) =>
+      ({ padding, borderRadius, backgroundColor, borderTopWidth, fontSize }))(
+        getComputedStyle(document.querySelector('.host-button'))),
+    input: (({ borderRadius, backgroundColor, fontSize }) =>
+      ({ borderRadius, backgroundColor, fontSize }))(
+        getComputedStyle(document.querySelector('.host-input'))),
+    boxSizing: getComputedStyle(document.querySelector('.host-box')).boxSizing,
+    heading: getComputedStyle(document.querySelector('.host-heading')).fontSize,
+  });
+
+  const open = async (url) => {
+    const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    p.on('console', (m) => {
+      if (m.type() === 'error' || m.type() === 'warning') problems.push(`[embed console.${m.type()}] ${m.text()}`);
+    });
+    p.on('pageerror', (e) => problems.push(`[embed pageerror] ${e.message}`));
+    await p.goto(url, { waitUntil: 'networkidle' });
+    await p.waitForFunction(() => window.__ready === true, { timeout: 10_000 });
+    return p;
+  };
+
+  const bare = await open(`${EMBED}?nomount=1`);
+  const embedded = await open(EMBED);
+  const want = await bare.evaluate(probe);
+  const got = await embedded.evaluate(probe);
+
+  for (const key of ['bodyOverflow', 'bodyBg', 'canScroll', 'boxSizing', 'heading']) {
+    assert.deepEqual(got[key], want[key], `MiniCAD を組んだらホストの ${key} が変わった`);
+  }
+  assert.deepEqual(got.button, want.button, 'MiniCAD を組んだらホストのボタンの見た目が変わった');
+  assert.deepEqual(got.input, want.input, 'MiniCAD を組んだらホストの入力欄の見た目が変わった');
+
+  // **ホストのページが実際にスクロールすること。** `overflow` の文字列だけ
+  // 合っていても、巻き上げられなければ意味がない
+  await embedded.evaluate(() => window.scrollTo(0, 500));
+  assert.ok(await embedded.evaluate(() => window.scrollY) > 100, '組み込んだらホストのページが巻けなくなった');
+
+  // **MiniCAD 自身は素のままではいけない。** 上を通すだけなら
+  // スタイルを全部消せば済むので、中が色付いていることも併せて見る
+  const inside = await embedded.evaluate(() => {
+    const b = document.querySelector('.minicad .tool-button');
+    const s = getComputedStyle(b);
+    return { radius: s.borderRadius, count: document.querySelectorAll('.minicad').length };
+  });
+  assert.equal(inside.count, 1, '組み込んだ MiniCAD が 1 つではない');
+  assert.notEqual(inside.radius, '0px', 'MiniCAD の中までスタイルが効かなくなっている');
+
+  await bare.close();
+  await embedded.close();
+  console.log('✔ 組み込んでもホストのページが化けない（スタイルが漏れない）');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

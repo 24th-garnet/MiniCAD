@@ -345,7 +345,7 @@ function openElevationView(ctx: PanelContext): void {
     message,
   ];
 
-  openDialog("立面ビュー", body, [
+  openDialog(ctx.root, "立面ビュー", body, [
     { label: "閉じる" },
     {
       label: "書き出す",

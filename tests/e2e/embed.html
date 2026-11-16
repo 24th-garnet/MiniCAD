@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MiniCAD 埋め込みの見本</title>
+    <!--
+      **ホスト側のページを真似た入れ物。** `index.html` は MiniCAD だけの
+      全画面ページなので、「組み込んだときにホストが化けるか」を見られない。
+      ここは本番アプリと同じく、自前の見出し・ボタン・入力欄を持ち、
+      縦に長くてスクロールするページの一部に MiniCAD を置く。
+
+      **MiniCAD の素の値は 1 つも書かない。** 素のブラウザのままにして、
+      MiniCAD を組んだあとも素のままかを試験が見る。
+    -->
+  </head>
+  <body>
+    <h2 class="host-heading">ホストの見出し</h2>
+    <button class="host-button" type="button">ホストのボタン</button>
+    <input class="host-input" type="text" value="ホストの入力欄" />
+    <div class="host-box">ホストの箱</div>
+    <!-- ページがスクロールすること自体を見るための丈 -->
+    <div style="height: 3000px"></div>
+    <div id="editor" style="height: 600px"></div>
+    <script type="module">
+      /*
+       * `?nomount=1` では組まない。**素のブラウザの値を測るため。**
+       * 「ボタンが MiniCAD の見た目になっていないか」を決め打ちの px で
+       * 書くと、ブラウザの既定が変わった日に嘘になる。組まない同じページを
+       * もう 1 枚開いて、**その場で比べる**。
+       */
+      if (!new URLSearchParams(location.search).has('nomount')) {
+        const { mount } = await import('/src/mount.ts');
+        window.mountMiniCad = mount;
+        window.minicadApi = mount(document.getElementById('editor'), {});
+      }
+      window.__ready = true;
+    </script>
+  </body>
+</html>

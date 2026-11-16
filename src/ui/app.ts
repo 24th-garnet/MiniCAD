@@ -92,6 +92,7 @@ export class App {
     const self = this;
     this.ctx = {
       editor: this.editor,
+      root: this.shellRoot,
       refresh: () => this.refresh(),
       edit: (fn) => this.editor.store.commit(fn),
       set: (fn) => this.editor.store.update(fn),

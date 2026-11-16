@@ -15,8 +15,21 @@ export interface DialogAction {
   onClick?: () => void | false;
 }
 
-/** 開いたダイアログを閉じる関数を返す */
+/**
+ * 開いたダイアログを閉じる関数を返す。
+ *
+ * **`root` は MiniCAD の外枠。** 以前は `document.body` に差していたが、
+ * MiniCAD はホストのページに組み込まれるモジュールなので、それは
+ * **ホストの DOM に自分のものを置き去りにする**ことだった。実害が 2 つある：
+ *
+ * 1. スタイルを `.minicad` の下に閉じ込めたとき、body 直下のダイアログだけが
+ *    素のブラウザの見た目に戻る
+ * 2. `destroy()` は外枠を外すだけなので、**開いたままのダイアログが残る**
+ *
+ * 根の中に差せば、どちらも起きない。`position: fixed` なので見え方は変わらない。
+ */
 export function openDialog(
+  root: HTMLElement,
   title: string,
   body: (HTMLElement | string)[],
   actions: DialogAction[],
@@ -59,7 +72,7 @@ export function openDialog(
     if (e.target === backdrop) close();
   });
   backdrop.append(dialog);
-  document.body.append(backdrop);
+  root.append(backdrop);
   document.addEventListener('keydown', onKeyDown, true);
   buttons.find((b) => b.classList.contains('primary'))?.focus();
   return close;

@@ -29,7 +29,7 @@ export function openDxfImport(ctx: PanelContext, file: File): void {
         doc = parseDxfBytes(new Uint8Array(buffer));
       } catch (err) {
         const message = err instanceof DxfFormatError ? err.message : `読み込めませんでした: ${(err as Error).message}`;
-        openDialog('DXF の読み込み', [dialogText(message)], [{ label: '閉じる', primary: true }]);
+        openDialog(ctx.root, 'DXF の読み込み', [dialogText(message)], [{ label: '閉じる', primary: true }]);
         return;
       }
       askOptions(ctx, doc, file.name);
@@ -97,7 +97,7 @@ function askOptions(ctx: PanelContext, doc: DxfDocument, filename: string): void
     ]),
   ];
 
-  openDialog('DXF を読み込む', body, [
+  openDialog(ctx.root, 'DXF を読み込む', body, [
     { label: 'キャンセル' },
     {
       label: '読み込む',
@@ -111,7 +111,7 @@ function runImport(ctx: PanelContext, doc: DxfDocument, options: ImportOptions, 
   if (asNewDrawing) {
     const { scene, report } = dxfToScene(doc, options);
     ctx.loadScene(scene);
-    showReport(report);
+    showReport(ctx, report);
     return;
   }
 
@@ -121,9 +121,9 @@ function runImport(ctx: PanelContext, doc: DxfDocument, options: ImportOptions, 
     report = importDxfInto(ctx.editor.store.scene, doc, options);
   });
   ctx.editor.zoomToFit();
-  if (report) showReport(report);
+  if (report) showReport(ctx, report);
 }
 
-function showReport(report: ReturnType<typeof importDxfInto>): void {
-  openDialog('DXF を読み込みました', [dialogText(formatReport(report))], [{ label: '閉じる', primary: true }]);
+function showReport(ctx: PanelContext, report: ReturnType<typeof importDxfInto>): void {
+  openDialog(ctx.root, 'DXF を読み込みました', [dialogText(formatReport(report))], [{ label: '閉じる', primary: true }]);
 }

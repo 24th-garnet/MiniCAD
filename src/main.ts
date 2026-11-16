@@ -1,6 +1,9 @@
 import { loadLocal, saveLocalFile } from './io/scene.ts';
 import { sampleScene } from './io/sample.ts';
 import { mount } from './mount.ts';
+// **ページそのものの見た目は、単体で立ち上げたときだけ。**
+// `mount.ts` に入れるとホストのページを書き換えてしまう
+import './standalone.css';
 
 /**
  * 単体で立ち上げたときのホスト。
