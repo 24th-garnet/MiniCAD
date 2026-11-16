@@ -3626,8 +3626,39 @@ async function embedding() {
   assert.notEqual(inside.radius, '0px', 'MiniCAD の中までスタイルが効かなくなっている');
 
   await bare.close();
-  await embedded.close();
   console.log('✔ 組み込んでもホストのページが化けない（スタイルが漏れない）');
+
+  /*
+   * **狭い箱を渡されても図面が残ること。**
+   *
+   * 飾りは 404px 固定なので、放っておくと箱が狭いほど図面だけが痩せる。
+   * **`@media` では直せない**——窓ではなく、貰った箱の幅で決まる話なので、
+   * `@container` で測っている。ここはその境目が効いていることを見る。
+   */
+  const share = async (w) => embedded.evaluate(async (w) => {
+    document.getElementById('editor').style.width = `${w}px`;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return document.querySelector('.canvas-wrap').getBoundingClientRect().width / w;
+  }, w);
+
+  // 広いときは今までどおり 4 列（図面はおよそ 7 割）
+  assert.ok(Math.abs(await share(1440) - 0.72) < 0.03, '広い箱で列の取り方が変わった');
+  // 狭いときは右の欄が列から外れて浮く。**半分を切らないこと**
+  for (const w of [1024, 768, 600]) {
+    const got = await share(w);
+    assert.ok(got > 0.7, `箱が ${w}px のとき図面が ${Math.round(got * 100)}% しか残らない`);
+  }
+  // **消したのではなく浮かせたこと。** 消すとレールが「押しても出ない」口になる
+  const floating = await embedded.evaluate(() => {
+    const i = document.querySelector('.inspector');
+    const s = getComputedStyle(i);
+    return { position: s.position, visible: i.getBoundingClientRect().width > 100 };
+  });
+  assert.equal(floating.position, 'absolute', '狭いときに右の欄が浮いていない');
+  assert.ok(floating.visible, '狭いときに右の欄が消えている（浮かせるはずが消している）');
+
+  await embedded.close();
+  console.log('✔ 狭い箱に差しても図面が 7 割残る（@container で箱の幅を見る）');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */

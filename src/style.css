@@ -136,6 +136,20 @@
   font-family: var(--font);
   color: var(--ink);
   background: var(--bg);
+  /*
+   * **幅の問い合わせは窓ではなく、貰った箱に対して行う。**
+   *
+   * `@media` は窓の幅を見るので、モジュールには使えない——ホストが
+   * 1440px の窓の中に 600px の箱を渡してくることがあり、そのとき
+   * `@media` は「広い」と答える。`@container` なら箱そのものを見る。
+   *
+   * 副作用がひとつある。`container-type` は `contain: layout` を含むので、
+   * **`position: fixed` の子がこの箱を基準にする**——ダイアログが窓全体では
+   * なく MiniCAD の箱だけを覆うようになる。組み込まれる側としてはこちらが
+   * 正しい（ホストのページを勝手に塞がない）。
+   */
+  container-type: inline-size;
+  container-name: minicad;
 }
 
 /* --- 上部バー --- */
@@ -302,6 +316,8 @@
   /* 道具帯 / 図面 / 右の欄 / 束を選ぶレール */
   grid-template-columns: 76px 1fr 272px 56px;
   min-height: 0;
+  /* 狭いときに右の欄を浮かせる。その位置の基準 */
+  position: relative;
 }
 
 /* **束を畳んだら、右の欄ごと消す。** 列の指定も一緒に書き換える——
@@ -1083,8 +1099,12 @@
 }
 
 .minicad .dialog {
-  width: min(32rem, calc(100vw - 2rem));
-  max-height: calc(100vh - 4rem);
+  /*
+   * **窓ではなく箱で測る。** `100vw` のままだと、ホストが小さな箱を
+   * 渡してきたときに、その箱からはみ出した札が出る
+   */
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100% - 4rem);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1378,4 +1398,34 @@
   border-radius: 3px;
   cursor: pointer;
   color: var(--ink-soft);
+}
+
+/*
+ * **狭い箱に差されたとき。**
+ *
+ * 飾りが 404px 固定なので、実測で箱が 768px のとき図面は 364px（47%）、
+ * 600px のとき 196px（33%）しか残らなかった。図面が画面の半分を切ると、
+ * もう CAD として使えない。
+ *
+ * **右の欄を列から外して、図面の上に浮かせる。** 消すのではない——消すと
+ * レールのボタンが「押しても何も出ない」口になる（`panel-rail.ts`）。
+ * 浮かせれば、押せば出るし、畳めば図面が丸ごと見える。Coohom も狭いときは
+ * 同じことをしている。
+ *
+ * 境目の 1024px は実測から。ここを境に、図面は 620px → 892px になる。
+ */
+@container minicad (max-width: 1024px) {
+  .minicad .workspace {
+    grid-template-columns: 76px 1fr 56px;
+  }
+
+  .minicad .inspector {
+    position: absolute;
+    top: 0;
+    right: 56px;
+    bottom: 0;
+    width: 272px;
+    z-index: 20;
+    box-shadow: var(--shadow-lg);
+  }
 }
