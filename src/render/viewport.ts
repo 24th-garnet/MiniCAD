@@ -46,7 +46,30 @@ export class Viewport {
     this.scale = next;
   }
 
+  /**
+   * 画面の寸法が変わったとき。
+   *
+   * **倍率は保ち、画面の中心にあったものを中心に残す。**
+   *
+   * 倍率を保つのは CAD の流儀（AutoCAD も窓を変えて縮尺は変わらない）。
+   * 問題はもう一方で、以前は `origin` に手を付けなかった——`origin` は
+   * 「ワールド原点が画面のどこに来るか」を**画面の左上から**測った px なので、
+   * 触らないと**左上に貼り付いたまま**になる。箱が縮むと図面が右下へ逃げ、
+   * 実測では 568×530 まで縮めた時点で**間取りが丸ごと枠の外**に出た。
+   *
+   * 中心を基準にすれば、縮んでも見ていたものが真ん中に残って、周りから
+   * 均等に切れる。半分だけずらせば足りる。
+   *
+   * **初回は動かさない。** まだ寸法を知らない（`width === 0`）ときは
+   * ずらす基準が無く、このあと `fit` が来る。
+   */
   resize(width: number, height: number): void {
+    if (this.width !== 0 && this.height !== 0) {
+      this.origin = vec(
+        this.origin.x + (width - this.width) / 2,
+        this.origin.y + (height - this.height) / 2,
+      );
+    }
     this.width = width;
     this.height = height;
   }

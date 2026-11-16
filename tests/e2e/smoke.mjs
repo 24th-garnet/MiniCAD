@@ -3657,8 +3657,56 @@ async function embedding() {
   assert.equal(floating.position, 'absolute', '狭いときに右の欄が浮いていない');
   assert.ok(floating.visible, '狭いときに右の欄が消えている（浮かせるはずが消している）');
 
+  /*
+   * **箱の寸法が変わっても、見ていたものが画面に残ること。**
+   *
+   * ホストの欄が開く・窓が狭まる・分割に切り替わる——**組み込まれる側は
+   * いつでも寸法が変わる**。以前は `origin` を画面の左上から測ったまま
+   * 置いていたので、箱が縮むと図面が右下へ逃げ、丸ごと枠の外へ出ていた。
+   */
+  await embedded.evaluate(async () => {
+    const m = await import('/src/io/sample.ts');
+    window.minicadApi.setScene(m.sampleScene());
+    window.minicad.editorInstance.zoomToFit();
+  });
+  await sleep(400);
+
+  /*
+   * **見るのは「画面の中心に何が来ているか」。** `zoomToFit` が何を中心に
+   * 選んだかには依らせない——そこに依ると、見本の間取りを直した日に
+   * この段が落ちる。寸法を変えても**同じ場所が中心に残る**ことだけを見る。
+   */
+  const atCenter = (w) => embedded.evaluate(async (w) => {
+    document.getElementById('editor').style.width = `${w}px`;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const vp = window.minicad.editorInstance.viewport;
+    const mid = vp.toWorld({ x: vp.width / 2, y: vp.height / 2 });
+    const ns = Object.values(window.minicad.editorInstance.store.scene.nodes);
+    const corners = [
+      { x: Math.min(...ns.map((n) => n.x)), y: Math.min(...ns.map((n) => n.y)) },
+      { x: Math.max(...ns.map((n) => n.x)), y: Math.max(...ns.map((n) => n.y)) },
+    ].map((p) => vp.toScreen(p));
+    return {
+      pct: Math.round((vp.scale / 0.06) * 100),
+      mid,
+      // 間取りが画面のどこかに掛かっているか（丸ごと外へ出ていないか）
+      onScreen: corners.some((c) => c.x > 0 && c.x < vp.width && c.y > 0 && c.y < vp.height),
+    };
+  }, w);
+
+  const first = await atCenter(1440);
+  for (const w of [900, 700, 1200, 1440]) {
+    const got = await atCenter(w);
+    assert.ok(Math.hypot(got.mid.x - first.mid.x, got.mid.y - first.mid.y) < 1,
+      `箱を ${w}px にしたら、画面の中心にあったものが動いた: `
+      + `${JSON.stringify(first.mid)} → ${JSON.stringify(got.mid)}`);
+    // 倍率は変えない（CAD の流儀。AutoCAD も窓を変えて縮尺は変わらない）
+    assert.equal(got.pct, first.pct, `箱の寸法を変えただけで倍率が ${first.pct}% → ${got.pct}% に変わった`);
+    assert.ok(got.onScreen, `箱が ${w}px のとき間取りが画面から消えた`);
+  }
+
   await embedded.close();
-  console.log('✔ 狭い箱に差しても図面が 7 割残る（@container で箱の幅を見る）');
+  console.log('✔ 狭い箱に差しても図面が 7 割残り、寸法が変わっても図面が逃げない');
 }
 
 /** インスペクタのラベルからその行の select を引いて選ぶ */
