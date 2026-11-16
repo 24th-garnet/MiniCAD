@@ -773,6 +773,34 @@
   display: none;
 }
 
+/*
+ * いま描いている画層。**AutoCAD のリボンの画層欄にあたる。**
+ *
+ * 帯が 26px しかないので、ふだんは枠を出さず文字だけ。指が乗ったときと
+ * 開いているときだけ枠が出る——常時枠があると、座標や尺度より目立って
+ * しまう（ここは見張る欄であって、押す欄ではない）。
+ */
+.minicad .status-layer {
+  max-width: 11rem;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  font-size: var(--fs);
+  color: var(--ink-mute);
+}
+
+.minicad .status-layer:hover,
+.minicad .status-layer:focus {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-mid);
+}
+
+.minicad .status-layer[hidden] {
+  display: none;
+}
+
 /* --- 画層パネル --- */
 
 .minicad .layer-row {

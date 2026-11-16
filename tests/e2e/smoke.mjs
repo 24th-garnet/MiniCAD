@@ -1265,6 +1265,45 @@ async function run() {
     },
   );
 
+  /*
+   * **いま描いている画層が、帯に出ていること。**
+   *
+   * 以前は「画層」の束を開かないと見えず、**どの画層に引いているか
+   * 分からないまま線が引けた**。画層は DXF の LAYER にそのまま対応するので、
+   * 気づかずに違う画層へ引くと、相手の CAD で初めて分かる。
+   * AutoCAD も Jw_cad も画層は常時表示で、そこから変えられる。
+   */
+  let pickedLayer = '';
+  await step(
+    'いま描いている画層が帯に出ていて、そこから変えられる',
+    async () => {
+      const sel = page.locator('.status-layer');
+      assert.equal(await sel.count(), 1, 'ステータスバーに画層が出ていない');
+      const current = await page.evaluate(() => window.minicad.editorInstance.store.settings.currentLayerId);
+      assert.equal(await sel.inputValue(), current, '帯の画層が、いまの指定と食い違っている');
+
+      // **いまと違う画層へ移す。** 名前は走らせるたびに変わりうるので、その場で読む
+      const options = await sel.locator('option').evaluateAll((os) =>
+        os.map((o) => ({ value: o.value, label: o.textContent })));
+      const next = options.find((o) => o.value !== '' && o.value !== current);
+      assert.ok(next, `選べる画層が他に無い: ${JSON.stringify(options)}`);
+      pickedLayer = next.label.replace('画層: ', '');
+      await sel.selectOption(next.value);
+
+      shapesBefore = (await state()).drawings;
+      await page.keyboard.press('l');
+      await clickWorld(2000, -3200);
+      await clickWorld(6000, -3200);
+      await page.keyboard.press('Enter');
+    },
+    (s) => {
+      assert.equal(s.drawings, shapesBefore + 1, '線が引けていない');
+      // **出ているだけでは足りない。** 帯から選んだ画層に実際に乗ること
+      assert.ok(s.shapeLayers.includes(pickedLayer),
+        `帯から選んだ画層「${pickedLayer}」に乗っていない: ${s.shapeLayers}`);
+    },
+  );
+
   await step(
     '選択したものの画層を変えられる',
     async () => {
@@ -2858,6 +2897,10 @@ async function run() {
   await pane('layers');
   assert.equal(await page.locator('.layer-row input.layer-name:not([disabled])').count(), 0,
     '画層名を直せてしまう');
+  // **新しい線が引けないので、「新規作成の画層」も出さない。**
+  // 押しても何も起きない口を置かない（`panel-rail.ts` と同じ筋）
+  assert.equal(await page.locator('.status-layer:not([hidden])').count(), 0,
+    '閲覧のみなのに「新規作成の画層」が出ている');
 
   // **保証は Store。** 画面に無い経路からも書けないこと
   const blocked = await page.evaluate(() => {

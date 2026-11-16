@@ -1,6 +1,6 @@
 import { activeLevel } from '../core/level.ts';
 import type { Viewer3D } from '../render3d/viewer.ts';
-import { el } from './dom.ts';
+import { clear, el } from './dom.ts';
 import type { Panel, PanelContext } from './panel.ts';
 
 export class StatusBar implements Panel {
@@ -23,12 +23,31 @@ export class StatusBar implements Panel {
   /** 座標と尺度。**ボタンと混ぜない**ので、文字だけを入れ替えられる */
   private readonly text = el('span', { class: 'status-text' }, []);
 
+  /**
+   * いま描いている画層。**AutoCAD も Jw_cad も、画層は常時表示。**
+   *
+   * MiniCAD では「画層」の束を開かないと見えなかった——つまり
+   * **自分がどの画層に描いているか分からないまま線が引けた**。
+   * 画層は DXF の LAYER にそのまま対応し、書き出した先で効くので、
+   * 気づかずに違う画層へ引くと、相手の CAD で初めて分かることになる。
+   *
+   * 見るだけでなく**選べる**。AutoCAD のリボンの画層欄と同じで、
+   * 「見えているのに変えるには別の場所へ行く」のは一手多い。
+   */
+  private readonly layerPick = el('select', {
+    class: 'status-layer',
+    title: '新規作成の画層（DXF の LAYER）',
+  }) as HTMLSelectElement;
+
+  /** いま `layerPick` に入れてある選択肢。**同じなら建て直さない** */
+  private layerOptions = '';
+
   constructor(
     private readonly hint: HTMLElement,
     private readonly readout: HTMLElement,
     private readonly viewer: Viewer3D,
   ) {
-    this.readout.append(this.text, this.toggles.grid, this.toggles.ortho);
+    this.readout.append(this.text, this.layerPick, this.toggles.grid, this.toggles.ortho);
   }
 
   private toggle(label: string, title: string): HTMLButtonElement {
@@ -65,6 +84,7 @@ export class StatusBar implements Panel {
       // **平面を出していないあいだは、平面の入切も出さない。**
       // 押しても見えるところが何も変わらないボタンは壊れて見える
       for (const b of [this.toggles.grid, this.toggles.ortho]) b.hidden = true;
+      this.layerPick.hidden = true;
       return;
     }
     const p = ctx.editor.pointerWorld();
@@ -91,5 +111,43 @@ export class StatusBar implements Panel {
     show(this.toggles.ortho, s.ortho, () => {
       ctx.set(() => void (ctx.editor.store.settings.ortho = !ctx.editor.store.settings.ortho));
     });
+    this.refreshLayer(ctx);
+  }
+
+  /**
+   * 画層の欄。**開いている最中に建て直さない。**
+   *
+   * ここはポインタが動くたびに通るので、毎回 `option` を作り直すと
+   * **開いたリストが指の下で閉じる**。中身が変わったときだけ建て直す。
+   */
+  private refreshLayer(ctx: PanelContext): void {
+    /*
+     * **閲覧のみでは出さない。** 道具が消えていて新しい線を引けないので、
+     * 「新規作成の画層」は押しても何も起きない口になる
+     * （`panel-rail.ts` / `level-switch.ts` と同じ筋）。
+     */
+    if (!ctx.can.edit) {
+      this.layerPick.hidden = true;
+      return;
+    }
+    this.layerPick.hidden = false;
+
+    const store = ctx.editor.store;
+    const layers = Object.values(store.scene.layers);
+    const signature = layers.map((l) => `${l.id}:${l.name}`).join('|');
+    if (signature !== this.layerOptions) {
+      this.layerOptions = signature;
+      clear(this.layerPick);
+      // 既定は「種別ごと」——壁は A-WALL、文字は A-ANNO-TEXT へ自動で乗る
+      this.layerPick.append(el('option', { value: '' }, ['画層: 種別ごと']));
+      for (const l of layers) {
+        this.layerPick.append(el('option', { value: l.id }, [`画層: ${l.name}`]));
+      }
+    }
+    this.layerPick.value = store.settings.currentLayerId ?? '';
+    this.layerPick.onchange = () => {
+      const v = this.layerPick.value;
+      ctx.set(() => void (store.settings.currentLayerId = v || null));
+    };
   }
 }
