@@ -62,6 +62,22 @@ export class Editor {
   private panning = false;
   private panStart: Vec = vec(0, 0);
   private spaceDown = false;
+  /**
+   * いま触れている指（またはペン）の、画面上の位置。
+   *
+   * **指 2 本のつまみ操作のためだけに持つ。** マウスでは中ボタンと
+   * ホイールが画面移動と拡大を担うが、**タブレットにはどちらも無い**。
+   * `touch-action: none` にしてあるのでブラウザのつまみ操作も来ない
+   * ——つまり、ここが無いとタブレットでは**図面を動かすことも寄ることも
+   * できない**。
+   */
+  private readonly touches = new Map<number, Vec>();
+  /** 指が 2 本になってから、全部離れるまで。そのあいだ道具には何も渡さない */
+  private gesture = false;
+  /** 1 つ前の指 2 本の中点と間隔。比でしか使わないので、絶対値は要らない */
+  private pinchPrev: { center: Vec; spread: number } | null = null;
+  /** まとめ待ちのフレーム。0 なら待っていない */
+  private pinchFrame = 0;
   private changeListeners = new Set<() => void>();
 
   constructor(canvas: HTMLCanvasElement) {
@@ -294,12 +310,74 @@ export class Editor {
     };
   }
 
+  /**
+   * 指 2 本の動きを、画面の移動と拡大にする。
+   *
+   * **中点の移りが平行移動、間隔の比が拡大率。** 軸は中点に取る
+   * ——つまんだところが指の下に留まる。ホイールがカーソルを軸にするのと
+   * 同じ理屈で、こうしないと寄るたびに見ていたものが逃げる。
+   *
+   * **1 つ前との差だけで決める。** 始点からの累積で出すと、指を置き直した
+   * ときに図面が飛ぶ。
+   */
+  /**
+   * **1 フレームに 1 回だけ効かせる。**
+   *
+   * 指 2 本でも `pointermove` は**指ごとに別々に届く**。届いた端から
+   * 計算すると「片方だけ新しい位置」という一瞬を拾ってしまい、間隔が
+   * 変わっていないのに変わったことになる——軸のずれた拡大が毎フレーム
+   * 2 回挟まり、**平行移動のつもりで図面が逃げる**。実測で、指を
+   * 120px 動かしたときに画面が 237px 移り、倍率が 14% ずれた。
+   *
+   * フレームの頭でまとめれば、両方とも新しい位置になっている。
+   */
+  private schedulePinch(): void {
+    if (this.pinchFrame !== 0) return;
+    this.pinchFrame = requestAnimationFrame(() => {
+      this.pinchFrame = 0;
+      if (this.gesture) this.applyPinch();
+    });
+  }
+
+  private applyPinch(): void {
+    const [a, b] = [...this.touches.values()];
+    if (!a || !b) return;
+    const center = vec((a.x + b.x) / 2, (a.y + b.y) / 2);
+    const spread = Math.hypot(a.x - b.x, a.y - b.y);
+    const prev = this.pinchPrev;
+    this.pinchPrev = { center, spread };
+    // 指が重なったときの 0 除算よけ。1px 未満は手の震えで比が暴れる
+    if (!prev || prev.spread < 1) return;
+    this.viewport.panBy(center.x - prev.center.x, center.y - prev.center.y);
+    this.viewport.zoomAt(center, spread / prev.spread);
+    this.requestRender();
+    // 左下の倍率と、ステータスバーの尺度を追従させる
+    this.notifyUi();
+  }
+
   private attachEvents(): void {
     const canvas = this.canvas;
     canvas.style.touchAction = 'none';
 
     canvas.addEventListener('pointerdown', (e) => {
       canvas.focus();
+      this.touches.set(e.pointerId, this.screenOf(e));
+      /*
+       * **2 本目が触れたら、そこからはつまみ操作。**
+       *
+       * 1 本目で始まっていた作図は、右クリックと同じ扱いで取り消す
+       * ——指を増やしたのは「動かしたい」という意思で、そのまま線を
+       * 引き続けられると、画面を動かすたびに図面が汚れる。
+       */
+      if (this.touches.size === 2) {
+        this.gesture = true;
+        this.panning = false;
+        if (this.tool.isActive?.(this)) this.tool.cancel?.(this);
+        this.notifyUi();
+        this.requestRender();
+        return;
+      }
+      if (this.gesture) return;
       // 中ボタン or スペース押下中 or 右ボタンは画面移動
       if (e.button === 1 || (e.button === 0 && this.spaceDown)) {
         this.panning = true;
@@ -316,6 +394,11 @@ export class Editor {
     });
 
     canvas.addEventListener('pointermove', (e) => {
+      if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, this.screenOf(e));
+      if (this.gesture) {
+        this.schedulePinch();
+        return;
+      }
       if (this.panning) {
         const s = this.screenOf(e);
         const d = sub(s, this.panStart);
@@ -335,6 +418,21 @@ export class Editor {
     });
 
     const endPointer = (e: PointerEvent) => {
+      this.touches.delete(e.pointerId);
+      /*
+       * **全部離れるまで、つまみ操作のまま。** 2 本から 1 本に減った瞬間に
+       * 戻すと、残った指が線を引き始める——指は同時に離れない。
+       */
+      if (this.gesture) {
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        if (this.touches.size === 0) {
+          this.gesture = false;
+          this.pinchPrev = null;
+          if (this.pinchFrame !== 0) cancelAnimationFrame(this.pinchFrame);
+          this.pinchFrame = 0;
+        }
+        return;
+      }
       if (this.panning) {
         this.panning = false;
         if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);

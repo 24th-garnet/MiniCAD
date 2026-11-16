@@ -717,8 +717,44 @@
 }
 
 .minicad #status-readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-mute);
+}
+
+/*
+ * 直交とグリッドの入切。**AutoCAD の ORTHO / GRID と同じ、押せるボタン。**
+ *
+ * 帯の高さが 26px しかないので、枠も地も持たせず文字だけを置く
+ * ——切れているときは薄墨、入っているときはアクセント色。
+ * `min-height` は指で押せる丈を確保するため（帯からははみ出さない）。
+ */
+.minicad .status-toggle {
+  padding: 2px 6px;
+  min-height: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  font-size: var(--fs);
+  color: var(--ink-mute);
+}
+
+.minicad .status-toggle:hover {
+  background: var(--surface-hover);
+  border-color: var(--line);
+}
+
+.minicad .status-toggle[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.minicad .status-toggle[hidden] {
+  display: none;
 }
 
 /* --- 画層パネル --- */

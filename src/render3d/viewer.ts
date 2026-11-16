@@ -147,6 +147,18 @@ export class Viewer3D {
   private tool: Tool3D = this.select;
   private downAt = { x: 0, y: 0 };
   private moved = false;
+  /**
+   * いま触れている指。**2 本のつまみ操作のためだけに持つ。**
+   *
+   * 3D は中ボタンで平行移動、ホイールで寄る。**タブレットにはどちらも無い**
+   * うえ `touch-action: none` にしてあるので、ここが無いと指では
+   * 回すことしか出来ない。
+   */
+  private readonly touches = new Map<number, { x: number; y: number }>();
+  private gesture = false;
+  private pinchPrev: { cx: number; cy: number; spread: number } | null = null;
+  /** まとめ待ちのフレーム。0 なら待っていない */
+  private pinchFrame = 0;
   private resizeObserver: ResizeObserver | null = null;
   private readonly teardown = new AbortController();
 
@@ -777,6 +789,55 @@ export class Viewer3D {
     this.resizeObserver.observe(this.canvas);
   }
 
+  /**
+   * 指 2 本の動きを、平行移動と寄りにする。
+   *
+   * **中点の移りが平行移動、間隔の比が寄り。** マウスの中ドラッグと
+   * ホイールに当たるもので、効く向きも係数もそちらに合わせてある。
+   *
+   * **歩いているあいだは寄らない。** 一人称に「注視点との距離」は意味が無く、
+   * 変えると目線の高さだけが静かに狂う（ホイールと同じ断り方）。
+   */
+  /**
+   * **1 フレームに 1 回だけ効かせる。**
+   *
+   * 指 2 本でも `pointermove` は**指ごとに別々に届く**。届いた端から
+   * 計算すると「片方だけ新しい位置」という一瞬を拾ってしまい、間隔が
+   * 変わっていないのに変わったことになる——軸のずれた拡大が毎フレーム
+   * 2 回挟まり、**平行移動のつもりで図面が逃げる**。実測で、指を
+   * 120px 動かしたときに画面が 237px 移り、倍率が 14% ずれた。
+   *
+   * フレームの頭でまとめれば、両方とも新しい位置になっている。
+   */
+  private endGesture(): void {
+    this.gesture = false;
+    this.pinchPrev = null;
+    if (this.pinchFrame !== 0) cancelAnimationFrame(this.pinchFrame);
+    this.pinchFrame = 0;
+  }
+
+  private schedulePinch(): void {
+    if (this.pinchFrame !== 0) return;
+    this.pinchFrame = requestAnimationFrame(() => {
+      this.pinchFrame = 0;
+      if (this.gesture) this.applyPinch();
+    });
+  }
+
+  private applyPinch(): void {
+    const [a, b] = [...this.touches.values()];
+    if (!a || !b) return;
+    const cx = (a.x + b.x) / 2;
+    const cy = (a.y + b.y) / 2;
+    const spread = Math.hypot(a.x - b.x, a.y - b.y);
+    const prev = this.pinchPrev;
+    this.pinchPrev = { cx, cy, spread };
+    if (!prev || prev.spread < 1) return;
+    pan(this.camera, cx - prev.cx, cy - prev.cy, this.height);
+    if (!this.walking) dolly(this.camera, spread / prev.spread);
+    this.requestRender();
+  }
+
   private attachEvents(): void {
     const canvas = this.canvas;
     canvas.style.touchAction = "none";
@@ -787,6 +848,16 @@ export class Viewer3D {
     canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 && e.button !== 1) return;
       e.preventDefault();
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // **2 本目が触れたら、そこからはつまみ操作。** 回している途中なら離す
+      if (this.touches.size === 2) {
+        this.gesture = true;
+        this.dragging = null;
+        this.moved = false;
+        this.tool.cancel(this.editor);
+        return;
+      }
+      if (this.gesture) return;
       canvas.setPointerCapture(e.pointerId);
       this.last = { x: e.clientX, y: e.clientY };
       this.downAt = { x: e.clientX, y: e.clientY };
@@ -851,6 +922,13 @@ export class Viewer3D {
     });
 
     canvas.addEventListener("pointermove", (e) => {
+      if (this.touches.has(e.pointerId)) {
+        this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      if (this.gesture) {
+        this.schedulePinch();
+        return;
+      }
       if (!this.dragging) {
         // 選択中のものを掴んでいるか、ただのホバーか。Select3D が決める
         this.tool.onPointerMove(this.editor, this.pointer(e));
@@ -882,6 +960,14 @@ export class Viewer3D {
     canvas.addEventListener("pointerup", (e) => {
       if (canvas.hasPointerCapture(e.pointerId))
         canvas.releasePointerCapture(e.pointerId);
+      this.touches.delete(e.pointerId);
+      // **全部離れるまで、つまみ操作のまま。** 指は同時に離れない
+      if (this.gesture) {
+        if (this.touches.size === 0) {
+          this.endGesture();
+        }
+        return;
+      }
       const clicked = !this.moved;
       const wasLooking = this.dragging === "look";
       this.dragging = null;
@@ -903,6 +989,8 @@ export class Viewer3D {
     canvas.addEventListener("pointercancel", (e) => {
       if (canvas.hasPointerCapture(e.pointerId))
         canvas.releasePointerCapture(e.pointerId);
+      this.touches.delete(e.pointerId);
+      if (this.touches.size === 0) this.endGesture();
       this.dragging = null;
       this.moved = false;
       this.tool.cancel(this.editor);

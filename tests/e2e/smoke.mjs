@@ -3441,6 +3441,121 @@ async function run() {
   }
 
   await embedding();
+  await touchInput();
+}
+
+/**
+ * **指で使えること。**
+ *
+ * 建築士はタブレットを持ってくる。マウスの中ドラッグ（平行移動）も
+ * ホイール（拡大）も無く、`touch-action: none` にしてある以上ブラウザの
+ * つまみ操作も来ないので、**自前で指 2 本を受けないと図面を動かせない**。
+ *
+ * **本物のタッチで試す。** 作った `PointerEvent` を流し込むと
+ * `setPointerCapture` が通らず、試験のためだけに製品側を弱めることになる。
+ * CDP の `Input.dispatchTouchEvent` なら、ブラウザが本物の pointer を起こす。
+ */
+async function touchInput() {
+  const tp = await browser.newPage({ viewport: { width: 1440, height: 900 }, hasTouch: true });
+  tp.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning') problems.push(`[touch console.${m.type()}] ${m.text()}`);
+  });
+  tp.on('pageerror', (e) => problems.push(`[touch pageerror] ${e.message}`));
+  await tp.goto(BASE, { waitUntil: 'networkidle' });
+  await tp.waitForFunction(() => window.minicad !== undefined, { timeout: 10_000 });
+  await sleep(600);
+
+  const cdp = await tp.context().newCDPSession(tp);
+  const touch = (type, points) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: points.map(([x, y], i) => ({ x, y, id: i + 1 })),
+    });
+  const view = () => tp.evaluate(() => {
+    const vp = window.minicad.editorInstance.viewport;
+    return { scale: vp.scale, x: vp.origin.x, y: vp.origin.y };
+  });
+
+  const box = await tp.locator('#canvas').boundingBox();
+  const cx = Math.round(box.x + box.width / 2);
+  const cy = Math.round(box.y + box.height / 2);
+
+  // --- 2 本指を広げると寄る ---
+  const before = await view();
+  await touch('touchStart', [[cx - 60, cy], [cx + 60, cy]]);
+  for (let i = 1; i <= 6; i++) {
+    await touch('touchMove', [[cx - 60 - i * 15, cy], [cx + 60 + i * 15, cy]]);
+    await sleep(30);
+  }
+  await touch('touchEnd', []);
+  await sleep(200);
+  const spread = await view();
+  assert.ok(spread.scale > before.scale * 1.3,
+    `2 本指を広げても寄らない: ${before.scale} → ${spread.scale}`);
+
+  // --- つまむと引く ---
+  await touch('touchStart', [[cx - 150, cy], [cx + 150, cy]]);
+  for (let i = 1; i <= 6; i++) {
+    await touch('touchMove', [[cx - 150 + i * 20, cy], [cx + 150 - i * 20, cy]]);
+    await sleep(30);
+  }
+  await touch('touchEnd', []);
+  await sleep(200);
+  const pinched = await view();
+  assert.ok(pinched.scale < spread.scale * 0.8,
+    `つまんでも引かない: ${spread.scale} → ${pinched.scale}`);
+
+  // --- 2 本指をそろえて動かすと画面が移る ---
+  await touch('touchStart', [[cx - 60, cy], [cx + 60, cy]]);
+  for (let i = 1; i <= 6; i++) {
+    await touch('touchMove', [[cx - 60 + i * 20, cy - i * 10], [cx + 60 + i * 20, cy - i * 10]]);
+    await sleep(30);
+  }
+  await touch('touchEnd', []);
+  await sleep(200);
+  const panned = await view();
+  assert.ok(Math.abs(panned.x - pinched.x) > 60,
+    `2 本指で動かしても画面が移らない: ${pinched.x} → ${panned.x}`);
+  // 間隔を変えていないので、倍率は動いてはいけない
+  assert.ok(Math.abs(panned.scale / pinched.scale - 1) < 0.1,
+    `平行移動のつもりで倍率まで動いた: ${pinched.scale} → ${panned.scale}`);
+
+  // --- 指 1 本は今まで通り道具のもの ---
+  await tp.evaluate(() => window.minicad.selectTool('wall'));
+  await sleep(150);
+  const walls = () => tp.evaluate(() => Object.keys(window.minicad.editorInstance.store.scene.walls).length);
+  const wallsBefore = await walls();
+  await touch('touchStart', [[cx - 200, cy + 200]]);
+  await touch('touchMove', [[cx - 100, cy + 200]]);
+  await touch('touchEnd', []);
+  await sleep(150);
+  await touch('touchStart', [[cx - 100, cy + 200]]);
+  await touch('touchEnd', []);
+  await sleep(250);
+  assert.ok(await walls() > wallsBefore, '指 1 本で壁が引けない');
+  await tp.keyboard.press('Escape');
+  await tp.evaluate(() => window.minicad.editorInstance.store.undo());
+
+  console.log('✔ 指 2 本で寄る・引く・動かす（1 本は道具のまま）');
+
+  // --- キーボードが無くても直交とグリッドを切り替えられる ---
+  const flags = () => tp.evaluate(() => {
+    const s = window.minicad.editorInstance.store.settings;
+    return { grid: s.snapGrid, ortho: s.ortho };
+  });
+  const was = await flags();
+  await tp.locator('.status-toggle[title^="直交"]').tap();
+  await sleep(150);
+  assert.equal((await flags()).ortho, !was.ortho, 'ステータスバーの「直交」を叩いても切り替わらない');
+  await tp.locator('.status-toggle[title^="グリッド"]').tap();
+  await sleep(150);
+  assert.equal((await flags()).grid, !was.grid, 'ステータスバーの「グリッド」を叩いても切り替わらない');
+  // **印が付くこと。** 切り替わっても見た目が同じなら、いま直交かが分からない
+  assert.equal(await tp.locator('.status-toggle[title^="直交"]').getAttribute('aria-pressed'),
+    String(!was.ortho), '切り替えたのに入切の印が変わらない');
+
+  await tp.close();
+  console.log('✔ 直交とグリッドがステータスバーから押せる（F8 / G が無くても）');
 }
 
 /**
