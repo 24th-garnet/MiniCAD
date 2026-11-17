@@ -326,9 +326,22 @@ async function run() {
       await page.keyboard.press('f');
       await sleep(200);
     },
-    (s) => {
+    async (s) => {
       assert.equal(s.tool, 'shape', '作図ツールに切り替わっていない');
       assert.ok(s.optionLabels.includes('種類'), `「種類」が出ていない: ${s.optionLabels}`);
+      /*
+       * **中身まで見る。** 以前は単体試験が「プロは 7 つ」と**個数だけ**を
+       * 見ており、`ShapeToolMode` に足しても一覧に加え忘れれば素通りした
+       * ——実際に長円（小判型）でそうなり、画面から選べないまま本番へ出た。
+       */
+      const kinds = await page.evaluate(() => {
+        const sel = document.querySelector('#options select');
+        return sel ? [...sel.options].map((o) => o.textContent) : [];
+      });
+      assert.deepEqual(kinds, [
+        '四角形', '角丸四角形', '長円（小判型）', '正多角形', '楕円',
+        '曲線', 'ダブルライン', '引出線付き注釈',
+      ], `プロの作図の種類が違う: ${JSON.stringify(kinds)}`);
     },
   );
 

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTools, TOOL_REGISTRY } from '../src/ui/tool-registry.ts';
+import { MODE_LABELS, type ShapeToolMode } from '../src/tools/shape.ts';
 import { ICONS } from '../src/ui/icon.ts';
 import type { ToolId } from '../src/tools/tool.ts';
 import { MODES, type Mode } from '../src/ui/mode.ts';
@@ -134,14 +135,38 @@ const kindsOf = (mode: Mode, id: string): readonly string[] => {
   return (tool as unknown as { kinds: readonly string[] }).kinds;
 };
 
-test('通常モードの作図はペイントの 2 つだけ、プロは 7 つ', () => {
+test('通常モードの作図はペイントの 2 つだけ', () => {
   // 直線は `line` ツールが受け持つので、ここには入らない
   assert.deepEqual(kindsOf('normal', 'shape'), ['rect', 'spline']);
-  assert.equal(kindsOf('pro', 'shape').length, 7);
   // プロは通常の上位集合。狭めていないことを見る
   for (const k of kindsOf('normal', 'shape')) {
     assert.ok(kindsOf('pro', 'shape').includes(k), `プロから ${k} が消えている`);
   }
+});
+
+/**
+ * **作った作図モードは、必ずどこかから選べること。**
+ *
+ * 以前はここが「プロは 7 つ」と**個数だけ**を見ていた。そのため
+ * `ShapeToolMode` にモードを足しても、`PRO_SHAPES` に加え忘れれば
+ * **個数が変わらず素通り**する。実際に長円（`obround`）でそうなり、
+ * 画面から選べないまま本番まで出た。
+ *
+ * 数ではなく**取りこぼしの有無**を見る。
+ */
+test('作図モードは、どれか 1 つの道具から必ず選べる', () => {
+  const offered = new Set<string>();
+  for (const tool of buildTools('pro', ALL)) {
+    const kinds = (tool as unknown as { kinds?: readonly string[] }).kinds;
+    for (const k of kinds ?? []) offered.add(k);
+  }
+  const missing = (Object.keys(MODE_LABELS) as ShapeToolMode[])
+    .filter((m) => !offered.has(m));
+  assert.deepEqual(
+    missing,
+    [],
+    `名前は付けたのに、どこからも選べないモード: ${missing.join(', ')}`,
+  );
 });
 
 test('通常モードの角ツールは結合だけ、プロは 3 つ', () => {

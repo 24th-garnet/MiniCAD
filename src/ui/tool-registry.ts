@@ -144,7 +144,7 @@ const PAINT_SHAPES = ['rect', 'spline'] as const;
 
 /** ワイヤー 7 枚目（プロの 2D）の作図一覧 */
 const PRO_SHAPES = [
-  'rect', 'roundRect', 'ngon', 'ellipse', 'spline', 'doubleLine', 'leader',
+  'rect', 'roundRect', 'obround', 'ngon', 'ellipse', 'spline', 'doubleLine', 'leader',
 ] as const;
 
 /** そのモードとできることで出すツールを順に作る。並びは表のキーの順 */

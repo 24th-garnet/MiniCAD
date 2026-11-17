@@ -49,7 +49,7 @@ export type ShapeToolMode =
  * 「種類」セレクタに出す名前。**`Record<ShapeToolMode, string>` なので、
  * モードを足して書き忘れると型検査が止まる。**
  */
-const MODE_LABELS: Record<ShapeToolMode, string> = {
+export const MODE_LABELS: Record<ShapeToolMode, string> = {
   line: '直線・折れ線',
   doubleLine: 'ダブルライン',
   rect: '四角形',
