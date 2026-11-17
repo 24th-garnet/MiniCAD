@@ -61,11 +61,11 @@ Vite でなくても構いません。
 |---|---|---|
 | `scene` / `onChange` | 保存。**まとめるのはホストの仕事**（MiniCAD はドラッグの途中でも鳴らす） | `components/Editor.tsx` |
 | `setScene` | 版を戻す・図面を切り替える | `pages/ProjectEditor.tsx` |
-| `capabilities` | 権限。`edit` / `download` / `comment` を**別々に**効かせる | `lib/share.ts` |
+| `capabilities` | 権限。`edit` / `download` / `comment` を**別々に**効かせる。ワイヤーは「ダウンロードは利用不可」（iframe で貸し出す場面）と書いているが、**MiniCAD-host は許している**——確認の場では持ち帰れないと仕事が一巡しないため。**本番がどちらを採るかはそちらの判断** | `lib/share.ts` |
 | `catalogs` | 部品と素材のマスタ。`ref` は**ホストの識別子をそのまま運ぶ** | `lib/api.ts` |
 | `comments` / `onCommentPlace` / `onCommentOpen` | **本文・作成者・返信・解決はホストが持つ。** MiniCAD はアンカーだけ | `components/CommentPanel.tsx` |
 | `getMeasures` | 積算へ渡す数量。MiniCAD は**単価も係数も持たない** | — |
-| `setMode` | 通常 / プロの切り替え | `pages/ShareEditor.tsx` |
+| `mode` / `setMode` | 通常 / プロの切り替え。**MiniCAD の既定は通常**（ワイヤーがそう書いている）。MiniCAD-host は `mode: 'pro'` で開く——通常のままだとプロにしかない道具 9 本と区画 3 つが見えず、普段それらを使う方には「無い」と判断されるため。**どちらで開くかはホストの判断** | `components/Editor.tsx` |
 | `getCamera` / `setCamera` | AI パースへ渡すカメラ引数 | — |
 
 ---
