@@ -1,5 +1,5 @@
 import { cornerEntities, type CornerKind } from '../core/corner.ts';
-import { joinEntities } from '../core/join.ts';
+import { joinEntities, type JoinMode } from '../core/join.ts';
 import { isSelectable } from '../core/entity.ts';
 import { shapeOutline } from '../core/shapes.ts';
 import type { EntityRef } from '../core/types.ts';
@@ -35,6 +35,13 @@ export class CornerTool implements Tool {
 
   /** 出す種類。**先頭が既定** */
   private readonly kinds: readonly (CornerKind | 'join')[];
+  /**
+   * 結合で**どちらを動かすか**。Vectorworks が Dual / Single を分けている。
+   *
+   * 既定は両方。片方だけにしたいのは、寸法が入っていたり通り芯に
+   * 合わせてある側を固定したいときです。
+   */
+  private joinMode: JoinMode = 'dual';
 
   /**
    * 何をするか。**どれも「2 つ選ぶ」という操作が同じ**なので 1 つのツールに
@@ -101,7 +108,7 @@ export class CornerTool implements Tool {
     this.first = null;
     editor.store.commit(() =>
       this.kind === 'join'
-        ? joinEntities(editor.store.scene, first, target)
+        ? joinEntities(editor.store.scene, first, target, this.joinMode)
         : cornerEntities(editor.store.scene, first, target, {
             kind: this.kind,
             distance: this.distance,
@@ -139,7 +146,27 @@ export class CornerTool implements Tool {
             },
           ]),
       ...(this.kind === 'join'
-        ? [{ kind: 'note' as const, text: '端点が合っているものどうしを繋ぎます（伸ばしはしません）' }]
+        ? [
+            {
+              kind: 'select' as const,
+              label: '動かす側',
+              value: this.joinMode,
+              options: [
+                { value: 'dual', label: '両方（交点で合わせる）' },
+                { value: 'single', label: '1 本目だけ' },
+              ],
+              onChange: (v: string) => {
+                this.joinMode = v === 'single' ? 'single' : 'dual';
+                this.first = null;
+              },
+            },
+            {
+              kind: 'note' as const,
+              text: this.joinMode === 'dual'
+                ? '端点が合っていなければ、交点まで伸ばして（縮めて）繋ぎます'
+                : '1 本目だけを動かします。交点が 2 本目の上に無ければ繋ぎません',
+            },
+          ]
         : []),
       this.kind === 'join'
         ? { kind: 'note', text: '壁は一直線に並んでいるときだけ 1 本になります' }

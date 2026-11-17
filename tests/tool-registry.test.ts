@@ -152,8 +152,16 @@ test('通常モードの角ツールは結合だけ、プロは 3 つ', () => {
 
 test('種類が 1 つだけのときは「種類」の欄を出さない', () => {
   const tool = buildTools('normal', ALL).find((t) => t.id === 'corner')!;
-  const selects = (tool.options?.({} as never) ?? []).filter((f) => f.kind === 'select');
-  assert.equal(selects.length, 0, '選ぶものが無いのに欄が出ている');
+  /*
+   * **見るのは「種類」の欄だけ。** 以前は select を全部数えていたが、
+   * それだと**別の目的の欄を足したときに落ちる**——実際、結合に
+   * 「動かす側」（両方 / 1 本目だけ）を足したときに落ちた。
+   * 約束は「選ぶものが 1 つしかない『種類』を出さない」であって、
+   * 「欄を 1 つも出さない」ではない。
+   */
+  const kinds = (tool.options?.({} as never) ?? [])
+    .filter((f) => f.kind === 'select' && f.label === '種類');
+  assert.equal(kinds.length, 0, '選ぶものが無いのに「種類」の欄が出ている');
 });
 
 test('通常モードでも名前が中身と合っている', () => {

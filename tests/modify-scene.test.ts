@@ -405,14 +405,79 @@ test('向きが逆でも繋がる', async () => {
   assert.ok(got.shape === 'polyline' && got.points.length === 3, '3 点にならない');
 });
 
-test('端点が離れていれば繋がない（勝手に伸ばさない）', async () => {
+/**
+ * **端点が離れていても、交点まで伸ばして繋ぎます**（questions #17）。
+ *
+ * 以前は「伸ばして繋ぐことはしない」でしたが、ワイヤー 7 枚目が
+ * 「複数の線分や図形を**交点・端点で伸ばしたり縮めたり**しながら繋いだり」
+ * と書いており、Vectorworks の Dual / Single Object Connect も
+ * 「端点または交点でつながるようトリムまたは延長する」と明記しています。
+ */
+test('端点が離れていても、交点まで伸ばして繋ぐ', async () => {
   const { joinShapes } = await import('../src/core/join.ts');
   const scene = emptyScene();
   const a = addLine(scene, 0, 0, 1000, 0);
   const b = addLine(scene, 1100, 0, 1100, 800);
-  // **伸ばして繋ぐことはしない。** どちらをどれだけ伸ばすかは人が決める
-  assert.equal(joinShapes(scene, a, b), false, '離れているのに繋いだ');
+  assert.ok(joinShapes(scene, a, b), '交点まで伸ばして繋げない');
+  assert.equal(Object.keys(scene.shapes).length, 1, '1 本になっていない');
+  const got = scene.shapes[a];
+  assert.ok(got.shape === 'polyline', 'ポリラインになっていない');
+  // 交点は (1100, 0)。そこを通る 3 点になる
+  assert.equal(got.points.length, 3, `3 点にならない: ${JSON.stringify(got.points)}`);
+  assert.ok(Math.abs(got.points[1].x - 1100) < 1e-6 && Math.abs(got.points[1].y) < 1e-6,
+    `交点が (1100, 0) でない: ${JSON.stringify(got.points[1])}`);
+});
+
+/**
+ * **自分の長さを超えては伸ばしません。**
+ *
+ * 上限が無いと、ほぼ平行な 2 本が画面の外で繋がります。
+ * 「どこまで伸ばすか」は線引きが要るところです。
+ */
+test('遠すぎる交点までは伸ばさない', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  // 100mm の線に対し、交点は 5000mm 先
+  const a = addLine(scene, 0, 0, 100, 0);
+  const b = addLine(scene, 5000, 0, 5000, 800);
+  assert.equal(joinShapes(scene, a, b), false, '自分の長さを超えて伸ばした');
   assert.equal(Object.keys(scene.shapes).length, 2, '図形が減っている');
+});
+
+test('平行な 2 本は繋がない（交点が無い）', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  const a = addLine(scene, 0, 0, 1000, 0);
+  const b = addLine(scene, 0, 500, 1000, 500);
+  assert.equal(joinShapes(scene, a, b), false, '平行なのに繋いだ');
+});
+
+/**
+ * **1 本目だけモードでは、2 本目を動かしません。**
+ *
+ * 寸法が入っていたり通り芯に合わせてある側を固定したいときのため
+ * （Vectorworks も Dual / Single を別モードに分けています）。
+ */
+test('1 本目だけモードは、2 本目を動かさない', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  // 交点 (1100, 0) は b の端点そのもの＝ b を動かさずに繋げる
+  const a = addLine(scene, 0, 0, 1000, 0);
+  const b = addLine(scene, 1100, 0, 1100, 800);
+  assert.ok(joinShapes(scene, a, b, 'single'), '1 本目だけで繋げない');
+  const got = scene.shapes[a];
+  assert.ok(got.shape === 'polyline' && got.points.length === 3);
+});
+
+test('1 本目だけモードは、2 本目を伸ばさないと届かないなら繋がない', async () => {
+  const { joinShapes } = await import('../src/core/join.ts');
+  const scene = emptyScene();
+  // 交点 (1100, 0) は b の線分の外（b は y=200 から始まる）
+  const a = addLine(scene, 0, 0, 1000, 0);
+  const b = addLine(scene, 1100, 200, 1100, 800);
+  assert.equal(joinShapes(scene, a, b, 'single'), false, '2 本目を動かしてしまった');
+  // **両方なら繋がる。** モードの違いがここに出る
+  assert.ok(joinShapes(scene, a, b, 'dual'), '両方モードでも繋がらない');
 });
 
 test('一直線の壁 2 本が 1 本になり、開口の位置が保たれる', async () => {

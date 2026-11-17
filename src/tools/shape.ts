@@ -42,7 +42,7 @@ const ARC_MODE_LABELS: Record<ArcMode, string> = {
 };
 
 export type ShapeToolMode =
-  | 'line' | 'doubleLine' | 'rect' | 'roundRect' | 'ngon' | 'ellipse'
+  | 'line' | 'doubleLine' | 'rect' | 'roundRect' | 'obround' | 'ngon' | 'ellipse'
   | 'spline' | 'arc' | 'text' | 'leader' | 'point';
 
 /**
@@ -54,6 +54,19 @@ const MODE_LABELS: Record<ShapeToolMode, string> = {
   doubleLine: 'ダブルライン',
   rect: '四角形',
   roundRect: '角丸四角形',
+  /**
+   * **「長円」は読みが 2 つあるので、両方を名前で分ける。**
+   *
+   * ワイヤーは「長円」とだけ書いています。日本の製図では**長円＝小判型**
+   * （直線 2 本と半円 2 つ。JIS の「長円穴」がこれ）を指すのが普通ですが、
+   * 倣い先に挙げた Vectorworks の Oval ツールは**長半径と短半径で定める
+   * 真の楕円**で、小判型ではありません。
+   *
+   * **どちらの読みでも作れるようにして、名前で区別します。**
+   * 中身は角丸四角形の角を短辺の半分まで丸めたもの——`roundRectRadius` が
+   * そこで頭打ちにするので、**これがちょうど小判型**です。新しい種別は要りません。
+   */
+  obround: '長円（小判型）',
   ngon: '正多角形',
   ellipse: '楕円',
   spline: '曲線',
@@ -177,6 +190,7 @@ export class ShapeTool implements Tool {
       case 'doubleLine':
       case 'rect':
       case 'roundRect':
+      case 'obround':
       case 'ngon':
       case 'ellipse':
       case 'spline':
@@ -199,6 +213,7 @@ export class ShapeTool implements Tool {
       // 曲線は Enter / ダブルクリックで終える
       case 'rect':
       case 'roundRect':
+      case 'obround':
       case 'ngon':
       case 'ellipse':
         return 2;
@@ -346,6 +361,22 @@ export class ShapeTool implements Tool {
           w,
           h,
           radius: Math.min(this.cornerRadius, Math.min(w, h) / 2),
+          angle: 0,
+        };
+      }
+      case 'obround': {
+        const corners = rectFromDiagonal(pts[0], pts[1]);
+        if (corners === null) return null;
+        const w = Math.abs(pts[1].x - pts[0].x);
+        const h = Math.abs(pts[1].y - pts[0].y);
+        return {
+          id, shape: 'roundRect', layerId, levelId, attrs,
+          center: mid(pts[0], pts[1]),
+          w,
+          h,
+          // **短辺の半分まで丸める＝小判型。** `roundRectRadius` がそこで
+          // 頭打ちにするので、ここで大きめを入れても同じところに落ち着く
+          radius: Math.min(w, h) / 2,
           angle: 0,
         };
       }
@@ -541,6 +572,13 @@ export class ShapeTool implements Tool {
         ];
       case 'rect':
         return [{ kind: 'note', text: '対角の 2 点をクリック' }];
+      /*
+       * **長円には「角の R」を出さない。** 短辺の半分で固定だから——
+       * 出しても動かない欄になる。あとから丸みを緩めたくなったら、
+       * 置いたものを選んでプロパティの「角の丸め」で変えられる
+       */
+      case 'obround':
+        return [{ kind: 'note', text: '角は短辺の半分まで丸めます（小判型）' }];
       case 'roundRect':
         return [
           {
@@ -748,6 +786,7 @@ export class ShapeTool implements Tool {
           : 'クリックで次の点 / Enter・ダブルクリックで終了';
       case 'rect':
       case 'roundRect':
+      case 'obround':
       case 'ellipse':
         return this.points.length === 0 ? 'クリックで一隅を指定' : 'クリックで対角を指定';
       case 'ngon':
@@ -780,9 +819,15 @@ function shapeKindOf(mode: ShapeToolMode, arcMode: ArcMode): Shape['shape'] {
       return 'line';
     case 'rect':
     case 'spline':
-    case 'doubleLine':
       return 'polyline';
+    // **ダブルラインは自分の種別を持つ。** 以前は 2 本の折れ線に落としていた
+    // 名残で 'polyline' を返しており、画層の割り当てがずれていた
+    case 'doubleLine':
+      return 'doubleLine';
+    // **長円（小判型）は角丸四角形の角を短辺の半分まで丸めたもの。**
+    // 新しい種別は作らない
     case 'roundRect':
+    case 'obround':
       return 'roundRect';
     case 'ngon':
       return 'regularPolygon';

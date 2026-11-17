@@ -269,14 +269,27 @@ async function run() {
   });
   assert.deepEqual(paintKinds, ['四角形', '曲線'],
     `通常モードの作図の種類が違う: ${JSON.stringify(paintKinds)}`);
-  // 通常モードの角ツールは結合だけ（種類の欄が出ない）
+  /*
+   * 通常モードの角ツールは結合だけ（**「種類」の欄が出ない**）。
+   *
+   * **数えるのは「種類」の欄だけ。** 以前は select を全部数えていたが、
+   * それだと別の目的の欄を足したときに落ちる——実際、結合に「動かす側」
+   * （両方 / 1 本目だけ）を足したときに落ちた。約束は「選ぶものが
+   * 1 つしかない『種類』を出さない」であって、「欄を 1 つも出さない」ではない。
+   */
   await page.locator('#toolbar button[data-tool="corner"]').click();
   await sleep(300);
-  const joinOnly = await page.evaluate(() => ({
-    label: document.querySelector('#toolbar button[data-tool="corner"]')?.textContent ?? '',
-    selects: document.querySelectorAll('#options select').length,
-  }));
-  assert.equal(joinOnly.selects, 0, '通常モードの角ツールに種類の欄が出ている');
+  const joinOnly = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('#options label')];
+    return {
+      label: document.querySelector('#toolbar button[data-tool="corner"]')?.textContent ?? '',
+      kinds: labels.filter((l) => l.textContent?.startsWith('種類')).length,
+      // 「動かす側」は出ていてよい（むしろ出ていないとおかしい）
+      sides: labels.filter((l) => l.textContent?.startsWith('動かす側')).length,
+    };
+  });
+  assert.equal(joinOnly.kinds, 0, '通常モードの角ツールに「種類」の欄が出ている');
+  assert.equal(joinOnly.sides, 1, '結合に「動かす側」の欄が出ていない');
   assert.ok(joinOnly.label.includes('結合'), `通常モードの名前が「結合」でない: ${joinOnly.label}`);
   await page.locator('#toolbar button[data-tool="select"]').click();
   await sleep(200);

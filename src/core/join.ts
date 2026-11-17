@@ -38,13 +38,37 @@ function endpointsOf(shape: Shape): Vec[] | null {
 }
 
 /**
+ * 結合のしかた。**Vectorworks が Dual / Single を別モードに分けている。**
+ *
+ * どちらを動かすかは実際に迷うところで、「片方は動かしたくない」
+ * （寸法が入っている、通り芯に合わせてある）ことが普通にあります。
+ */
+export type JoinMode = "dual" | "single";
+
+/**
+ * 伸ばせる上限。**その線分自身の長さまで。**
+ *
+ * 上限が無いと、ほぼ平行な 2 本が遠くの交点まで伸びて、画面の外で
+ * 繋がります。「どこまで伸ばすか」は線引きが要る——**自分の長さを
+ * 超えて伸びない**なら、引いた人の意図からそう遠くへは行きません。
+ */
+const MAX_EXTEND_RATIO = 1;
+
+/**
  * 2 つの図形を 1 本の折れ線に繋ぐ。
  *
- * 端点が一致していなければ何もしない。**伸ばして繋ぐことはしない**——
- * どちらをどれだけ伸ばすかは人が決めることで、黙って動かすと
- * 「寸法を測ったら違った」が起きる。延長ツール（E）が別にある。
+ * **端点が合っていれば、そのまま繋ぎます。** 合っていなければ、
+ * 端の線分を伸ばした先の**交点まで動かして**繋ぎます（ワイヤー 7 枚目
+ * 「複数の線分や図形を**交点・端点で伸ばしたり縮めたり**しながら繋いだり」）。
+ *
+ * **倣い先は Vectorworks の Dual / Single Object Connect** で、
+ * 「端点または交点でつながるようトリムまたは延長する」と明記されています。
+ *
+ * - `dual`（既定）：両方を交点まで動かす
+ * - `single`：**1 本目だけ**を動かす。2 本目は触らない
+ *   ——寸法が入っていたり通り芯に合わせてある側を固定したいときのため
  */
-export function joinShapes(scene: Scene, x: Id, y: Id): boolean {
+export function joinShapes(scene: Scene, x: Id, y: Id, mode: JoinMode = "dual"): boolean {
   const sx = scene.shapes[x];
   const sy = scene.shapes[y];
   if (!sx || !sy || x === y) return false;
@@ -53,7 +77,7 @@ export function joinShapes(scene: Scene, x: Id, y: Id): boolean {
   const py = endpointsOf(sy);
   if (!px || !py || px.length < 2 || py.length < 2) return false;
 
-  const merged = concatAtEnds(px, py);
+  const merged = concatAtEnds(px, py) ?? meetAtIntersection(px, py, mode);
   if (!merged) return false;
 
   delete scene.shapes[y];
@@ -85,6 +109,92 @@ function concatAtEnds(a: Vec[], b: Vec[]): Vec[] | null {
   if (near(a[0], b[b.length - 1])) return [...b, ...a.slice(1)];
   if (near(a[0], b[0])) return [...rb, ...a.slice(1)];
   return null;
+}
+
+/**
+ * 端点が合っていないときに、**交点まで動かして**繋ぐ。
+ *
+ * 4 通りの端の合わせ方それぞれについて、端の線分を**直線とみなした**
+ * 交点を求め、**動かす量がいちばん小さい組**を採ります。
+ *
+ * **伸ばす量はその線分自身の長さまで**（`MAX_EXTEND_RATIO`）。
+ * 上限が無いと、ほぼ平行な 2 本が画面の外で繋がります。
+ * 縮める（交点が線分の内側にある）側に上限は要りません——
+ * 行き過ぎても自分の中なので、見えているところに収まります。
+ */
+function meetAtIntersection(a: Vec[], b: Vec[], mode: JoinMode): Vec[] | null {
+  type Cand = { cost: number; a: Vec[]; b: Vec[] };
+  let best: Cand | null = null;
+
+  // 端の線分（内側の点 → 端点）。この向きに伸ばす
+  const endSeg = (pts: Vec[], atStart: boolean): { inner: Vec; end: Vec } =>
+    atStart
+      ? { inner: pts[1], end: pts[0] }
+      : { inner: pts[pts.length - 2], end: pts[pts.length - 1] };
+
+  const moved = (pts: Vec[], atStart: boolean, to: Vec): Vec[] => {
+    const out = pts.map((p) => ({ ...p }));
+    out[atStart ? 0 : out.length - 1] = { ...to };
+    return out;
+  };
+
+  for (const aStart of [false, true]) {
+    for (const bStart of [false, true]) {
+      const ea = endSeg(a, aStart);
+      const eb = endSeg(b, bStart);
+      const at = lineIntersection(ea.inner, ea.end, eb.inner, eb.end);
+      if (!at) continue;
+
+      const da = dist(ea.end, at);
+      const db = dist(eb.end, at);
+      // **伸ばす側にだけ上限。** 交点が線分の内側なら縮めるだけなので要らない
+      if (!withinReach(ea, at, da)) continue;
+      if (mode === "dual" && !withinReach(eb, at, db)) continue;
+      /*
+       * **single では 2 本目を動かさない。** だから交点が 2 本目の上に
+       * 無ければ繋がらない——伸ばせば届くとしても、それは「片方だけ」の
+       * 約束を破ることになります
+       */
+      if (mode === "single" && !onSegment(eb.inner, eb.end, at)) continue;
+
+      const cost = mode === "dual" ? da + db : da;
+      if (best && cost >= best.cost) continue;
+      best = {
+        cost,
+        a: moved(a, aStart, at),
+        b: mode === "dual" ? moved(b, bStart, at) : b,
+      };
+    }
+  }
+  if (!best) return null;
+  return concatAtEnds(best.a, best.b);
+}
+
+/** 端点から交点までが、その線分自身の長さを超えないか（内側なら無条件で可） */
+function withinReach(e: { inner: Vec; end: Vec }, at: Vec, d: number): boolean {
+  if (onSegment(e.inner, e.end, at)) return true;
+  return d <= dist(e.inner, e.end) * MAX_EXTEND_RATIO;
+}
+
+/** 点が線分の上（両端を含む）にあるか */
+function onSegment(p: Vec, q: Vec, at: Vec): boolean {
+  const len = dist(p, q);
+  if (len < 1e-9) return false;
+  return dist(p, at) <= len + JOIN_TOLERANCE && dist(q, at) <= len + JOIN_TOLERANCE;
+}
+
+/** 2 直線（線分を延長したもの）の交点。平行なら null */
+function lineIntersection(p1: Vec, p2: Vec, p3: Vec, p4: Vec): Vec | null {
+  const d1x = p2.x - p1.x;
+  const d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x;
+  const d2y = p4.y - p3.y;
+  const den = d1x * d2y - d1y * d2x;
+  // **ほぼ平行は断る。** 交点が遠くへ飛び、上限の判定が数値で荒れる
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / den;
+  const at = { x: p1.x + d1x * t, y: p1.y + d1y * t };
+  return Number.isFinite(at.x) && Number.isFinite(at.y) ? at : null;
 }
 
 /**
@@ -208,9 +318,10 @@ export function joinEntities(
   scene: Scene,
   x: EntityRef,
   y: EntityRef,
+  mode: JoinMode = "dual",
 ): boolean {
   if (x.type === "shape" && y.type === "shape")
-    return joinShapes(scene, x.id, y.id);
+    return joinShapes(scene, x.id, y.id, mode);
   if (x.type === "wall" && y.type === "wall")
     return joinWalls(scene, x.id, y.id);
   return false;
