@@ -306,14 +306,28 @@ test('辺の数は 3 未満にならない', async () => {
 });
 
 /**
- * ダブルラインは**1 つの実体として持たない。** 中心線の両側にオフセットした
- * 2 本の折れ線として置く。幅を後から変えたくなったら、そのとき種別にする。
+ * ダブルラインは **1 つの実体**（`DoubleLineShape`）。中心線と幅で持ち、
+ * 見える 2 本はそこから作ります。
+ *
+ * **以前は置いた時点で 2 本の折れ線に落としていました。** そうすると
+ * 置いたあとに「間隔だけ」を変えられず、消して引き直すことになります。
+ * `RegularPolygonShape` と同じ理由で型に持ち上げました——
+ * **置いたあとに直したい値があるかどうか**で分けています。
  */
+const dbl = async (points: Vec[], width: number, closed = false) => {
+  const { defaultAttrs } = await import('../src/core/attrs.ts');
+  const { LAYER_IDS } = await import('../src/core/layer.ts');
+  const { DEFAULT_LEVEL_ID } = await import('../src/core/level.ts');
+  return {
+    id: 'sh-d', shape: 'doubleLine' as const, layerId: LAYER_IDS.shape,
+    levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), points, closed, width,
+  };
+};
+
 test('ダブルラインは中心線の両側に同じ距離だけ出る', async () => {
-  const { offsetPolyline } = await import('../src/core/geometry.ts');
+  const { doubleLineSides } = await import('../src/core/shapes.ts');
   const center = [vec(0, 0), vec(3000, 0)];
-  const left = offsetPolyline(center, 100, false)!;
-  const right = offsetPolyline(center, -100, false)!;
+  const [left, right] = doubleLineSides(await dbl(center, 200));
 
   assert.ok(left && right, 'どちらかが出ていない');
   for (let i = 0; i < center.length; i++) {
@@ -324,11 +338,31 @@ test('ダブルラインは中心線の両側に同じ距離だけ出る', async
   }
 });
 
+/** **これが型にした理由そのもの。** 置いたあとに幅だけを変えられる */
+test('ダブルラインは、置いたあとに間隔だけを変えられる', async () => {
+  const { doubleLineSides } = await import('../src/core/shapes.ts');
+  const center = [vec(0, 0), vec(3000, 0)];
+  const before = doubleLineSides(await dbl(center, 200));
+  const after = doubleLineSides(await dbl(center, 1000));
+
+  assert.equal(before.length, 2);
+  assert.equal(after.length, 2);
+  // **中心線は動かない。** 幅だけが変わる
+  assert.ok(Math.abs(before[0][0].y - 100) < 1e-6, `前が ${before[0][0].y}`);
+  assert.ok(Math.abs(after[0][0].y - 500) < 1e-6, `後が ${after[0][0].y}`);
+  for (let i = 0; i < center.length; i++) {
+    assert.ok(Math.abs((after[0][i].y + after[1][i].y) / 2 - center[i].y) < 1e-6,
+      '幅を変えたら中心線がずれた');
+  }
+});
+
 test('退化した中心線ではダブルラインを置かない', async () => {
-  const { offsetPolyline } = await import('../src/core/geometry.ts');
-  // 同じ点が続くと、オフセットは null を返して諦める
-  assert.equal(offsetPolyline([vec(0, 0), vec(0, 0)], 100, false), null);
-  assert.equal(offsetPolyline([vec(0, 0)], 100, false), null);
+  const { doubleLineSides } = await import('../src/core/shapes.ts');
+  // 同じ点が続くと、オフセットは諦める。**片側だけ出さない**
+  assert.deepEqual(doubleLineSides(await dbl([vec(0, 0), vec(0, 0)], 200)), []);
+  assert.deepEqual(doubleLineSides(await dbl([vec(0, 0)], 200)), []);
+  // 幅 0 も置かない。2 本が重なって 1 本に見える
+  assert.deepEqual(doubleLineSides(await dbl([vec(0, 0), vec(3000, 0)], 0)), []);
 });
 
 /**

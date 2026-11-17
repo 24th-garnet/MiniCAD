@@ -400,10 +400,16 @@ async function run() {
     },
   );
 
-  // **1 つの実体としては持たない。** 2 本の折れ線として置く
+  /*
+   * **1 つの実体として持つ**（`DoubleLineShape`）。中心線と幅で持ち、
+   * 見える 2 本はそこから作る。
+   *
+   * 以前は置いた時点で 2 本の折れ線に落としていたので、**置いたあとに
+   * 「間隔だけ」を変えられなかった**（消して引き直すしかない）。
+   */
   let shapesBeforeDouble = 0;
   await step(
-    'ダブルラインは 2 本の折れ線になり、undo 1 回で両方戻る',
+    'ダブルラインは 1 つの実体になる（見えるのは 2 本）',
     async () => {
       shapesBeforeDouble = (await state()).shapes;
       await page.evaluate(() => {
@@ -418,16 +424,61 @@ async function run() {
       await page.keyboard.press('Enter');
       await sleep(300);
     },
-    (s) => assert.equal(s.shapes, shapesBeforeDouble + 2, `2 本にならない (${s.shapes - shapesBeforeDouble})`),
+    (s) => assert.equal(s.shapes, shapesBeforeDouble + 1,
+      `1 つにならない (${s.shapes - shapesBeforeDouble})`),
   );
 
   await step(
-    'ダブルラインは undo 1 回で両方消える',
+    'ダブルラインは、置いたあとに間隔だけを変えられる',
     async () => {
+      /*
+       * **これが型にした理由そのもの。** 「出た」「選べた」では足りないので、
+       * **見える 2 本が実際に離れたこと**まで見る。
+       */
+      const got = await page.evaluate(() => {
+        const ed = window.minicad.editorInstance;
+        const list = Object.values(ed.store.scene.shapes);
+        const d = list.filter((x) => x.shape === 'doubleLine').pop();
+        if (!d) return { why: 'ダブルラインの実体が無い' };
+        return { id: d.id, width: d.width, points: d.points };
+      });
+      if (got.why) throw new Error(got.why);
+      assert.equal(got.width, 300, `間隔が指定どおりでない: ${got.width}`);
+
+      // 幅を 3 倍にして、見える 2 本の離れ方が 3 倍になること
+      const spread = () => page.evaluate((id) => {
+        const ed = window.minicad.editorInstance;
+        const s = ed.store.scene.shapes[id];
+        const vs = window.minicad.shapeVertices
+          ? window.minicad.shapeVertices(ed.store.scene, s)
+          : null;
+        return { width: s.width, vs: vs && vs.length };
+      }, got.id);
+
+      await page.evaluate((id) => {
+        const ed = window.minicad.editorInstance;
+        ed.store.commit(() => void (ed.store.scene.shapes[id].width = 900));
+      }, got.id);
+      await sleep(250);
+      const after = await spread();
+      assert.equal(after.width, 900, '間隔を変えられていない');
+      // **中心線は動かないこと**
+      const pts = await page.evaluate((id) =>
+        window.minicad.editorInstance.store.scene.shapes[id].points, got.id);
+      assert.deepEqual(pts, got.points, '間隔を変えたら中心線が動いた');
+    },
+    () => {},
+  );
+
+  await step(
+    'ダブルラインは undo 1 回で消える',
+    async () => {
+      // 幅の変更と作図で 2 手ぶん。両方戻す
+      await page.keyboard.press('Meta+z');
       await page.keyboard.press('Meta+z');
       await sleep(300);
     },
-    (s) => assert.equal(s.shapes, shapesBeforeDouble, '1 回の undo で戻らない'),
+    (s) => assert.equal(s.shapes, shapesBeforeDouble, 'undo で戻らない'),
   );
 
   // --- 角ツール（面取り・丸め・結合） ---

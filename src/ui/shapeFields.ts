@@ -30,6 +30,21 @@ export const SHAPE_FIELDS: { [K in ShapeKind]: Fields<Extract<Shape, { shape: K 
     checkboxField('閉じる', s.closed, (v) => edit(() => void (s.closed = v))),
   ],
 
+  /**
+   * ダブルライン。**この欄があることが、型にした理由そのもの。**
+   *
+   * 以前は置いた時点で 2 本の折れ線に落としていたので、
+   * 「間隔だけ変える」ができませんでした。
+   */
+  doubleLine: (s, edit) => [
+    readonlyField('種類', 'ダブルライン'),
+    readonlyField('頂点', `${s.points.length} 点`),
+    readonlyField('中心線の長さ', `${Math.round(polylineLength(s.points, s.closed))} mm`),
+    // **0 は入れさせない。** 2 本が重なって 1 本に見える
+    numberField('間隔', s.width, (v) => edit(() => void (s.width = Math.max(1, v))), MM),
+    checkboxField('閉じる', s.closed, (v) => edit(() => void (s.closed = v))),
+  ],
+
   arc: (s, edit) => [
     readonlyField('種類', '円弧'),
     numberField('中心 X', s.center.x, (v) => edit(() => void (s.center = { ...s.center, x: v })), MM),

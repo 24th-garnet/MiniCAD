@@ -31,6 +31,9 @@ export function editableVertices(shape: Shape): Vec[] {
     case 'line':
       return [shape.a, shape.b];
     case 'polyline':
+    // **ダブルラインは中心線を編集する。** 見えている 2 本ではなく。
+    // 片方だけ動かせると平行でなくなり、ダブルラインでなくなる
+    case 'doubleLine':
       // **複製して返す。** 呼ぶ側が触っても図形が壊れない
       return shape.points.map((p) => ({ ...p }));
     default:
@@ -40,7 +43,7 @@ export function editableVertices(shape: Shape): Vec[] {
 
 /** その種別が頂点編集に答えるか。表（テスト）と突き合わせるために出す */
 export const hasEditableVertices = (kind: ShapeKind): boolean =>
-  kind === 'line' || kind === 'polyline';
+  kind === 'line' || kind === 'polyline' || kind === 'doubleLine';
 
 /** 頂点を動かした図形。番号が範囲外なら null */
 export function moveVertex(shape: Shape, index: number, to: Vec): Shape | null {
@@ -49,7 +52,7 @@ export function moveVertex(shape: Shape, index: number, to: Vec): Shape | null {
     if (index === 1) return { ...shape, b: { ...to } };
     return null;
   }
-  if (shape.shape !== 'polyline') return null;
+  if (shape.shape !== 'polyline' && shape.shape !== 'doubleLine') return null;
   if (index < 0 || index >= shape.points.length) return null;
   const points = shape.points.map((p, i) => (i === index ? { ...to } : { ...p }));
   return { ...shape, points };
@@ -74,7 +77,7 @@ export function insertVertex(shape: Shape, edgeIndex: number, at: Vec): Shape | 
       closed: false,
     };
   }
-  if (shape.shape !== 'polyline') return null;
+  if (shape.shape !== 'polyline' && shape.shape !== 'doubleLine') return null;
   const edges = shape.closed ? shape.points.length : shape.points.length - 1;
   if (edgeIndex < 0 || edgeIndex >= edges) return null;
   const points = shape.points.map((p) => ({ ...p }));
@@ -90,7 +93,7 @@ export function insertVertex(shape: Shape, edgeIndex: number, at: Vec): Shape | 
  * 2 点のポリラインからは落とさない。線は端点を落とせない。
  */
 export function removeVertex(shape: Shape, index: number): Shape | null {
-  if (shape.shape !== 'polyline') return null;
+  if (shape.shape !== 'polyline' && shape.shape !== 'doubleLine') return null;
   if (index < 0 || index >= shape.points.length) return null;
   if (shape.points.length <= 2) return null;
   const points = shape.points.filter((_, i) => i !== index).map((p) => ({ ...p }));
@@ -135,7 +138,8 @@ export function pickEdge(scene: Scene, p: Vec, tolerance: number): EdgeHit | nul
     if (layer && (!layer.visible || layer.locked)) continue;
     const vs = editableVertices(shape);
     if (vs.length < 2) continue;
-    const closed = shape.shape === 'polyline' && shape.closed;
+    const closed =
+      (shape.shape === 'polyline' || shape.shape === 'doubleLine') && shape.closed;
     const edges = closed ? vs.length : vs.length - 1;
     for (let i = 0; i < edges; i++) {
       const a = vs[i];

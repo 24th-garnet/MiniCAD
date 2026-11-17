@@ -317,6 +317,10 @@ function mapShapePoints(shape: Shape, f: (p: Vec) => Vec): Shape {
       return { ...shape, a: f(shape.a), b: f(shape.b) };
     case 'polyline':
       return { ...shape, points: shape.points.map(f) };
+    // **幅は写さない。** ここを通るのは平行移動と、インスタンスの合成変換。
+    // 幅まで触ると、ブロックに入れた塀の厚みが置くたびに変わる
+    case 'doubleLine':
+      return { ...shape, points: shape.points.map(f) };
     case 'arc': {
       const center = f(shape.center);
       const from = f(add(shape.center, vec(Math.cos(shape.startAngle) * shape.radius, Math.sin(shape.startAngle) * shape.radius)));

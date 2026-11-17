@@ -51,6 +51,16 @@ export const SHAPE_READERS: { [K in ShapeKind]: Reader<K> } = {
     return pts.length >= 2 ? { ...base, shape: 'polyline', points: pts, closed: raw.closed === true } : null;
   },
 
+  doubleLine: (base, raw) => {
+    const pts = points(raw.points);
+    const width = num(raw.width, 0);
+    // **幅が無いものは読まない。** 0 だと 2 本が重なって 1 本に見え、
+    // 「ダブルラインなのに 1 本」という読み違いになる
+    return pts.length >= 2 && width > 0
+      ? { ...base, shape: 'doubleLine', points: pts, closed: raw.closed === true, width }
+      : null;
+  },
+
   arc: (base, raw) => {
     const center = point(raw.center);
     const radius = num(raw.radius, 0);

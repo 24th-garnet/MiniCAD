@@ -10,6 +10,7 @@ import {
   dist,
   mid,
   normalizeAngle,
+  offsetPolyline,
   pointInPolygon,
   rotate,
   vec,
@@ -23,7 +24,7 @@ import type { Primitive, TextAlign } from './primitive.ts';
 import type { Segment } from './shape.ts';
 import type { SnapKind } from './snap.ts';
 import type { DrawingStandard } from './standard.ts';
-import { applyPoint, directionAngleAfter, isMirror, type Transform } from './transform.ts';
+import { applyPoint, directionAngleAfter, isMirror, scaleOf, type Transform } from './transform.ts';
 import type { Id, Scene } from './types.ts';
 
 interface ShapeBase {
@@ -51,6 +52,36 @@ export interface PolylineShape extends ShapeBase {
   /** 2点以上。矩形や多角形は closed: true で表す（専用の型は作らない） */
   points: Vec[];
   closed: boolean;
+}
+
+/**
+ * ダブルライン（マルチライン）。**中心線 1 本と幅 1 つで持つ。**
+ *
+ * 平行な 2 本を一度に引く道具で、ワイヤーの「二重線を描く」にあたります。
+ * 塀・側溝・配管・枠のように**一定の幅を持つもの**を、意味を持たない図形で
+ * 表すときに使います（壁には専用の道具があります）。
+ *
+ * ## なぜ 2 本の折れ線ではなく型にするか
+ *
+ * 以前は置いた時点で 2 本の独立した折れ線に落としていました。すると
+ * **置いたあとに「間隔だけ」を変えられません**——消して引き直すことに
+ * なります。`RegularPolygonShape` と同じ理由で型に持ち上げました：
+ * **置いたあとに直したい値があるかどうか**で分けています。
+ *
+ * ## 倣う先が機能していないので、倣っていない
+ *
+ * 一般的な CAD の「マルチライン」にあたりますが、**本家（AutoCAD の
+ * MLINE）は目的を達していません**——幅は作図時の変数で決まり、置いた
+ * あとに変えるのは素直にいきません。互換の歴史から来る制約で、
+ * 我々には無いので倣いませんでした。
+ */
+export interface DoubleLineShape extends ShapeBase {
+  shape: 'doubleLine';
+  /** 中心線。2 点以上 */
+  points: Vec[];
+  closed: boolean;
+  /** 2 本の間隔 (mm)。0 より大きい */
+  width: number;
 }
 
 /**
@@ -177,6 +208,7 @@ export interface DimensionShape extends ShapeBase {
 export type Shape =
   | LineShape
   | PolylineShape
+  | DoubleLineShape
   | RegularPolygonShape
   | RoundRectShape
   | EllipseShape
@@ -291,6 +323,25 @@ function roundRectPolyline(s: RoundRectShape): Vec[] {
   return out;
 }
 
+/**
+ * ダブルラインの見える 2 本。**中心線から両側へ同じだけ離す。**
+ *
+ * `offsetPolyline` は自己交差を直さず `null` で諦める造りなので、
+ * **片側が潰れたら両方とも出しません**——片側だけ描くと、ただの折れ線に
+ * 見えて「ダブルラインなのに 1 本」という読み違いになります。
+ */
+export function doubleLineSides(s: DoubleLineShape): Vec[][] {
+  const half = Math.abs(s.width) / 2;
+  if (s.points.length < 2 || half < 1e-9) return [];
+  const sides: Vec[][] = [];
+  for (const d of [half, -half]) {
+    const side = offsetPolyline(s.points, d, s.closed);
+    if (!side) return [];
+    sides.push(side);
+  }
+  return sides;
+}
+
 function chain(points: Vec[], closed: boolean): Segment[] {
   const segments: Segment[] = [];
   for (let i = 0; i + 1 < points.length; i++) segments.push({ a: points[i], b: points[i + 1] });
@@ -330,6 +381,31 @@ export const SHAPE_GEOMETRY: { [K in ShapeKind]: ShapeGeometry<Extract<Shape, { 
     ],
     primitives: (_scene, s) => [{ kind: 'segments', segments: chain(s.points, s.closed) }],
     transform: (_scene, s, t) => ({ ...s, points: s.points.map((p) => applyPoint(t, p)) }),
+  },
+
+  doubleLine: {
+    label: 'ダブルライン',
+    defaultLayer: LAYER_IDS.shape,
+    pickPriority: 5,
+    // **見えている 2 本で測る。** 中心線は描かれないので、範囲も当たり判定も
+    // そちらで取らないと「線が無いところ」を掴めてしまう
+    vertices: (_scene, s) => doubleLineSides(s).flat(),
+    outline: (_scene, s) => doubleLineSides(s).flatMap((side) => chain(side, s.closed)),
+    snapPoints: (_scene, s) => doubleLineSides(s).flatMap((side) => [
+      ...side.map((p) => ({ point: p, kind: 'node' as const })),
+      ...segmentMidpoints(side, s.closed),
+    ]),
+    primitives: (_scene, s) => doubleLineSides(s).map((side) => ({
+      kind: 'segments' as const,
+      segments: chain(side, s.closed),
+    })),
+    transform: (_scene, s, t) => ({
+      ...s,
+      points: s.points.map((p) => applyPoint(t, p)),
+      // **幅も一緒に拡大縮小する。** 中心線だけ伸びて幅が残ると、
+      // 2 倍にした塀が元の厚みのままになる
+      width: s.width * scaleOf(t),
+    }),
   },
 
   arc: {

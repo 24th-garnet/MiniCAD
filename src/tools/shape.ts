@@ -1,10 +1,16 @@
 import {
   add, arcFromChordAndLength, centerFromChord, centerFromTangent, dist, mid,
-  mul, norm, offsetPolyline, perp, rectFromDiagonal, splinePoints, sub,
+  mul, norm, perp, rectFromDiagonal, splinePoints, sub,
   type Vec,
 } from '../core/geometry.ts';
 import { LAYER_IDS, resolveNewLayer, type LayerId } from '../core/layer.ts';
-import { arcFromPoints, arcThrough, SHAPE_GEOMETRY, type Shape } from '../core/shapes.ts';
+import {
+  arcFromPoints,
+  arcThrough,
+  doubleLineSides,
+  SHAPE_GEOMETRY,
+  type Shape,
+} from '../core/shapes.ts';
 import { resolvePoint, type CoordInput } from '../core/coord-input.ts';
 import type { TextAlign } from '../core/primitive.ts';
 import { JIS_TEXT_HEIGHTS } from '../core/standard.ts';
@@ -258,8 +264,11 @@ export class ShapeTool implements Tool {
   }
 
   /**
-   * いまの点で置くもの。**0 個・1 個・2 個のいずれか。**
-   * ダブルラインだけが 2 本の図形になる（1 つの実体としては持たない）。
+   * いまの点で置くもの。**0 個か 1 個。**
+   *
+   * ダブルラインも **1 つの実体**です。以前は置いた時点で 2 本の折れ線に
+   * 落としていましたが、そうすると**置いたあとに「間隔だけ」を変えられません**
+   * ——消して引き直すことになります（`DoubleLineShape` にその経緯）。
    */
   private build(editor: Editor): Shape[] {
     if (this.mode !== 'doubleLine') {
@@ -268,24 +277,22 @@ export class ShapeTool implements Tool {
     }
     const unique = dedupePoints(this.points);
     if (unique.length < 2) return [];
-    const half = this.lineWidth / 2;
-    const out: Shape[] = [];
-    for (const side of [half, -half]) {
-      const points = offsetPolyline(unique, side, this.closed);
-      // **退化したら置かない。** `offsetPolyline` は自己交差を除去せず
-      // null を返して諦める造りなので、片側だけ出すと figure が壊れる
-      if (!points) return [];
-      out.push({
-        id: newId('s'),
-        shape: 'polyline',
-        layerId: this.newLayer(editor),
-        levelId: editor.store.scene.activeLevelId,
-        attrs: defaultAttrs(),
-        points,
-        closed: this.closed,
-      });
-    }
-    return out;
+    const shape: Shape = {
+      id: newId('s'),
+      shape: 'doubleLine',
+      layerId: this.newLayer(editor),
+      levelId: editor.store.scene.activeLevelId,
+      attrs: defaultAttrs(),
+      points: unique,
+      closed: this.closed,
+      width: this.lineWidth,
+    };
+    /*
+     * **描けない形なら置かない。** `offsetPolyline` は自己交差を直さず
+     * `null` で諦めるので、中心線が鋭すぎると 2 本が出ません。
+     * 置いてしまうと「選べるのに見えない図形」になります。
+     */
+    return doubleLineSides(shape).length === 2 ? [shape] : [];
   }
 
   /** 新しく置く図形の画層 */

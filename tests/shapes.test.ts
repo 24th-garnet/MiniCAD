@@ -24,6 +24,18 @@ import { sceneBounds } from '../src/core/entity.ts';
  */
 const SAMPLES: { [K in ShapeKind]: Extract<Shape, { shape: K }> } = {
   line: { id: 'sh-line', shape: 'line', layerId: LAYER_IDS.shape, levelId: DEFAULT_LEVEL_ID, attrs: defaultAttrs(), a: vec(0, 0), b: vec(2000, 1000) },
+  doubleLine: {
+    id: 'sh-dbl',
+    shape: 'doubleLine',
+    layerId: LAYER_IDS.shape,
+    levelId: DEFAULT_LEVEL_ID,
+    attrs: defaultAttrs(),
+    // ほかの代表例と重ならない場所（いちばん右は x=19000 あたり）
+    points: [vec(21000, 0), vec(23000, 0), vec(23000, 1500)],
+    closed: false,
+    width: 300,
+  },
+
   polyline: {
     id: 'sh-poly',
     shape: 'polyline',
@@ -198,6 +210,8 @@ test('全種別がクリックで拾える', () => {
   const probes: Record<ShapeKind, { x: number; y: number }> = {
     line: vec(1000, 500),
     polyline: vec(3500, 0),
+    // **中心線の上ではなく、見えている線の上を狙う。** 中心線は描かれない
+    doubleLine: vec(22000, 150),
     arc: vec(6000 + 800 * Math.cos(Math.PI / 4), 800 * Math.sin(Math.PI / 4)),
     circle: vec(8600, 0),
     // 正 6 角形は最初の頂点が右端。そこを突く
@@ -336,6 +350,10 @@ test('点の大きさは尺度に追従する', () => {
 const CURVES_INTO: Record<ShapeKind, boolean> = {
   line: true,
   polyline: true,
+  // **落ちない。** オフセット・トリムは中心線を相手にするのが筋だが、
+  // そうすると幅を持つ 1 実体のまま切れることになり、`modify.ts` の
+  // 「折れ線に落として切る」前提と合わない。要るなら別に設計する
+  doubleLine: false,
   arc: true,
   circle: true,
   // 閉じた形は辺ごとの線分に落ちる。トリムもオフセットも効く
@@ -431,6 +449,9 @@ test('正多角形は辺の数だけ線分になる', async () => {
 const HAS_VERTICES: Record<ShapeKind, boolean> = {
   line: true,
   polyline: true,
+  // **中心線の頂点を編集する。** 見えている 2 本ではない——片方だけ
+  // 動かせると平行でなくなり、ダブルラインでなくなる
+  doubleLine: true,
   // 円弧・円は「真の頂点」を持たない。直すのは中心・半径・角度で、
   // それはプロパティ欄の仕事
   arc: false,
