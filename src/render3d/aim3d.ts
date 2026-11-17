@@ -3,6 +3,7 @@ import type { Editor } from "../ui/editor.ts";
 import {
   add3,
   cross3,
+  dot3,
   normalize3,
   scale3,
   sub3,
@@ -52,6 +53,13 @@ export function aimOnPlane(editor: Editor, p: Pointer3D): Aim3D | null {
         planeLabelOf(p.hit.face.normal),
       )
     : floorPlane(level.floorZ);
+  /*
+   * **吸い付いたなら、そこをそのまま使う。**
+   *
+   * 格子に丸めません——角に吸い付いた意味が消えるためです
+   * （100mm の格子に丸めると、角から最大 70mm ずれます）。
+   */
+  if (p.snap) return { plane, at: p.snap.at };
   const at = p.hit
     ? p.hit.point
     : rayPlane(p.ray, { origin: plane.origin, normal: plane.normal });
@@ -73,12 +81,29 @@ export function aimOnFixedPlane(
   p: Pointer3D,
   plane: WorkPlane,
 ): Aim3D | null {
+  /*
+   * **その面に乗っている候補にだけ吸う。**
+   *
+   * 面を固定しているのは、2 点目以降が別の面に落ちて**平らでない多角形**に
+   * なるのを防ぐためです。吸着で面から外れては本末転倒なので、
+   * 面から離れた候補は使いません。
+   */
+  if (p.snap && Math.abs(signedDistance(plane, p.snap.at)) <= ON_PLANE_MM) {
+    return { plane, at: p.snap.at };
+  }
   const at = rayPlane(p.ray, { origin: plane.origin, normal: plane.normal });
   if (!at) return null;
   const settings = editor.store.settings;
   const grid = settings.snapGrid ? settings.gridSize : 0;
   return { plane, at: roundOnPlane(plane, at, grid) };
 }
+
+/** 面からの符号つき距離 (mm) */
+const signedDistance = (plane: WorkPlane, p: Vec3): number =>
+  dot3(sub3(p, plane.origin), plane.normal);
+
+/** 固定した面に「乗っている」とみなす厚み (mm) */
+const ON_PLANE_MM = 1;
 
 /**
  * 狙いが動いたか。**変わったときだけ知らせる**ために使う——

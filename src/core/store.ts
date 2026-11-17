@@ -12,6 +12,14 @@ export interface Settings {
   snapWall: boolean;
   /** 直交モード（15度刻みの角度スナップ） */
   ortho: boolean;
+  /**
+   * 3D の吸着（頂点・辺の中点・面の中心・辺の上）。
+   *
+   * **2D の `snapGrid` / `ortho` とは別に持つ。** AutoCAD も 3D の吸着を
+   * 別の変数（`3DOSMODE`）にしています——2D の作図で端点に吸いたいことと、
+   * 3D で立体の角に吸いたいことは、**同時に要るとは限らない**ためです。
+   */
+  snap3d: boolean;
   /** 新規に引く壁の厚さ (mm) */
   wallThickness: number;
   showGrid: boolean;
@@ -38,6 +46,7 @@ export function defaultSettings(): Settings {
     snapNode: true,
     snapWall: true,
     ortho: true,
+    snap3d: true,
     wallThickness: 120,
     showGrid: true,
     innerArea: false,

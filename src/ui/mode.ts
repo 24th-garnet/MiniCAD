@@ -68,5 +68,4 @@ export const PRO_ONLY: readonly Mode[] = ['pro'];
  */
 export const PRO_NOT_YET: string[] = [
   '3D の中で線を描く（多角形は描けます。線は 2D で引いてください）',
-  '3D の頂点・辺へのスナップ（いまは床の格子と、指した面の上の点だけ）',
 ];

@@ -14,6 +14,7 @@ import { solveScene } from '../core/constraintSolver.ts';
 import { sameRef, type EntityRef, type Scene } from '../core/types.ts';
 import type { Editor } from '../ui/editor.ts';
 import { pickRay, rayOnAxis, rayPlane, type Plane3, type Ray3, type RayHit } from './ray.ts';
+import type { Snap3DHit } from './snap3d.ts';
 import {
   applyPush,
   pushAxis,
@@ -48,6 +49,18 @@ export interface Pointer3D {
   ray: Ray3;
   /** いちばん手前に当たった面。何にも当たらなければ null */
   hit: RayHit | null;
+  /**
+   * 吸い付いた先。**無ければ null。**
+   *
+   * ここで決めるのはビューア——面も投影も向こうが持っているため。
+   * 道具は「どこに吸ったか」を読むだけで、探し方を知りません。
+   */
+  snap: Snap3DHit | null;
+  /**
+   * 同じ場所に重なっている候補の数。**`Tab` で送れることを画面に出すため。**
+   * 1 なら送り先がないので、案内も出しません。
+   */
+  snapCount: number;
   shift: boolean;
   alt: boolean;
   meta: boolean;

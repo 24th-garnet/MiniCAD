@@ -5,8 +5,6 @@ import { Draw3D } from "../src/render3d/draw3d.ts";
 import { aimOnPlane } from "../src/render3d/aim3d.ts";
 import { Store } from "../src/core/store.ts";
 import { DEFAULT_LEVEL_ID } from "../src/core/level.ts";
-import { FIXTURE_SPECS, type Fixture } from "../src/core/fixture.ts";
-import { defaultAttrs } from "../src/core/attrs.ts";
 import { vec3, type Vec3 } from "../src/render3d/mat4.ts";
 import type { Pointer3D } from "../src/render3d/interact.ts";
 import type { Editor } from "../src/ui/editor.ts";
@@ -94,45 +92,49 @@ const GROUNDS: Record<string, () => void> = {
     );
   },
 
-  "3D の頂点・辺へのスナップ（いまは床の格子と、指した面の上の点だけ）": () => {
-    const { editor, store } = fakeEditor();
-    // 角が (500, 500) にある箱を置く
-    const f: Fixture = {
-      id: "b",
-      kind: "box",
-      x: 0,
-      y: 0,
-      angle: 0,
-      size: { w: 1000, h: 1000 },
-      tilt: null,
-      outline: null,
-      combine: null,
-      edge: null,
-      base: 0,
-      height: 1000,
-      label: "箱",
-      layerId: FIXTURE_SPECS.box.defaultLayer,
-      levelId: DEFAULT_LEVEL_ID,
-      attrs: defaultAttrs(),
-    };
-    store.scene.fixtures.b = f;
-    // 角の 1mm 隣を指す。吸い付くなら角の座標が返るはず
-    const near = vec3(501, 500, 1000);
-    const aim = aimOnPlane(editor, pointerAt(near, vec3(0, 0, 1)));
-    assert.ok(aim, "面の上を指せていない");
-    assert.equal(aim.at.x, 501, "頂点に吸い付いた（一覧のほうが古い）");
-    assert.equal(aim.at.y, 500);
-
-    // **床の格子は効く。** 面を指していないときは床が作図面になり、
-    // その原点はワールドの (0,0) なので丸めが意味を持つ
-    store.settings.snapGrid = true;
-    store.settings.gridSize = 500;
-    const onFloor = { ...pointerAt(vec3(501, 500, 0), vec3(0, 0, 1)), hit: null };
-    const floorAim = aimOnPlane(editor, onFloor as Pointer3D);
-    assert.ok(floorAim, "床を指せていない");
-    assert.equal(floorAim.at.x, 500, "床の格子に乗っていない");
-  },
 };
+
+/**
+ * **かつては「吸い付かない根拠」だった試験。**
+ *
+ * 2026-11-17 に 3D の吸着を入れたので、同じ場面で**逆のことを確かめる**形に
+ * 直しました。消してしまうと、`aimOnPlane` が吸着を無視して格子に丸める
+ * 壊れ方（印は出るのに置く先に使わない）を誰も見なくなります。
+ */
+test("3D で吸い付いたら、格子に丸めずその点に置く", () => {
+  const { editor, store } = fakeEditor();
+  store.settings.snapGrid = true;
+  store.settings.gridSize = 500;
+
+  const corner = vec3(501, 503, 1000);
+  const p: Pointer3D = {
+    ...pointerAt(vec3(600, 600, 1000), vec3(0, 0, 1)),
+    snap: { kind: "vertex", at: corner, dist: 3 },
+    snapCount: 1,
+  };
+  const aim = aimOnPlane(editor, p);
+  assert.ok(aim, "面の上を指せていない");
+  // **格子に丸めない。** 丸めると角から最大 350mm ずれ、吸った意味が消える
+  assert.deepEqual(
+    { x: aim.at.x, y: aim.at.y, z: aim.at.z },
+    { x: corner.x, y: corner.y, z: corner.z },
+    "吸い付いた点ではなく、格子に丸めた点を返している",
+  );
+});
+
+test("3D で吸い付いていなければ、これまでどおり格子に丸める", () => {
+  const { editor, store } = fakeEditor();
+  store.settings.snapGrid = true;
+  store.settings.gridSize = 500;
+  // 面を指していないときは床が作図面。その原点は (0,0) なので丸めが効く
+  const onFloor = {
+    ...pointerAt(vec3(501, 500, 0), vec3(0, 0, 1)),
+    hit: null,
+  } as Pointer3D;
+  const aim = aimOnPlane(editor, onFloor);
+  assert.ok(aim, "床を指せていない");
+  assert.equal(aim.at.x, 500, "床の格子に乗っていない");
+});
 
 test("「まだ無いもの」の各行に、そう言える根拠がある", () => {
   // **行を足し引きするとここで落ちる。** 根拠の無い断り書きを残さないため

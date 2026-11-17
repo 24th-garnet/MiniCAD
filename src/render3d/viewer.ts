@@ -46,9 +46,19 @@ import { paint } from "./paint.ts";
 import { COMMENT_BADGE_R } from "../render/renderer.ts";
 import { theme } from "../render/theme.ts";
 import type { CommentAnchor } from "../core/annotation.ts";
-import { vec3, type Vec3 } from "./mat4.ts";
+import { normalize3, sub3, vec3, type Vec3 } from "./mat4.ts";
 import type { Vec } from "../core/geometry.ts";
 import { pickRay, screenRay } from "./ray.ts";
+/** 吸い付いた先の印の色。**2D のスナップ印と同じ橙**にそろえる */
+const SNAP_COLOR = "#e8622a";
+
+import {
+  SNAP3D_LABELS,
+  snap3dCandidates,
+  type Snap3DHit,
+} from "./snap3d.ts";
+import { pointMarker } from "./aim3d.ts";
+import { planeFromNormal } from "./workplane.ts";
 
 /**
  * 3D ビュー。2D とは**別のキャンバス**に描く。
@@ -123,6 +133,10 @@ export class Viewer3D {
 
   private readonly ctx: CanvasRenderingContext2D;
   private readonly meshCache = new MeshCache();
+  /** いまの候補の一覧と、`Tab` で送った先。カーソルが動くと 0 に戻る */
+  private snapList: Snap3DHit[] = [];
+  private snapIndex = 0;
+  private snapScreen: { x: number; y: number } | null = null;
   private frameRequested = false;
   private visible = false;
   private width = 0;
@@ -572,6 +586,7 @@ export class Viewer3D {
     const overlay = [
       ...measurementFaces(this.editor.store.scene),
       ...this.tool.overlay(this.editor),
+      ...this.snapMarker(),
     ];
     if (overlay.length > 0) {
       paint(this.ctx, this.camera, overlay, this.width, this.height, {
@@ -689,7 +704,20 @@ export class Viewer3D {
       return this.refusal
         ?? "床をクリックで移動 / ドラッグで見回す / 「解除」で戻る";
     }
-    return this.tool.status(this.editor);
+    return this.tool.status(this.editor) + this.snapNote();
+  }
+
+  /**
+   * 吸い付いた先の案内。**2D が `[端点]` を出すのと同じ。**
+   *
+   * 候補が 2 つ以上あるときは `Tab` で送れることも出します——
+   * 出さないと、重なった角のうち手前しか選べないと思われます。
+   */
+  private snapNote(): string {
+    const now = this.snapNow;
+    if (!now) return "";
+    const more = now.count > 1 ? ` / Tab で次へ (${now.count})` : "";
+    return `  [${SNAP3D_LABELS[now.hit.kind]}]${more}`;
   }
 
   /**
@@ -757,14 +785,119 @@ export class Viewer3D {
       this.width,
       this.height,
     );
+    const { snap, snapCount } = this.snapAt(screen);
     return {
       screen,
       ray,
       hit: pickEntity(this.editor, ray, this.mesh, NEAR_PICK),
+      snap,
+      snapCount,
       shift: e.shiftKey,
       alt: e.altKey,
       meta: e.metaKey || e.ctrlKey,
       button: e.button,
+    };
+  }
+
+  /**
+   * 画面の点に吸い付く先を決める。
+   *
+   * **候補の一覧を覚えておく。** `Tab` で次へ送れるようにするためで、
+   * カーソルが動いたら番号は 0 に戻る——送った先を覚えたまま動かすと、
+   * 「2 番目」が指すものが勝手に変わってしまう。
+   */
+  private snapAt(screen: { x: number; y: number }): {
+    snap: Snap3DHit | null;
+    snapCount: number;
+  } {
+    if (!this.editor.store.settings.snap3d) {
+      this.snapList = [];
+      return { snap: null, snapCount: 0 };
+    }
+    const moved =
+      this.snapScreen === null ||
+      Math.hypot(this.snapScreen.x - screen.x, this.snapScreen.y - screen.y) >
+        0.5;
+    if (moved) {
+      this.snapScreen = { x: screen.x, y: screen.y };
+      this.snapIndex = 0;
+      this.snapList = snap3dCandidates(
+        this.mesh,
+        viewProjection(this.camera, this.width, this.height),
+        this.width,
+        this.height,
+        screen,
+      );
+    }
+    const list = this.snapList;
+    if (list.length === 0) return { snap: null, snapCount: 0 };
+    return {
+      snap: list[this.snapIndex % list.length],
+      snapCount: list.length,
+    };
+  }
+
+  /** `Tab` で次の候補へ。**重なって見える角を選び分けるため**（AutoCAD と同じ） */
+  cycleSnap(): boolean {
+    if (this.snapList.length < 2) return false;
+    this.snapIndex = (this.snapIndex + 1) % this.snapList.length;
+    this.requestRender();
+    return true;
+  }
+
+  /**
+   * 吸い付いた先の印。**どの道具を持っていても出す。**
+   *
+   * 2D は吸い付くと印とラベルが出ます。3D でも同じにしないと、
+   * 「いまどこに吸っているか」が押すまで分かりません。
+   *
+   * **向きはカメラに正対させる。** 面に貼ると、真横から見たときに
+   * 消えてしまいます（印は図面の一部ではないので、面に沿う意味もない）。
+   */
+  private snapMarker(): Face3[] {
+    const now = this.snapNow;
+    if (!now) return [];
+    // 画面での大きさを一定に保つ。奥の角でも同じ大きさで見える
+    const eye = cameraEye(this.camera);
+    const dist = Math.hypot(
+      eye.x - now.hit.at.x,
+      eye.y - now.hit.at.y,
+      eye.z - now.hit.at.z,
+    );
+    const size = Math.max(10, dist * 0.012);
+    const plane = planeFromNormal(
+      normalize3(sub3(eye, now.hit.at), vec3(0, 0, 1)),
+      now.hit.at,
+      "吸着",
+    );
+    return pointMarker({ plane, at: now.hit.at }, size, SNAP_COLOR, {
+      ref: null,
+      levelId: this.editor.store.scene.activeLevelId,
+    });
+  }
+
+  /**
+   * 世界の点が画面のどこに出るか。**狙いを定めるための口。**
+   *
+   * `floorAt` と同じ筋で、**通し確認が「この角を狙う」と書けるようにする**
+   * ために出している。画面を走査して探すと、カメラの向き次第で見つからず、
+   * 試験が「できていない」のか「探せなかった」のか分からなくなる。
+   */
+  screenOf(p: Vec3): Vec | null {
+    return projectPoint(
+      viewProjection(this.camera, this.width, this.height),
+      p,
+      this.width,
+      this.height,
+    );
+  }
+
+  /** いま吸い付いている先。ステータスバーと重ね描きが読む */
+  get snapNow(): { hit: Snap3DHit; count: number } | null {
+    if (this.snapList.length === 0) return null;
+    return {
+      hit: this.snapList[this.snapIndex % this.snapList.length],
+      count: this.snapList.length,
     };
   }
 
@@ -1001,6 +1134,21 @@ export class Viewer3D {
     window.addEventListener(
       "keydown",
       (e) => {
+        /*
+         * **Tab は候補送り**（AutoCAD と同じ）。重なって見える角は、
+         * 手前のものしか選べないと目的の点に触れません。
+         *
+         * 道具を持っていなくても効かせます——`Escape` と違い、
+         * 「どこに吸うか」は選ぶ前から見えている必要があるためです。
+         * 既定の焦点移動は止めます（3D を見ている間だけ）。
+         */
+        if (this.visible && e.key === "Tab" && !e.shiftKey) {
+          if (this.cycleSnap()) {
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+          }
+        }
         if (!this.visible || !this.tool.isActive()) return;
         if (e.key !== "Escape") return;
         if (this.tool.cancel(this.editor)) {

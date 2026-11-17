@@ -18,6 +18,14 @@ export class StatusBar implements Panel {
   private readonly toggles = {
     grid: this.toggle('グリッド', 'グリッドスナップ (G)'),
     ortho: this.toggle('直交', '直交・角度スナップ (F8)'),
+    /**
+     * 3D の吸着。**2D の 2 つとは別の入切。**
+     *
+     * AutoCAD も 3D の吸着を別の変数（`3DOSMODE`）にしています——
+     * 2D で端点に吸いたいことと、3D で立体の角に吸いたいことは、
+     * **同時に要るとは限らない**ためです。
+     */
+    snap3d: this.toggle('3D 吸着', '3D の頂点・辺・面への吸着（Tab で候補送り）'),
   };
 
   /** 座標と尺度。**ボタンと混ぜない**ので、文字だけを入れ替えられる */
@@ -47,7 +55,13 @@ export class StatusBar implements Panel {
     private readonly readout: HTMLElement,
     private readonly viewer: Viewer3D,
   ) {
-    this.readout.append(this.text, this.layerPick, this.toggles.grid, this.toggles.ortho);
+    this.readout.append(
+      this.text,
+      this.layerPick,
+      this.toggles.snap3d,
+      this.toggles.grid,
+      this.toggles.ortho,
+    );
   }
 
   private toggle(label: string, title: string): HTMLButtonElement {
@@ -85,6 +99,7 @@ export class StatusBar implements Panel {
       // 押しても見えるところが何も変わらないボタンは壊れて見える
       for (const b of [this.toggles.grid, this.toggles.ortho]) b.hidden = true;
       this.layerPick.hidden = true;
+      this.refreshSnap3d(ctx);
       return;
     }
     const p = ctx.editor.pointerWorld();
@@ -112,6 +127,23 @@ export class StatusBar implements Panel {
       ctx.set(() => void (ctx.editor.store.settings.ortho = !ctx.editor.store.settings.ortho));
     });
     this.refreshLayer(ctx);
+    this.refreshSnap3d(ctx);
+  }
+
+  /** 3D の吸着の入切。**3D が出ているときだけ**（分割も含む） */
+  private refreshSnap3d(ctx: PanelContext): void {
+    const b = this.toggles.snap3d;
+    // **3D を出していないあいだは出さない。** 押しても見えるところが
+    // 何も変わらないボタンは壊れて見える
+    if (!ctx.view.shows3d || !ctx.can.edit) {
+      b.hidden = true;
+      return;
+    }
+    b.hidden = false;
+    b.setAttribute('aria-pressed', String(ctx.editor.store.settings.snap3d));
+    b.onclick = () => {
+      ctx.set(() => void (ctx.editor.store.settings.snap3d = !ctx.editor.store.settings.snap3d));
+    };
   }
 
   /**

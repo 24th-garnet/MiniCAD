@@ -1901,6 +1901,18 @@ async function run() {
   assert.ok(await page.evaluate(() => window.minicad.view.shows3d), '3D に入れていない');
   const beforeMs = await page.evaluate(
     () => Object.keys(window.minicad.editorInstance.store.scene.measurements).length);
+  /*
+   * **この段のあいだは 3D の吸着を切る。**
+   *
+   * 見ているのは「計測が高さを落とさないこと」で、昔そこが壊れていた。
+   * 吸着を入れたままだと、**壁の脚の頂点に正しく吸った結果も z=0 になり**、
+   * 「高さが落ちた」と見分けがつかない。見張りの意味が消えるので切る。
+   * 吸着そのものは別の段で見る（「3D で立体の角に吸い付く」）。
+   */
+  await page.evaluate(() => {
+    const ed = window.minicad.editorInstance;
+    ed.store.update(() => void (ed.store.settings.snap3d = false));
+  });
   await page.click('button[title="3D の中で 2 点間の距離を測る（面の上の 2 点をクリック）"]');
   await sleep(300);
   // 壁の面の上で、高さの違う 2 点を叩く
@@ -1948,6 +1960,183 @@ async function run() {
   await page.keyboard.press('F3');
   await sleep(300);
   console.log('✔ 3D の中で距離を測れる（高さが落ちず、undo で戻る）');
+
+  /*
+   * **3D で立体の角に吸い付く**（questions #20）。
+   *
+   * これまで 3D で狙えるのは「床の格子」と「指した面の上の点」までで、
+   * 角には吸い付かなかった。作りは AutoCAD に倣っている——2D とは別の
+   * 入切、種別を 6 つに絞る、候補が複数なら Tab で送る。
+   */
+  {
+    // **自分で 3D に入る。** 1 つ前の段は終わりに 2D へ戻しており、
+    // そのままだと 3D のキャンバスが 0x0 のまま（実際に一度そうなった）
+    if (!(await page.evaluate(() => window.minicad.view.shows3d))) {
+      await page.keyboard.press('F3');
+    }
+    await sleep(600);
+    assert.ok(await page.evaluate(() => window.minicad.view.shows3d), '3D に入れていない');
+    await page.evaluate(() => {
+      const ed = window.minicad.editorInstance;
+      ed.store.update(() => void (ed.store.settings.snap3d = true));
+    });
+    await sleep(200);
+
+    /*
+     * **狙う角を計算で決める。**
+     *
+     * 画面を走査して探すと、カメラの向き次第で見つからず、「吸い付かない」
+     * のか「探せなかった」のか分からなくなる（実際に一度そうなった）。
+     * 壁の節点を 1 つ選び、その脚（床の高さ）を画面に投影して狙う。
+     */
+    /*
+     * **カメラを既知の姿勢に置く。** ここまでの 100 段あまりで視点は
+     * どこを向いているか分からない。節点が 1 つも映っていないと
+     * 「吸い付かない」のか「映っていない」のか区別できなくなる。
+     */
+    const camBefore = await page.evaluate(() => {
+      const v = window.minicad.viewer;
+      const ed = window.minicad.editorInstance;
+      const ns = Object.values(ed.store.scene.nodes);
+      const before = JSON.parse(JSON.stringify(v.camera));
+      const cx = ns.reduce((a, n) => a + n.x, 0) / ns.length;
+      const cy = ns.reduce((a, n) => a + n.y, 0) / ns.length;
+      Object.assign(v.camera, {
+        target: { x: cx, y: cy, z: 1200 },
+        yaw: -1.2,
+        pitch: 0.5,
+        distance: 16000,
+      });
+      v.requestRender();
+      return before;
+    });
+    await sleep(400);
+
+    const spot = await page.evaluate(() => {
+      const v = window.minicad.viewer;
+      const ed = window.minicad.editorInstance;
+      const scene = ed.store.scene;
+      const z = scene.levels[scene.activeLevelId].floorZ;
+      const r = v.canvas.getBoundingClientRect();
+      for (const n of Object.values(scene.nodes)) {
+        for (const dz of [0, 2400]) {
+          const at = { x: n.x, y: n.y, z: z + dz };
+          const p = v.screenOf(at);
+          if (!p) continue;
+          if (p.x < 60 || p.y < 60 || p.x > r.width - 60 || p.y > r.height - 60) continue;
+          return { x: r.left + p.x, y: r.top + p.y, want: at };
+        }
+      }
+      return null;
+    });
+    if (!spot) {
+      // **落ちたときに何が分かるかまで作る。** 「映っていない」だけでは、
+      // 次に直す人が同じ調査をやり直すことになる
+      const why = await page.evaluate(() => {
+        const v = window.minicad.viewer;
+        const ed = window.minicad.editorInstance;
+        const scene = ed.store.scene;
+        const r = v.canvas.getBoundingClientRect();
+        const ns = Object.values(scene.nodes);
+        const n = ns[0];
+        const z = scene.levels[scene.activeLevelId].floorZ;
+        return {
+          shows3d: window.minicad.view.shows3d,
+          canvas: `${Math.round(r.width)}x${Math.round(r.height)}`,
+          nodes: ns.length,
+          first: n ? { x: n.x, y: n.y, z } : null,
+          projected: n ? v.screenOf({ x: n.x, y: n.y, z }) : null,
+          camera: JSON.parse(JSON.stringify(v.camera)),
+        };
+      });
+      assert.fail(`3D に節点が 1 つも映っていない: ${JSON.stringify(why)}`);
+    }
+
+    await page.mouse.move(spot.x, spot.y);
+    await sleep(250);
+    const kind = await page.evaluate(() => window.minicad.viewer.snapNow?.hit.kind ?? null);
+    assert.equal(kind, 'vertex', `壁の角を狙ったのに吸い付かない: ${kind}`);
+
+    // **画面にも出る。** 2D が `[端点]` を出すのと同じ
+    const hint = await page.locator('#status-hint').textContent();
+    assert.match(hint, /\[頂点\]/, `吸着が案内に出ていない: ${hint}`);
+
+    /*
+     * **叩いた先が、格子ではなく角そのものであること。**
+     *
+     * 計測の 1 点目で見る——座標がそのまま図面に残るので、丸められたか
+     * どうかが分かる。**「吸着の印が出た」だけでは足りない**：印は出すが
+     * 置く先には使っていない、という壊れ方があり得る。
+     */
+    const beforeSnapMs = await page.evaluate(
+      () => Object.keys(window.minicad.editorInstance.store.scene.measurements).length);
+    await page.click('button[title="3D の中で 2 点間の距離を測る（面の上の 2 点をクリック）"]');
+    await sleep(250);
+    await page.mouse.move(spot.x, spot.y);
+    await sleep(250);
+    const snapped = await page.evaluate(() => window.minicad.viewer.snapNow?.hit.at ?? null);
+    assert.ok(snapped, '道具を持ったら吸着が消えた');
+    await page.mouse.down();
+    await page.mouse.up();
+    await sleep(200);
+    // 2 点目はどこでもよい（1 点目の座標だけを見る）
+    await page.mouse.move(spot.x + 90, spot.y + 60);
+    await sleep(200);
+    await page.mouse.down();
+    await page.mouse.up();
+    await sleep(300);
+
+    const got = await page.evaluate((before) => {
+      const list = Object.values(window.minicad.editorInstance.store.scene.measurements);
+      return list.length === before + 1 ? list[list.length - 1].a : null;
+    }, beforeSnapMs);
+    assert.ok(got, '計測が残っていない（吸着したところで打てていない）');
+    const off = Math.hypot(got.x - snapped.x, got.y - snapped.y, got.z - snapped.z);
+    assert.ok(off < 0.001, `角そのものに打てていない (${off.toFixed(2)}mm ずれ)`);
+    // **格子に丸めていないこと。** 既定の格子は 100mm なので、
+    // 丸めていれば座標は必ず 100 の倍数になる
+    const onGrid = [got.x, got.y, got.z].every((v) => Math.abs(v % 100) < 0.001);
+    assert.ok(!onGrid || [snapped.x, snapped.y, snapped.z].every((v) => Math.abs(v % 100) < 0.001),
+      `格子に丸めている: ${JSON.stringify(got)}`);
+    await page.evaluate(() => window.minicad.editorInstance.store.undo());
+    await sleep(200);
+
+    // **Tab で送れること。** 重なって見える角を選び分けるため
+    const cycled = await page.evaluate(() => {
+      const v = window.minicad.viewer;
+      const before = v.snapNow;
+      if (!before || before.count < 2) return 'ひとつだけ';
+      const moved = v.cycleSnap();
+      const after = v.snapNow;
+      return moved && JSON.stringify(after.hit.at) !== JSON.stringify(before.hit.at)
+        ? 'ok' : '送れない';
+    });
+    assert.notEqual(cycled, '送れない', 'Tab で次の候補へ送れない');
+
+    // **入切できること。** 2D の G / F8 とは別のトグル
+    assert.equal(await page.locator('.status-toggle[title^="3D の頂点"]').count(), 1,
+      '3D 吸着のトグルが帯に出ていない');
+    await page.locator('.status-toggle[title^="3D の頂点"]').click();
+    await sleep(200);
+    assert.equal(
+      await page.evaluate(() => window.minicad.editorInstance.store.settings.snap3d),
+      false, '帯から切り替えられない');
+    await page.mouse.move(spot.x, spot.y);
+    await sleep(200);
+    assert.equal(await page.evaluate(() => window.minicad.viewer.snapNow), null,
+      '切ったのに吸い付いている');
+    await page.locator('.status-toggle[title^="3D の頂点"]').click();
+    await sleep(200);
+
+    await page.keyboard.press('Escape');
+    // **カメラを戻す。** あとの段は自分が置いた視点を前提にしている
+    await page.evaluate((cam) => {
+      Object.assign(window.minicad.viewer.camera, cam);
+      window.minicad.viewer.requestRender();
+    }, camBefore);
+    await sleep(300);
+    console.log('✔ 3D で立体の角に吸い付く（Tab で送れて、帯から切れる）');
+  }
 
   console.log('✔ 3D の中にソリッドを置ける（undo で戻る）');
 
